@@ -60,6 +60,9 @@ VCF Guidelines
 
 ## Conversion & validation
 
+ルール (dbVar から提供されたルール、dbSNP offline validator、独自)  
+* [JVar rules](https://docs.google.com/spreadsheets/d/15pENGHA9hkl6QIueFb44fhQfQMThRB2tbvSE6hItHEU/edit#gid=576708402)
+
 -v で Submission ID (例 VSUB000001) を指定。
 ```
 ruby jvar-convert.rb -v VSUB000001 JVar.xlsx
