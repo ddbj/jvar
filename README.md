@@ -32,7 +32,7 @@ JVar-SNP variant は公開後 dbSNP に取り込まれると、dbSNP により s
 
 ## 登録用エクセル
 
-[登録用エクセル](/submission_excel/JVar_v1.2.xlsx)
+[登録用エクセル](/submission_excel/)
 
 シート
 * Study  
@@ -55,6 +55,14 @@ VCF Guidelines
 * [dbSNP VCF Submission Format Guidelines](https://www.ncbi.nlm.nih.gov/projects/SNP/docs/dbSNP_VCF_Submission.pdf)  
 * [dbVar VCF Submission Format Guidelines](https://www.ncbi.nlm.nih.gov/core/assets/dbvar/files/dbVar_VCF_Submission.pdf)
 * [The Variant Call Format Specification v4.4](https://samtools.github.io/hts-specs/VCFv4.4.pdf)
+
+## References
+
+[download-assembly.sh](download-assembly.sh)
+
+* NCBI Dataset から GRCh37 latest と GRCh38 の全バージョンをダウンロード  
+* REF 塩基配列チェック用に [samtools faidx](http://www.htslib.org/doc/samtools-faidx.html) で fasta のインデックス作成
+* [Genome sequence report](https://www.ncbi.nlm.nih.gov/datasets/docs/v2/reference-docs/data-reports/genome-sequence/) jsonl を結合し reference sequence と CHROM チェックに使用
 
 ## Conversion & validation
 
@@ -100,4 +108,7 @@ validation ログ
 VSUB000001_SV.log.txt # validation 結果のサマリー
 [vcf filename].log.txt # submit された VCF の行末に validation 結果を付加 
 ```
+
+### Singularity
+
 
