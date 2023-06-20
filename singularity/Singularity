@@ -1,0 +1,55 @@
+BootStrap: docker
+From: ubuntu:20.04
+
+%setup
+
+
+%files
+    # copying files from the host system to the container.
+    jvar-convert.rb /usr/local/bin
+    lib/*rb /usr/local/bin/lib/
+    conf/*json /usr/local/bin/conf/
+    conf/*jsonl /usr/local/bin/conf/
+
+%environment
+    export RUBYOPT='-EUTF-8'
+
+%labels
+    Maintainer Bioinformation and DDBJ Center
+    Version    v1.0
+
+
+%runscript
+
+
+
+%post
+    echo "Hello from inside the container"
+    sed -i.bak -e "s%http://archive.ubuntu.com/ubuntu/%http://ftp.jaist.ac.jp/pub/Linux/ubuntu/%g" /etc/apt/sources.list
+    sed -i.bak -e "s%http://security.ubuntu.com/ubuntu/%http://ftp.jaist.ac.jp/pub/Linux/ubuntu/%g" /etc/apt/sources.list
+    apt-get -y update
+    apt-get -y upgrade
+    apt-get -y install locales
+    locale-gen en_US.UTF-8
+    update-locale
+    apt-get -y install ruby-full=1:2.7+1
+    DEBIAN_FRONTEND=noninteractive apt-get -y install build-essential autoconf automake wget git zlib1g-dev libbz2-dev libncurses5-dev curl unzip python-dev liblzma-dev libcurl4-openssl-dev software-properties-common apt-transport-https
+    gem install csv -v "3.2.3"
+    gem install fileutils -v "1.4.1"
+    gem install optparse -v "0.2.0"
+    gem install json -v "2.6.2"
+    gem install pp -v "0.1.0"
+    gem install date -v "3.0.0"
+    gem install roo -v "2.8.3"
+    gem install jsonl -v "0.1.5"
+    gem install builder -v "3.2.4"    
+    wget https://github.com/samtools/samtools/releases/download/1.10/samtools-1.10.tar.bz2
+    tar -xvf samtools-1.10.tar.bz2
+    cd samtools-1.10
+    ./configure --prefix=/usr/local
+    make
+    make install
+    cd ..
+    rm -rf samtools-1.10 samtools-1.10.tar.bz2
+    chmod +x /usr/local/bin/*.rb
+    chmod +x /usr/local/bin/lib/*.rb
