@@ -1,19 +1,15 @@
 # JVar
 
-JVar (Japan Variation Database) はヒトのバリアント、頻度、遺伝子型のための公的データベース。  
-Short Genetic Variation (JVar-SNP) と Structural Variation (JVar-SV) の二部構成。  
+JVar (Japan Variation Database) はヒトのバリアント、アリル頻度、遺伝子型のための公的データベース。Short Genetic Variation (JVar-SNP) と Structural Variation (JVar-SV) の二部構成。  
 
 * JVar-SNP: 50bp 以下の SNV/insertion/deletion、dbSNP 相当
 * JVar-SV: 50bp より長い構造バリアント (SV)、dbVar 相当
 
-[EVA (European Variation Archive)](https://www.ebi.ac.uk/eva/) はヒトとヒト以外の生物種が対象。  
-NCBI [dbSNP](https://ncbi.nlm.nih.gov/snp)/[dbVar](https://ncbi.nlm.nih.gov/dbvar) と JVar はヒトのみが対象。
+NCBI [dbSNP](https://ncbi.nlm.nih.gov/snp)/[dbVar](https://ncbi.nlm.nih.gov/dbvar) と JVar はヒトのみが対象。[EVA (European Variation Archive)](https://www.ebi.ac.uk/eva/) はヒトとヒト以外の生物種が対象。
 
 ## データモデル
 
-dbVar のデータモデルに dbSNP の Assay を取り込んで拡張し SNP/SV 共通モデルを構築。  
-BioProject/BioSample が必須。  
-Variant は Assay を介して Study/SampleSet (Sample) にリンク。  
+dbVar のデータモデルに dbSNP の Assay を取り込んで拡張し SNP/SV 共通モデルを構築。BioProject/BioSample は必須。Variant は Assay を介して Study/SampleSet (Sample) にリンク。  
 
 ![jvar-dm](https://github.com/ddbj/jvar/assets/5100160/a4cbf8cf-f066-4ec2-8cd7-36c790ffd890)
 
@@ -21,14 +17,12 @@ Variant は Assay を介して Study/SampleSet (Sample) にリンク。
 * JVar-SNP: study - dstd, variant - dss  
 * JVar-SV: study - dstd, variant call - dssv, variant region - dsv  
 
-SampleSet, Experiment, Assay は内部的に連番 ID で参照。  
-dbSNP はメタデータ中で、それぞれ、ss1、e1、a1 のように区別して参照。　　
+SampleSet, Experiment, Assay は内部的に連番 ID で参照。dbSNP メタデータ中では、それぞれ、ss1、e1、a1 のように区別して参照。　　
 
 variant は mono-allelic で受付。取り扱いをシンプルにするのと TogoVar と粒度を揃えるため。  
-dbSNP/dbVar は pos + variation type が同じ multi-allelic を許容。  
-mono は rs にマージされると multi になる。variant call は region に multi にマージできる。
+dbSNP/dbVar は pos + variation type が同じ multi-allelic を許容。dbSNP rs と Variant region は multi。
 
-JVar-SNP variant は公開後 dbSNP に取り込まれると、dbSNP により ss が発行され、次の build で rs にマージ（新規であれば rs 発行） される。
+JVar-SNP variant は公開後 dbSNP に取り込まれると、dbSNP により ss が発行され、次の build で rs にマージされる （新規であれば rs 発行）。
 
 ## 登録用エクセル
 
@@ -43,9 +37,9 @@ JVar-SNP variant は公開後 dbSNP に取り込まれると、dbSNP により s
 * Variant Call (SV)
 * Variant Region (SV)
 
-Study 
-→ dbSNP CONT & PUB  
-→ dbVar Submission & Study 
+Study   
+→ dbSNP CONT and PUB  
+→ dbVar Submission and Study 
 
 Variant  
 * SNP: variant は VCF で登録  
@@ -56,7 +50,7 @@ VCF Guidelines
 * [dbVar VCF Submission Format Guidelines](https://www.ncbi.nlm.nih.gov/core/assets/dbvar/files/dbVar_VCF_Submission.pdf)
 * [The Variant Call Format Specification v4.4](https://samtools.github.io/hts-specs/VCFv4.4.pdf)
 
-## References
+## Reference sequences
 
 [download-assembly.sh](download-assembly.sh)
 
@@ -111,4 +105,6 @@ VSUB000001_SV.log.txt # validation 結果のサマリー
 
 ### Singularity
 
+[Singularity](/singularity/Singularity)
 
+ruby プログラムのパスを書き換えた後に Singularity イメージを構築。
