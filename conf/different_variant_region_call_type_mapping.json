@@ -1,0 +1,7 @@
+{
+	"copy number variation": ["copy number gain", "copy number loss", "deletion", "duplication"],
+	"mobile element insertion": ["alu insertion", "herv insertion", "line1 insertion", "sva insertion"],
+	"mobile element deletion": ["alu deletion", "herv deletion", "line1 deletion", "sva deletion"],
+	"translocation": ["interchromosomal translocation", "intrachromosomal translocation"],
+	"complex chromosomal rearrangement": ["interchromosomal translocation", "intrachromosomal translocation"]
+}

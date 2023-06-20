@@ -1,0 +1,29 @@
+{
+	"Study": {
+		"Study Type": ["Case-Control", "Case-Set", "Collection", "Control Set", "Somatic", "Tumor vs. Matched-Normal"]
+	},
+	"SampleSet": {
+		"SampleSet Type": ["Case", "Control"],
+		"SampleSet Sex": ["Female", "Male", "Unknown"]
+	},
+	"Sample": {
+		"Subject Sex": ["Female", "Male", "Unknown"],
+		"Subject Collection": ["1000 Genomes", "Autism", "CEPH", "HapMap", "HGDP", "NINDS", "OPGP", "PDR"],
+		"Subject Age Units": ["Day", "Week", "Month", "Year", "GDay", "GWeek", "GMonth"]
+	},
+	"Experiment": {
+		"Experiment Type": ["Discovery", "Genotyping", "Validation"],
+		"Method Type": ["BAC aCGH", "Curated", "Digital array", "FISH", "Gene expression array", "Karyotyping", "MAPH", "MassSpec", "Merging", "Microsatellite genotyping", "MLPA", "Multiple complete digestion", "Oligo aCGH", "Optical mapping", "PCR", "qPCR", "ROMA", "RT-PCR", "Sequencing", "SNP array", "Southern", "Western"],
+		"Analysis Type": ["BAC assembly", "Curated", "de novo and local sequence assembly", "de novo sequence assembly", "Genotyping", "Local sequence assembly", "Manual observation", "MCD analysis", "Merging", "One end anchored assembly", "Optical mapping", "Other", "Paired-end mapping", "Probe signal intensity", "Read depth", "Read depth and paired-end mapping", "Sequence alignment", "SNP genotyping analysis", "Split read and paired-end mapping", "Split read mapping"],
+		"Reference Type": ["Assembly", "Control tissue", "Other", "Sampleset", "Sample"]
+	},
+	"Variant Call": {
+		"Variant Call Type": ["complex substitution", "copy number gain", "copy number loss", "copy number variation", "deletion", "duplication", "indel", "insertion", "interchromosomal translocation", "intrachromosomal translocation", "inversion", "mobile element deletion", "Alu deletion", "HERV deletion", "LINE1 deletion", "SVA deletion", "mobile element insertion", "Alu insertion", "HERV insertion", "LINE1 insertion", "SVA insertion", "novel sequence insertion", "sequence alteration", "short tandem repeat variation", "tandem duplication"],
+		"Zygosity": ["Hemizygous", "Heterozygous", "Homozygous"],
+		"From Strand": ["+", "-", "not reported"],
+		"To Strand": ["+", "-", "not reported"]
+	},
+	"Variant Region": {
+		"Variant Region Type": ["complex substitution", "complex chromosomal rearrangement", "copy number variation", "indel", "insertion", "inversion", "mobile element deletion", "mobile element insertion", "novel sequence insertion", "sequence alteration", "short tandem repeat variation", "tandem duplication", "translocation"]
+	}
+}

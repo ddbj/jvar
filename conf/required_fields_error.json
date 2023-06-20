@@ -1,0 +1,8 @@
+{
+	"Study": ["Submission Type", "Submitter First Name", "Submitter Email", "Submitter Affiliation"],
+	"Sample": ["Subject ID"],
+	"Experiment": ["Experiment Type", "Method Type"],
+	"Assay": ["Experiment ID"],
+	"Variant Call": ["Variant Call ID"],
+	"Variant Region": ["Variant Region ID"]
+}
