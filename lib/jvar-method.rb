@@ -683,6 +683,8 @@ def vcf_parser(vcf_file, vcf_type)
 		end
 
 		# JV_VCF0035: Variant at telomere
+		# VCF spec と dbSNP VCF guideline では telomere 0 or N+1
+		# dbVar VCF guideline では 1 (p-arm), N (q-arm) となっているが dbSNP/VCF spec に準拠する 
 		if pos == 0 || pos == chr_length + 1
 			vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_VCF0035 Warning: Variant at telomere.")
 			telomere_c += 1
@@ -911,7 +913,7 @@ def vcf_parser(vcf_file, vcf_type)
 
 			svlen = ""
 
-			# Start
+			# START/POS
 			start = pos
 			posrange_f = false
 			if info_h["POSrange"] && info_h["POSrange"].split(",")[0] && info_h["POSrange"].split(",")[1]
@@ -920,7 +922,7 @@ def vcf_parser(vcf_file, vcf_type)
 				posrange_f = true
 			end
 
-			# End
+			# END/STOP
 			if info_h["END"] && info_h["END"].to_i
 				stop = info_h["END"].to_i
 			end
@@ -1241,7 +1243,7 @@ def vcf_parser(vcf_file, vcf_type)
 					vcf_variant_call_h.store("To Coord", to_coord.to_s)
 					vcf_variant_call_h.store("To Strand", to_strand)
 					vcf_variant_call_h.store("Mutation ID", mutation_id)
-					vcf_variant_call_h.store("variant_sequenceuence", variant_sequence)
+					vcf_variant_call_h.store("variant_sequence", variant_sequence)
 
 					if from_chr == to_chr
 						sv_type = "intrachromosomal translocation"

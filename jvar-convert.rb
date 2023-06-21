@@ -2190,8 +2190,8 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 		} # variant_call_e
 
-		# VCF で variant region がない場合、variant call tsv を出力
-		if variant_region_a.empty? && !vcf_sv_f.empty?
+		# VCF で提供された場合、variant call tsv を出力
+		if !vcf_sv_f.empty?
 			variant_call_field_a = []
 			open("#{conf_path}/variant_call_tsv.json"){|f|
 				variant_call_field_a = JSON.load(f)
@@ -2201,11 +2201,30 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 			variant_call_tsv_line_a = []
 			for field in variant_call_field_a
-				if !variant_call[field].nil? && !variant_call[field].empty?
-					variant_call_tsv_line_a.push(variant_call[field])
+				
+				if field == "FORMAT"
+					if !variant_call[field].nil? && !variant_call[field].empty?
+						format_for_tsv_a = []
+						variant_call[field].each{|sample_value_h|
+							sample_value_h.each{|ft_sample,ft_sample_value_h|
+								ft_sample_value_s = ""
+								ft_sample_value_s = ft_sample_value_h.map{|k,v| "#{k}:#{v}"}.join(";") if ft_sample_value_h
+								format_for_tsv_a.push("#{ft_sample}=#{ft_sample_value_s}") unless ft_sample_value_s.empty?
+							}
+						}
+
+						variant_call_tsv_line_a.push(format_for_tsv_a.join(";"))
+					else
+						variant_call_tsv_line_a.push("")
+					end					
 				else
-					variant_call_tsv_line_a.push("")
+					if !variant_call[field].nil? && !variant_call[field].empty?
+						variant_call_tsv_line_a.push(variant_call[field])
+					else
+						variant_call_tsv_line_a.push("")
+					end
 				end
+
 			end
 
 			variant_call_tsv_s += "#{variant_call_tsv_line_a.join("\t")}\n"
@@ -2257,12 +2276,15 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 	warning_sv_a.push(["JV_SV0060", "Warning if Variant/Sequence contains other than valid iupac codes (ABCDGHKMNRSTUVWY) or space, period '.' or dash '-' Variant Call: #{invalid_seq_call_a.size} sites, #{invalid_seq_call_a.size > 4? invalid_seq_call_a[0, limit_for_etc].join(",") + " etc" : invalid_seq_call_a.join(",")}"]) unless invalid_seq_call_a.empty?
 	warning_sv_a.push(["JV_SV0059", "Warning if variant call has a placement on Chr Y for a female subject. Variant Call: #{chry_for_female_call_a.size} sites, #{chry_for_female_call_a.size > 4? chry_for_female_call_a[0, limit_for_etc].join(",") + " etc" : chry_for_female_call_a.join(",")}"]) unless chry_for_female_call_a.empty?
 
-	# Variant Call TSV
-	if variant_region_a.empty? && !vcf_sv_f.empty?
+	# VCF を Variant Call TSV として出力
+	if !vcf_sv_f.empty?
 		variant_call_tsv_f = open("#{submission_id}_variant_call.tsv", "w")
 		variant_call_tsv_f.puts variant_call_tsv_s
 		variant_call_tsv_f.close
 
+	end
+
+	if variant_region_a.empty?
 		# JV_VCFS0007: Missing variant region
 		warning_sv_a.push(["JV_VCFS0007", "Variant regions are not submitted. JVar will generate variant regions from variant calls."])
 	end
