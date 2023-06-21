@@ -705,6 +705,8 @@ end
 
 sample_name_accession_h = {}
 sampleset_biosample_acc_h = {}
+biosample_accession_per_sampleset_h = {}
+sample_name_per_sampleset_h = {}
 for sample in sample_a
 
 	# sample name to biosample accession
@@ -718,7 +720,6 @@ for sample in sample_a
 			sampleset_biosample_acc_h[sample["SampleSet ID"]].push(sample["BioSample Accession"])
 		end
 	end
-
 
 	## Maternal ID
 	if !sample["Subject Maternal ID"].empty?
@@ -755,6 +756,19 @@ for sample in sample_a
 		for sampleset in sampleset_a
 			error_ignore_common_a.push(["JV_C0041", "If sample has subject with Subject Sex=Female or Unknown, it must not belong to a SampleSet with SampleSet Sex=Male #{sample["Subject ID"]}"]) if sample["SampleSet ID"] == sampleset["SampleSet ID"] && sampleset["SampleSet Sex"] == "Male"
 		end
+	end
+
+	# sample reference validation per vcf file
+	if biosample_accession_per_sampleset_h[sample["SampleSet ID"]]
+		biosample_accession_per_sampleset_h[sample["SampleSet ID"]].push(sample["BioSample Accession"]) if sample["BioSample Accession"] && !sample["BioSample Accession"].empty?
+	else
+		biosample_accession_per_sampleset_h.store(sample["SampleSet ID"], [sample["BioSample Accession"]]) if sample["BioSample Accession"] && !sample["BioSample Accession"].empty?
+	end
+
+	if sample_name_per_sampleset_h[sample["SampleSet ID"]]
+		sample_name_per_sampleset_h[sample["SampleSet ID"]].push(sample["Sample Name"]) if sample["Sample Name"] && !sample["Sample Name"].empty?
+	else
+		sample_name_per_sampleset_h.store(sample["SampleSet ID"], [sample["Sample Name"]]) if sample["Sample Name"] && !sample["Sample Name"].empty?
 	end
 
 end
@@ -912,6 +926,8 @@ EOS
 	snp_tsv_f.puts assay_s
 	snp_tsv_f.close
 
+	invalid_sample_ref_vcf_a = []
+
 	# dbSNP VCF を作成
 	# VCF validation を実施のうえで target tags に限定せずに出力
 	error_vcf_header_a, error_ignore_vcf_header_a, error_exchange_vcf_header_a, warning_vcf_header_a, error_vcf_content_a, error_ignore_vcf_content_a, error_exchange_vcf_content_a, warning_vcf_content_a, vcf_variant_a = [], [], [], [], [], [], [], [], []
@@ -919,8 +935,8 @@ EOS
 
 		if !assay["Experiment ID"].empty? && !assay["VCF Filename"].empty?
 
-			tmp_error_vcf_header_a, tmp_error_ignore_vcf_header_a, tmp_error_exchange_vcf_header_a, tmp_warning_vcf_header_a, tmp_error_vcf_content_a, tmp_error_ignore_vcf_content_a, tmp_error_exchange_vcf_content_a, tmp_warning_vcf_content_a, tmp_vcf_variant_a = [], [], [], [], [], [], [], [], []
-			tmp_error_vcf_header_a, tmp_error_ignore_vcf_header_a, tmp_error_exchange_vcf_header_a, tmp_warning_vcf_header_a, tmp_error_vcf_content_a, tmp_error_ignore_vcf_content_a, tmp_error_exchange_vcf_content_a, tmp_warning_vcf_content_a, tmp_vcf_variant_a = vcf_parser(assay["VCF Filename"], "SNP")
+			tmp_error_vcf_header_a, tmp_error_ignore_vcf_header_a, tmp_error_exchange_vcf_header_a, tmp_warning_vcf_header_a, tmp_error_vcf_content_a, tmp_error_ignore_vcf_content_a, tmp_error_exchange_vcf_content_a, tmp_warning_vcf_content_a, tmp_vcf_variant_a, tmp_vcf_sample_a = [], [], [], [], [], [], [], [], [], []
+			tmp_error_vcf_header_a, tmp_error_ignore_vcf_header_a, tmp_error_exchange_vcf_header_a, tmp_warning_vcf_header_a, tmp_error_vcf_content_a, tmp_error_ignore_vcf_content_a, tmp_error_exchange_vcf_content_a, tmp_warning_vcf_content_a, tmp_vcf_variant_a, tmp_vcf_sample_a = vcf_parser(assay["VCF Filename"], "SNP")
 
 			error_vcf_header_a += tmp_error_vcf_header_a
 			error_ignore_vcf_header_a += tmp_error_ignore_vcf_header_a
@@ -931,6 +947,13 @@ EOS
 			error_exchange_vcf_content_a += tmp_error_exchange_vcf_content_a
 			warning_vcf_content_a += tmp_warning_vcf_content_a
 			vcf_variant_a.push(tmp_vcf_variant_a)
+
+			# JV_VCF0042: Invalid sample reference in VCF
+			if sample_name_per_sampleset_h[assay["SampleSet ID"]] && biosample_accession_per_sampleset_h[assay["SampleSet ID"]]
+				unless (tmp_vcf_sample_a - sample_name_per_sampleset_h[assay["SampleSet ID"]]).empty? || (tmp_vcf_sample_a - biosample_accession_per_sampleset_h[assay["SampleSet ID"]]).empty?
+					invalid_sample_ref_vcf_a.push(assay["VCF Filename"])
+				end
+			end
 
 			# dbSNP VCF 出力
 			dbsnp_vcf_f = open("#{submission_id}_a#{assay["Assay ID"]}.vcf", "w")
@@ -961,8 +984,12 @@ EOS
 
 		end
 
-	end
+	end # for assay in assay_a
 
+	# JV_VCF0042: Invalid sample reference in VCF
+	unless invalid_sample_ref_vcf_a.sort.uniq.empty?
+		error_vcf_header_a.push(["JV_VCF0042", "Reference a Sample Name/BioSample Accession of a Sample in the SampleSet in the VCF sample column. #{invalid_sample_ref_vcf_a.sort.uniq.join(",")}"])
+	end
 
 end # if submission_h["Submission Type"] == "Short genetic variations"
 
@@ -1631,32 +1658,25 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 		variant_call_from_vcf_a.push(vcf_variant_call_h)
 
-		# sample reference validation per vcf file
-		biosample_accession_per_sampleset_a = []
-		sample_name_per_sampleset_a = []
-		for sample_h in sample_a
-			if sample_h["SampleSet ID"] == assay["SampleSet ID"]
-				biosample_accession_per_sampleset_a.push(sample_h["BioSample Accession"])
-				sample_name_per_sampleset_a.push(sample_h["Sample Name"])
-			end
-		end
-
 		# JV_VCF0042: Invalid sample reference in VCF
 		unless vcf_variant_call_h["FORMAT"].empty?
 			for ft_value_h in vcf_variant_call_h["FORMAT"]
-				unless (ft_value_h.keys - sample_name_per_sampleset_a).empty? || (ft_value_h.keys - biosample_accession_per_sampleset_a).empty?
-					invalid_sample_ref_vcf_a.push(vcf_sv_f)
-				end
+				if sample_name_per_sampleset_h[assay["SampleSet ID"]] && biosample_accession_per_sampleset_h[assay["SampleSet ID"]]
+				
+					unless (ft_value_h.keys - sample_name_per_sampleset_h[assay["SampleSet ID"]]).empty? || (ft_value_h.keys - biosample_accession_per_sampleset_h[assay["SampleSet ID"]]).empty?
+						invalid_sample_ref_vcf_a.push(vcf_sv_f)
+					end
 
-				# Genotype flag
-				ft_value_h.values.each{|ft_value|
-					ft_value.each{|key, value|
-						sv_genotype_f = true if key == "GT"	|| key == "CN"
+					# Genotype flag
+					ft_value_h.values.each{|ft_value|
+						ft_value.each{|key, value|
+							sv_genotype_f = true if key == "GT"	|| key == "CN"
+						}
 					}
-				}
-
+				
+				end
 			end
-		end
+		end # unless vcf_variant_call_h["FORMAT"].empty?
 
 	end # for variant_call_h in variant_call_a
 

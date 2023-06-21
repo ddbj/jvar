@@ -471,6 +471,20 @@ def vcf_parser(vcf_file, vcf_type)
 	chrom_a = []
 	for vcf_line_a in vcf_content_a
 
+		chrom = ""
+		pos = -1
+		id = ""
+		ref = ""
+		alt = ""
+		qual = ""
+		filter = ""
+		info = ""
+		format = ""
+		sample_a = []
+		vrt = ""
+		vrt_number = ""
+		sv_type = ""
+
 		## JV_VCF0005: White space characters before/after column header
 		vcf_field_whitespaces_a = []
 		for vcf_field in vcf_line_a
@@ -809,7 +823,7 @@ def vcf_parser(vcf_file, vcf_type)
 			end
 
 			# JV_VCFP0005: Invalid ALT allele
-			if !alt.empty? && alt !~ /^[ATGC]+$/
+			if !alt.empty? && alt !~ /^[ATGC,]+$/
 				vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_VCFP0005 Error: Remove non-ATGC base from ALT allele.")
 				invalid_alt_c += 1
 			end
@@ -826,13 +840,25 @@ def vcf_parser(vcf_file, vcf_type)
 				vrt_number = info_h["VRT"]
 				vrt = $snp_vrt_h[info_h["VRT"]]
 
-			elsif !ref.empty? && !alt.empty? && ref.size == 1 && alt.size == 1 && ref != alt					 
+			elsif !ref.empty? && !alt.empty? && !alt.include?(",") && ref.size == 1 && alt.size == 1 && ref != alt					 
 
 				vrt_number = "1"
 				vrt = "SNV"
 
-			elsif !ref.empty? && !alt.empty? && (ref.size - alt.size).abs > 0 && ref != alt				 
+			elsif !ref.empty? && !alt.empty? && !alt.include?(",") && ref.size > 1 && alt.size > 1 && ref.size == alt.size && ref != alt
+				all_different_f = true
+				ref.size.times{|j|
+					all_different_f = false if ref[j] == alt[j]
+				}
 
+				if all_different_f
+					vrt_number = "8"
+					vrt = "MNV"
+				end
+
+			elsif !ref.empty? && !alt.empty? && !alt.include?(",") && (ref.size - alt.size).abs > 0 && ref != alt
+
+				# event の一塩基前が共通で記載されているかどうかは別でチェック
 				vrt_number = "2"
 				vrt = "DIV"
 
@@ -1461,7 +1487,7 @@ def vcf_parser(vcf_file, vcf_type)
 			vcf_variant_a.push(vcf_content_line_a.collect{|e| e.strip}.join("\t"))
 		end
 
-		return error_vcf_header_a, error_ignore_vcf_header_a, error_exchange_vcf_header_a, warning_vcf_header_a, error_vcf_content_a, error_ignore_vcf_content_a, error_exchange_vcf_content_a, warning_vcf_content_a, vcf_variant_a, vcf_log_a
+		return error_vcf_header_a, error_ignore_vcf_header_a, error_exchange_vcf_header_a, warning_vcf_header_a, error_vcf_content_a, error_ignore_vcf_content_a, error_exchange_vcf_content_a, warning_vcf_content_a, vcf_variant_a, vcf_sample_a, vcf_log_a
 	elsif vcf_type == "SV"
 		return error_vcf_header_a, error_ignore_vcf_header_a, error_exchange_vcf_header_a, warning_vcf_header_a, error_vcf_content_a, error_ignore_vcf_content_a, error_exchange_vcf_content_a, warning_vcf_content_a, vcf_variant_call_a, vcf_variant_region_a, vcf_log_a
 	end
