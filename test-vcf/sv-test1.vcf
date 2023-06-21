@@ -1,0 +1,46 @@
+##fileformat=VCFv4.1
+##fileDate=20190129
+##reference=GCF_000001405.40
+##ALT=<ID=<CNV>,Description="Copy number variable region">
+##ALT=<ID=<DEL>,Description="Deletion relative to the reference">
+##ALT=<ID=<DUP>,Description="Region of elevated copy number relative to the reference">
+##ALT=<ID=<INS>,Description="Insertion of sequence relative to the reference">
+##ALT=<ID=<INV>,Description="Inversion of reference sequence">
+##INFO=<ID=DBVARID,Number=0,Type=Flag,Description="ID is a dbVar accession">
+##INFO=<ID=CIEND,Number=2,Type=Integer,Description="Confidence interval around END for imprecise variants">
+##INFO=<ID=CIPOS,Number=2,Type=Integer,Description="Confidence interval around POS for imprecise variants">
+##INFO=<ID=DESC,Number=1,Type=String,Description="Any additional information about this call (free text, enclose in double quotes)">
+##INFO=<ID=END,Number=1,Type=Integer,Description="End position of the variant described in this record">
+##INFO=<ID=IMPRECISE,Number=0,Type=Flag,Description="Imprecise structural variation">
+##INFO=<ID=SVTYPE,Number=1,Type=String,Description="Type of structural variant">
+##INFO=<ID=SVLEN,Number=.,Type=String,Description="Difference in length between REF and ALT alleles">
+##INFO=<ID=CHR2,Number=1,Type=String,Description="Second (To) Chromosome in a translocation pair">
+##INFO=<ID=REGIONID,Number=.,Type=String,Description="The parent variant region accession(s)">
+##INFO=<ID=EXPERIMENT,Number=1,Type=Integer,Description="The experiment_id (from EXPERIMENTS tab) of the experiment that was used to generate this call">
+##INFO=<ID=EVENT,Number=.,Type=String,Description="The parent variant region accession of a mutation event">
+##INFO=<ID=LINKS,Number=.,Type=String,Description="Link(s) to external database(s) - see LINKS tab of dbVar submission template for examples">
+##INFO=<ID=CLNSIG,Number=1,Type=String,Description="Clinical significance for this single variant">
+##INFO=<ID=CLNACC,Number=.,Type=String,Description="Accessions and version numbers assigned by ClinVar">
+##INFO=<ID=clinical_source,Number=1,Type=String,Description="Source of clinical significance">
+##INFO=<ID=SOMATIC,Number=0,Type=Flag,Description="Indicates that the record is a somatic mutation. NOT for clinical assertions, i.e. cancer. See also ORIGIN.">
+##INFO=<ID=ORIGIN,Number=1,Type=String,Description="Origin of allele, if known; should be one of (biparental, de novo, germline, inherited, maternal, not applicable, not provided, not-reported, paternal, tested-inconclusive, uniparental, unknown, ). See also SOMATIC">
+##INFO=<ID=PHENO,Number=.,Type=String,Description="Phenotype(s) thought to associated with this call. NOT for clinical assertions (submit to ClinVar). (free text, enclose in double quotes)">
+##INFO=<ID=SAMPLE,Number=1,Type=String,Description="sample_id from dbVar submission; every call must have SAMPLE or SAMPLESET, but NOT BOTH">
+##INFO=<ID=SAMPLESET,Number=1,Type=Integer,Description="sampleset_id from dbVar submission; every call must have SAMPLESET or SAMPLE but NOT BOTH">
+##INFO=<ID=VALIDATED,Number=0,Type=Flag,Description="Validated by follow-up experiment">
+##INFO=<ID=AC,Number=.,Type=Integer,Description="Allele count'">
+##INFO=<ID=AF,Number=.,Type=Float,Description="Allele frequency'">
+##INFO=<ID=AN,Number=.,Type=String,Description="Allele name'">
+##INFO=<ID=SEQ,Number=1,Type=String,Description="Variation sequence">
+##INFO=<ID=POSrange,Number=1,Type=String,Description="POS range">
+##INFO=<ID=ENDrange,Number=1,Type=String,Description="END range">
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##FORMAT=<ID=CN,Number=1,Type=Integer,Description="Copy number genotype for imprecise variants">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	c1	c2
+1	10501	v14482516	T	<DUP>	.	.	SVTYPE=DUP;CIPOS=-100,100;CIEND=-100,100;END=10601;	GT:CN	1/1:5	0/1:5
+1	10504	v14484412	G	<DUP>	.	.	SVTYPE=DUP;CIPOS=-100,100;CIEND=-100,100;END=10801;	GT:CN	1/1:5	0/1:5
+1	10505	v14487076	A	<INS>	.	.	SVTYPE=INS;POSrange=10500,10600;END=13000;ENDrange=12900,13100;	GT:CN	1/1:5	0/1:5
+1	59599	v14488053	A	<INS:ME:ALU>	.	.	SVTYPE=INS;END=59599;	GT:CN	1/1:5	0/1:5
+1	90069	v14490620	A	<INS>	.	.	SVTYPE=INS;END=90069;	GT:CN	1/1:5	0/1:5
+1	90259	v14482211	G	<INS>	.	.	SVTYPE=INS;POSrange=90259,.;END=90400;ENDrange=.,90400;	GT:CN	1/1:5	0/1:5
+1	180209	v14473073	T	<DEL>	.	.	SVTYPE=DEL;END=180608;	GT:CN	1/1:5	0/1:5

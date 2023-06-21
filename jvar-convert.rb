@@ -1611,6 +1611,38 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 			end
 
+			for tmp_vcf_variant_call_h in tmp_vcf_variant_call_a
+
+				unless assay["Assay ID"].empty?
+					tmp_vcf_variant_call_h.store("Assay ID", assay["Assay ID"])
+				else
+					tmp_vcf_variant_call_h.store("Assay ID", "")
+				end
+
+				unless assay["Experiment ID"].empty?
+					tmp_vcf_variant_call_h.store("Experiment ID", assay["Experiment ID"])
+				else
+					tmp_vcf_variant_call_h.store("Experiment ID", "")
+				end
+
+				unless assay["SampleSet ID"].empty?
+					tmp_vcf_variant_call_h.store("SampleSet ID", assay["SampleSet ID"])
+				else
+					tmp_vcf_variant_call_h.store("SampleSet ID", "")
+				end
+
+				unless tmp_vcf_variant_call_h["row"]
+					# VCF variant call に tsv 用の row 格納
+					row_a = []
+					for item in variant_call_sheet_header_a
+						row_a.push(tmp_vcf_variant_call_h[item] ? tmp_vcf_variant_call_h[item] : "")		
+					end
+
+					tmp_vcf_variant_call_h.store("row", row_a)
+				end
+
+			end # for tmp_vcf_variant_call_h in tmp_vcf_variant_call_a
+
 			error_vcf_header_a += tmp_error_vcf_header_a
 			error_ignore_vcf_header_a += tmp_error_ignore_vcf_header_a
 			error_exchange_vcf_header_a += tmp_error_exchange_vcf_header_a
@@ -1628,42 +1660,14 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 	for vcf_variant_call_h in vcf_variant_call_a
 
-		unless vcf_variant_call_h["row"]
-			# VCF variant call に tsv 用の row 格納
-			row_a = []
-			for item in variant_call_sheet_header_a
-				row_a.push(vcf_variant_call_h[item] ? vcf_variant_call_h[item] : "")		
-			end
-
-			vcf_variant_call_h.store("row", row_a)
-		end
-
-		unless assay["Assay ID"].empty?
-			vcf_variant_call_h.store("Assay ID", assay["Assay ID"])
-		else
-			vcf_variant_call_h.store("Assay ID", "")
-		end
-
-		unless assay["Experiment ID"].empty?
-			vcf_variant_call_h.store("Experiment ID", assay["Experiment ID"])
-		else
-			vcf_variant_call_h.store("Experiment ID", "")
-		end
-
-		unless assay["SampleSet ID"].empty?
-			vcf_variant_call_h.store("SampleSet ID", assay["SampleSet ID"])
-		else
-			vcf_variant_call_h.store("SampleSet ID", "")
-		end
-
 		variant_call_from_vcf_a.push(vcf_variant_call_h)
 
 		# JV_VCF0042: Invalid sample reference in VCF
 		unless vcf_variant_call_h["FORMAT"].empty?
 			for ft_value_h in vcf_variant_call_h["FORMAT"]
-				if sample_name_per_sampleset_h[assay["SampleSet ID"]] && biosample_accession_per_sampleset_h[assay["SampleSet ID"]]
+				if sample_name_per_sampleset_h[vcf_variant_call_h["SampleSet ID"]] && biosample_accession_per_sampleset_h[vcf_variant_call_h["SampleSet ID"]]
 				
-					unless (ft_value_h.keys - sample_name_per_sampleset_h[assay["SampleSet ID"]]).empty? || (ft_value_h.keys - biosample_accession_per_sampleset_h[assay["SampleSet ID"]]).empty?
+					unless (ft_value_h.keys - sample_name_per_sampleset_h[vcf_variant_call_h["SampleSet ID"]]).empty? || (ft_value_h.keys - biosample_accession_per_sampleset_h[vcf_variant_call_h["SampleSet ID"]]).empty?
 						invalid_sample_ref_vcf_a.push(vcf_sv_f)
 					end
 
@@ -2064,13 +2068,13 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 					## placement check
 					## JV_SV0078: Missing start
-					if variant_call["Outer Start"].empty? && variant_call["Start"].empty? && variant_call["Inner Start"].empty?
+					if variant_call["Outer Start"].empty? && variant_call["Start"].empty? && variant_call["Inner Start"].empty? && variant_call_type !~ /translocation/ && variant_call_type != "novel sequence insertion"
 						missing_start_call_a.push(variant_call_id)
 						variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0078 Error: Missing start.")
 					end
 
 					## JV_SV0079: Missing stop
-					if variant_call["Outer Stop"].empty? && variant_call["Stop"].empty? && variant_call["Inner Stop"].empty?
+					if variant_call["Outer Stop"].empty? && variant_call["Stop"].empty? && variant_call["Inner Stop"].empty? && variant_call_type !~ /translocation/ && variant_call_type != "novel sequence insertion"
 						missing_stop_call_a.push(variant_call_id)
 						variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0079 Error: Missing stop.")
 					end
@@ -2119,14 +2123,18 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 					# JV_SV0087: Multiple starts
 					if !variant_call["Start"].empty? && (!variant_call["Inner Start"].empty? || !variant_call["Outer Start"].empty?) || (!variant_call["Inner Start"].empty? && !variant_call["Outer Start"].empty?) && !variant_call["Start"].empty?
-						multiple_starts_call_a.push(variant_call_id)
-						variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0087 Error: Multiple starts.")
+						if (!variant_call["Start"].empty? && !variant_call["Outer Start"].empty? && variant_call["Start"] != variant_call["Outer Start"]) && (!variant_call["Start"].empty? && !variant_call["Inner Start"].empty? && variant_call["Start"] != variant_call["Inner Start"])
+							multiple_starts_call_a.push(variant_call_id)
+							variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0087 Error: Multiple starts.")
+						end
 					end
 
 					# JV_SV0088: Multiple stops
 					if !variant_call["Stop"].empty? && (!variant_call["Inner Stop"].empty? || !variant_call["Outer Stop"].empty?) || (!variant_call["Inner Stop"].empty? && !variant_call["Outer Stop"].empty?) && !variant_call["Stop"].empty?
-						multiple_stops_call_a.push(variant_call_id)
-						variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0088 Error: Multiple stops.")
+						if (!variant_call["Stop"].empty? && !variant_call["Outer Stop"].empty? && variant_call["Stop"] != variant_call["Outer Stop"]) && (!variant_call["Stop"].empty? && !variant_call["Inner Stop"].empty? && variant_call["Stop"] != variant_call["Inner Stop"])
+							multiple_stops_call_a.push(variant_call_id)
+							variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0088 Error: Multiple stops.")
+						end
 					end
 
 					# JV_SV0089: Inconsistent sequence length and start/stop
@@ -2376,6 +2384,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 		variant_region_attr_h = {}
 
 		variant_region_id = ""
+		variant_region_type = ""
 		unless variant_region["Variant Region ID"].empty?
 			variant_region_id = variant_region["Variant Region ID"]
 			variant_region_attr_h.store("variant_region_id", variant_region_id)
@@ -2408,7 +2417,12 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 			end
 		}
 
-		variant_region_attr_h.store("variant_region_type", vtype_h["Variant Region Type"][variant_region["Variant Region Type"]]) unless variant_region["Variant Region Type"].empty? && vtype_h["Variant Region Type"][variant_region["Variant Region Type"]]
+
+		unless variant_region["Variant Region Type"].empty? && vtype_h["Variant Region Type"][variant_region["Variant Region Type"]]
+			variant_region_type = vtype_h["Variant Region Type"][variant_region["Variant Region Type"]]
+			variant_region_attr_h.store("variant_region_type", variant_region_type)
+		end
+
 		variant_region_attr_h.store("variant_region_type_SO_id", "")
 		# variant_region_attr_h.store("is_low_quality", "")
 		# variant_region_attr_h.store("repeat_motif", "")
@@ -2677,13 +2691,13 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 				## placement check
 				## JV_SV0078: Missing start
-				if variant_region["Outer Start"].empty? && variant_region["Start"].empty? && variant_region["Inner Start"].empty?
+				if variant_region["Outer Start"].empty? && variant_region["Start"].empty? && variant_region["Inner Start"].empty? && variant_region_type != "translocation" && variant_region_type != "novel sequence insertion"
 					missing_start_region_a.push(variant_region_id)
 					variant_region_tsv_log_a.push("#{variant_region["row"].join("\t")}\t# JV_SV0078 Error: Genomic placement must contain either a start, outer_start, or inner_start unless it is a novel sequence insertion or translocation.")
 				end
 
 				## JV_SV0079: Missing stop
-				if variant_region["Outer Stop"].empty? && variant_region["Stop"].empty? && variant_region["Inner Stop"].empty?
+				if variant_region["Outer Stop"].empty? && variant_region["Stop"].empty? && variant_region["Inner Stop"].empty? && variant_region_type != "translocation" && variant_region_type != "novel sequence insertion
 					missing_stop_region_a.push(variant_region_id)
 					variant_region_tsv_log_a.push("#{variant_region["row"].join("\t")}\t# JV_SV0079 Error: Genomic placement must contain either a stop, outer_stop, or inner_stop unless it is a novel sequence insertion or translocation.")
 				end
@@ -2732,14 +2746,18 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 				# JV_SV0087: Multiple starts
 				if !variant_region["Start"].empty? && (!variant_region["Inner Start"].empty? || !variant_region["Outer Start"].empty?) || (!variant_region["Inner Start"].empty? && !variant_region["Outer Start"].empty?) && !variant_region["Start"].empty?
-					multiple_starts_region_a.push(variant_region_id)
-					variant_region_tsv_log_a.push("#{variant_region["row"].join("\t")}\t# JV_SV0087 Error: Genomic placement with start must only contain start, or must also contain both outer_start and inner_start.")
+					if (!variant_region["Start"].empty? && !variant_region["Outer Start"].empty? && variant_region["Start"] != variant_region["Outer Start"]) && (!variant_region["Start"].empty? && !variant_region["Inner Start"].empty? && variant_region["Start"] != variant_region["Inner Start"])
+						multiple_starts_region_a.push(variant_region_id)
+						variant_region_tsv_log_a.push("#{variant_region["row"].join("\t")}\t# JV_SV0087 Error: Genomic placement with start must only contain start, or must also contain both outer_start and inner_start.")
+					end
 				end
 
 				# JV_SV0088: Multiple stops
 				if !variant_region["Stop"].empty? && (!variant_region["Inner Stop"].empty? || !variant_region["Outer Stop"].empty?) || (!variant_region["Inner Stop"].empty? && !variant_region["Outer Stop"].empty?) && !variant_region["Stop"].empty?
-					multiple_stops_region_a.push(variant_region_id)
-					variant_region_tsv_log_a.push("#{variant_region["row"].join("\t")}\t# JV_SV0088 Error: Genomic placement with stop must only contain stop, or must also contain both outer_stop and inner_stop.")
+					if (!variant_region["Stop"].empty? && !variant_region["Outer Stop"].empty? && variant_region["Stop"] != variant_region["Outer Stop"]) && (!variant_region["Stop"].empty? && !variant_region["Inner Stop"].empty? && variant_region["Stop"] != variant_region["Inner Stop"])
+						multiple_stops_region_a.push(variant_region_id)
+						variant_region_tsv_log_a.push("#{variant_region["row"].join("\t")}\t# JV_SV0088 Error: Genomic placement with stop must only contain stop, or must also contain both outer_stop and inner_stop.")
+					end
 				end
 
 				# JV_SV0089: Inconsistent sequence length and start/stop
