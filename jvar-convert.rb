@@ -1,4 +1,4 @@
-#! /usr/bin/ruby
+#! usr/bin/ruby
 # -*- coding: utf-8 -*-
 
 require 'rubygems'
@@ -1706,6 +1706,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 		variant_call_attr_h = {}
 
 		variant_call_id = ""
+		variant_call_type = ""
 		unless variant_call["Variant Call ID"].empty?
 
 			variant_call_id = variant_call["Variant Call ID"]
@@ -1720,13 +1721,10 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 			variant_call_id_a.push(variant_call_id)
 		end
 
-
-
 		variant_call_attr_h.store("variant_call_accession", "")
 
 		# CV
 		variant_call.each{|key, value|
-
 			if value && !value.empty? && cv_h[object] && cv_h[object][key] && !cv_h[object][key].include?(value)
 				## JV_C0057: Invalid value for controlled terms
 				invalid_value_for_cv_call_a.push("#{variant_call_id} #{key}:#{value}")
@@ -1736,6 +1734,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 		}
 
 		unless variant_call["Variant Call Type"].empty? && vtype_h["Variant Call Type"][variant_call["Variant Call Type"]]
+			variant_call_type = variant_call["Variant Call Type"]
 			variant_call_attr_h.store("variant_call_type", variant_call["Variant Call Type"])
 			variant_call_id_type_h.store(variant_call_id, variant_call["Variant Call Type"])
 		end
@@ -1749,7 +1748,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 		variant_call_attr_h.store("variant_call_type_SO_id", "")
 		variant_call_attr_h.store("clinical_source", "")
 		variant_call_attr_h.store("clinical_significance", "")
-		variant_call_attr_h.store("insertion_length", variant_call["Insertion Length"]) unless variant_call["Insertion Length"].empty?
+		variant_call_attr_h.store("insertion_length", variant_call["Insertion Length"]) unless !variant_call["Insertion Length"] && variant_call["Insertion Length"].empty?
 		variant_call_attr_h.store("zygosity", variant_call["Zygosity"]) unless variant_call["Zygosity"].empty?
 		variant_call_attr_h.store("origin", variant_call["Origin"]) unless variant_call["Origin"].empty?
 		variant_call_attr_h.store("copy_number", variant_call["Copy Number"]) unless variant_call["Copy Number"].empty?

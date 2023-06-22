@@ -36,11 +36,13 @@ $conf_path = "conf"
 
 submitter_handle = "JVAR"
 
+# Header
 $required_header_tag_a = [
 	"fileformat",
 	"reference"
 ]
 
+# Column
 $required_column_a = [
 	"CHROM",
 	"POS",
@@ -52,6 +54,9 @@ $required_column_a = [
 	"INFO"
 ]
 
+### for dbSNP VCF
+
+# SNP VCF VRT
 $snp_vrt_h = {
 	"1" => "SNV",
 	"2" => "DIV",
@@ -63,6 +68,31 @@ $snp_vrt_h = {
 	"8" => "MNV"
 }
 
+
+# Archive target SNP VCF INFO
+$target_info_tag_snp_h = {
+	"VRT" => "([1-8])",
+	"AN" => "([0-9.]+)",
+	"AC" => "([0-9.]+)",
+	"AF" => "([0-9.]*\.?[0-9]*)",
+	"DESC" => "([^;=]+)",
+	"LINKS" => "([A-Za-z]+:[-A-Za-z0-9]+)"
+}
+
+# Archive target SNP VCF FORMAT
+$target_format_tag_snp_h = {
+	"AN" => "([0-9.]+)",
+	"AC" => "([0-9.]+)",
+	"AF" => "([0-9]*\.?[0-9]*)",
+	"GT" => "([^;=]+)",
+	"GL" => "([^;=]+)",
+	"PL" => "([^;=]+)",
+	"GP" => "([^;=]+)",
+	"PP" => "([^;=]+)"
+}
+
+### For SV VCF parse
+# SV VCF ALT
 # より specific な type を下に配置すること
 $sv_type_alt_h = {
 	"DEL" => "deletion",
@@ -78,6 +108,7 @@ $sv_type_alt_h = {
 	"DEL:ME:ALU" => "Alu deletion"
 }
 
+# SV VCF INFO SVTYPE
 $sv_type_svtype_h = {
 	"DEL" => "deletion",
 	"INS" => "insertion",
@@ -86,7 +117,8 @@ $sv_type_svtype_h = {
 	"CNV" => "copy number variation"
 }
 
-$sv_type_eventype_h = {
+# SV VCF INFO EVENTYPE 
+$sv_type_event_type_h = {
 	"DEL" => "deletion",
 	"DEL:ME" => "mobile element deletion",
 	"INS" => "insertion",
@@ -97,8 +129,8 @@ $sv_type_eventype_h = {
 	"INV" => "inversion"
 }
 
+# Archive target SV VCF INFO
 $target_info_tag_sv_h = {
-	"VRT" => "([1-8])",
 	"SVTYPE" => "([A-Z]+)",
 	"POSrange" => "([0-9.]+),([0-9.]+)",
 	"ENDrange" => "([0-9.]+),([0-9.]+)",
@@ -119,31 +151,13 @@ $target_info_tag_sv_h = {
 	"EVENT" => "([^;=]+)"
 }
 
-$target_info_tag_snp_h = {
-	"VRT" => "([1-8])",
-	"AN" => "([0-9.]+)",
-	"AC" => "([0-9.]+)",
-	"AF" => "([0-9.]*\.?[0-9]*)",
-	"DESC" => "([^;=]+)",
-	"LINKS" => "([A-Za-z]+:[-A-Za-z0-9]+)"
-}
-
+# Archive target SV VCF FORMAT
 $target_format_tag_sv_h = {
 	"AN" => "([0-9.]+)",
 	"AC" => "([0-9.]+)",
 	"AF" => "([0-9]*\.?[0-9]*)",
 	"CN" => "([0-9.]+)",
-	"GT" => "([^;=]+)",
-	"GL" => "([^;=]+)",
-	"PL" => "([^;=]+)",
-	"GP" => "([^;=]+)",
-	"PP" => "([^;=]+)"
-}
-
-$target_format_tag_snp_h = {
-	"AN" => "([0-9.]+)",
-	"AC" => "([0-9.]+)",
-	"AF" => "([0-9]*\.?[0-9]*)",
+	"refCN" => "([0-9.]+)",
 	"GT" => "([^;=]+)",
 	"GL" => "([^;=]+)",
 	"PL" => "([^;=]+)",
@@ -204,6 +218,12 @@ def vcf_parser(vcf_file, vcf_type)
 
 	# empty line
 	empty_line_c = 0
+
+	# dbSNP VCF 
+	# keep: FILTER
+	# keep: pre-defined INFO & FORMAT tags
+	# keep: contig used
+	# drop: other header lines
 
 	vcf_f.each_line{|line|
 
@@ -937,117 +957,7 @@ def vcf_parser(vcf_file, vcf_type)
 			ciendleft = -1
 			ciendleft = -1
 
-			svlen = ""
-
-			# START/POS
-			start = pos
-			posrange_f = false
-			if info_h["POSrange"] && info_h["POSrange"].split(",")[0] && info_h["POSrange"].split(",")[1]
-				outer_start = info_h["POSrange"].split(",")[0].to_i unless info_h["POSrange"].split(",")[0] == "."
-				inner_start = info_h["POSrange"].split(",")[1].to_i unless info_h["POSrange"].split(",")[1] == "."
-				posrange_f = true
-			end
-
-			# END/STOP
-			if info_h["END"] && info_h["END"].to_i
-				stop = info_h["END"].to_i
-			end
-
-			endrange_f = false
-			if info_h["ENDrange"] && info_h["ENDrange"].split(",")[0] && info_h["ENDrange"].split(",")[1]
-				inner_stop = info_h["ENDrange"].split(",")[0].to_i unless info_h["ENDrange"].split(",")[0] == "."
-				outer_stop = info_h["ENDrange"].split(",")[1].to_i unless info_h["ENDrange"].split(",")[1] == "."
-				endrange_f = true
-			end
-
-			# JV_VCFS0005: Invalid POSrange
-			if posrange_f && pos != inner_start && pos != outer_start
-				vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_VCFS0005 Error: One POSrange value must be the same as the POS value.")
-				invalid_posrange_c += 1
-			end
-
-			# JV_VCFS0006: Invalid ENDrange
-			if endrange_f && stop != inner_stop && stop != outer_stop
-				vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_VCFS0006 Error: One ENDrange value must be the same as the END value.")
-				invalid_endrange_c += 1
-			end
-
-			if outer_start == -1
-				vcf_variant_call_h.store("Outer Start", "")
-			else
-				vcf_variant_call_h.store("Outer Start", outer_start.to_s)
-			end
-
-			if start == -1
-				vcf_variant_call_h.store("Start", "")
-			else
-				vcf_variant_call_h.store("Start", start.to_s)
-			end
-
-			if inner_start == -1
-				vcf_variant_call_h.store("Inner Start", "")
-			else
-				vcf_variant_call_h.store("Inner Start", inner_start.to_s)
-			end
-
-			if inner_stop == -1
-				vcf_variant_call_h.store("Inner Stop", "")
-			else
-				vcf_variant_call_h.store("Inner Stop", inner_stop.to_s)
-			end
-
-			if stop == -1
-				vcf_variant_call_h.store("Stop", "")
-			else
-				vcf_variant_call_h.store("Stop", stop.to_s)
-			end
-
-			if outer_stop == -1
-				vcf_variant_call_h.store("Outer Stop", "")
-			else
-				vcf_variant_call_h.store("Outer Stop", outer_stop.to_s)
-			end
-
-			## CIPOS CIEND
-			# Start CIPOS
-			cipos_f = false
-			if info_h["CIPOS"] && info_h["CIPOS"].split(",")[0] && info_h["CIPOS"].split(",")[1]
-				ciposleft = info_h["CIPOS"].split(",")[0] unless info_h["CIPOS"].split(",")[0] == "."
-				ciposright = info_h["CIPOS"].split(",")[1] unless info_h["CIPOS"].split(",")[1] == "."
-				posrange_f = true
-			end
-
-			# End CIEND
-			ciend_f = false
-			if info_h["CIEND"] && info_h["CIEND"].split(",")[0] && info_h["CIEND"].split(",")[1]
-				ciendleft = info_h["CIEND"].split(",")[0] unless info_h["CIEND"].split(",")[0] == "."
-				ciendright = info_h["CIEND"].split(",")[1] unless info_h["CIEND"].split(",")[1] == "."
-				ciend_f = true
-			end
-
-			if ciposleft == -1
-				vcf_variant_call_h.store("ciposleft", "")
-			else
-				vcf_variant_call_h.store("ciposleft", ciposleft)
-			end
-
-			if ciposright == -1
-				vcf_variant_call_h.store("ciposright", "")
-			else
-				vcf_variant_call_h.store("ciposright", ciposright)
-			end
-
-			if ciendleft == -1
-				vcf_variant_call_h.store("ciendleft", "")
-			else
-				vcf_variant_call_h.store("ciendleft", ciendleft)
-			end
-
-			if ciendright == -1
-				vcf_variant_call_h.store("ciendright", "")
-			else
-				vcf_variant_call_h.store("ciendright", ciendright)
-			end
+			svlen = 0
 
 			## Other INFO tags
 			if info_h["DESC"]
@@ -1082,15 +992,6 @@ def vcf_parser(vcf_file, vcf_type)
 			else
 				vcf_variant_call_h.store("External Links", "")
 			end
-
-			# SVLEN
-			if info_h["SVLEN"] && !info_h["SVLEN"].empty? && sv_type =~ /deletion|insertion/
-				svlen = info_h["SVLEN"]
-				vcf_variant_call_h.store("Insertion Length", svlen)
-			else
-				vcf_variant_call_h.store("Insertion Length", "")
-			end
-
 
 			## allele frequency
 			# INFO にある場合は VCF assay が参照している SampleSet 中の頻度
@@ -1323,6 +1224,140 @@ def vcf_parser(vcf_file, vcf_type)
 
 			# Variant Call Type
 			vcf_variant_call_h.store("Variant Call Type", sv_type)
+
+			# SVLEN
+			if info_h["SVLEN"] && !info_h["SVLEN"].empty?
+				svlen = info_h["SVLEN"].to_i if info_h["SVLEN"].to_i
+				if sv_type =~ /deletion|insertion/
+					vcf_variant_call_h.store("Insertion Length", info_h["SVLEN"])
+				else
+					vcf_variant_call_h.store("Insertion Length", "")
+				end
+			else
+				vcf_variant_call_h.store("Insertion Length", "")
+			end
+
+			# START/POS
+			start = pos
+			posrange_f = false
+			if info_h["POSrange"] && info_h["POSrange"].split(",")[0] && info_h["POSrange"].split(",")[1]
+				outer_start = info_h["POSrange"].split(",")[0].to_i unless info_h["POSrange"].split(",")[0] == "."
+				inner_start = info_h["POSrange"].split(",")[1].to_i unless info_h["POSrange"].split(",")[1] == "."
+				posrange_f = true
+			end
+
+			# END/STOP
+			if info_h["END"] && info_h["END"].to_i
+				stop = info_h["END"].to_i
+			end
+
+			endrange_f = false
+			if info_h["ENDrange"] && info_h["ENDrange"].split(",")[0] && info_h["ENDrange"].split(",")[1]
+				inner_stop = info_h["ENDrange"].split(",")[0].to_i unless info_h["ENDrange"].split(",")[0] == "."
+				outer_stop = info_h["ENDrange"].split(",")[1].to_i unless info_h["ENDrange"].split(",")[1] == "."
+				endrange_f = true
+			end
+
+			# VCF spec に従って END が無い場合を計算
+			# Non-symbolic alleles: POS + length of REF allele + 1
+			# <INS> symbolic structural variant alleles: POS + length of REF allele + 1
+			# <DEL>, <DUP>, <INV> and <CNV> symbolic structural variant alleles: POS + SVLEN
+			if stop == -1
+				if alt =~ /^[ATGC]+$/i || sv_type =~ /insertion/
+					stop = start + ref.size + 1
+				elsif sv_type =~ /deletion|duplication|inversion|copy number variation/
+					stop = start + svlen.to_i.abs
+				end
+			end
+	
+			# JV_VCFS0005: Invalid POSrange
+			if posrange_f && pos != inner_start && pos != outer_start
+				vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_VCFS0005 Error: One POSrange value must be the same as the POS value.")
+				invalid_posrange_c += 1
+			end
+
+			# JV_VCFS0006: Invalid ENDrange
+			if endrange_f && stop != inner_stop && stop != outer_stop
+				vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_VCFS0006 Error: One ENDrange value must be the same as the END value.")
+				invalid_endrange_c += 1
+			end
+
+			if outer_start == -1
+				vcf_variant_call_h.store("Outer Start", "")
+			else
+				vcf_variant_call_h.store("Outer Start", outer_start.to_s)
+			end
+
+			if start == -1
+				vcf_variant_call_h.store("Start", "")
+			else
+				vcf_variant_call_h.store("Start", start.to_s)
+			end
+
+			if inner_start == -1
+				vcf_variant_call_h.store("Inner Start", "")
+			else
+				vcf_variant_call_h.store("Inner Start", inner_start.to_s)
+			end
+
+			if inner_stop == -1
+				vcf_variant_call_h.store("Inner Stop", "")
+			else
+				vcf_variant_call_h.store("Inner Stop", inner_stop.to_s)
+			end
+
+			if stop == -1
+				vcf_variant_call_h.store("Stop", "")
+			else
+				vcf_variant_call_h.store("Stop", stop.to_s)
+			end
+
+			if outer_stop == -1
+				vcf_variant_call_h.store("Outer Stop", "")
+			else
+				vcf_variant_call_h.store("Outer Stop", outer_stop.to_s)
+			end
+
+			## CIPOS CIEND
+			# Start CIPOS
+			cipos_f = false
+			if info_h["CIPOS"] && info_h["CIPOS"].split(",")[0] && info_h["CIPOS"].split(",")[1]
+				ciposleft = info_h["CIPOS"].split(",")[0] unless info_h["CIPOS"].split(",")[0] == "."
+				ciposright = info_h["CIPOS"].split(",")[1] unless info_h["CIPOS"].split(",")[1] == "."
+				posrange_f = true
+			end
+
+			# End CIEND
+			ciend_f = false
+			if info_h["CIEND"] && info_h["CIEND"].split(",")[0] && info_h["CIEND"].split(",")[1]
+				ciendleft = info_h["CIEND"].split(",")[0] unless info_h["CIEND"].split(",")[0] == "."
+				ciendright = info_h["CIEND"].split(",")[1] unless info_h["CIEND"].split(",")[1] == "."
+				ciend_f = true
+			end
+
+			if ciposleft == -1
+				vcf_variant_call_h.store("ciposleft", "")
+			else
+				vcf_variant_call_h.store("ciposleft", ciposleft)
+			end
+
+			if ciposright == -1
+				vcf_variant_call_h.store("ciposright", "")
+			else
+				vcf_variant_call_h.store("ciposright", ciposright)
+			end
+
+			if ciendleft == -1
+				vcf_variant_call_h.store("ciendleft", "")
+			else
+				vcf_variant_call_h.store("ciendleft", ciendleft)
+			end
+
+			if ciendright == -1
+				vcf_variant_call_h.store("ciendright", "")
+			else
+				vcf_variant_call_h.store("ciendright", ciendright)
+			end
 
 			# Null に対する操作エラーを回避するため VCF にない項目を格納
 			vcf_variant_call_h.store("Contig", "")
