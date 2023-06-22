@@ -1,0 +1,73 @@
+Introduction:
+This is a customized script to validate vcf files prepared for dbSNP submission.
+The code base is almost identical to dbSNP online vcf submission validator
+(https://www.ncbi.nlm.nih.gov/projects/SNP/snp_vcf_submission_validator.cgi).
+The purpose is to:
+1. Improve data submission quality to dbSNP.
+2. The submitter can fix the error locally reduced time and interaction with dbSNP staff.
+3. The submitter can integrate into their high volume workflow instead of uploading to the
+   online validator manually.
+4. Reduce burden on NCBI web resources.
+5. Provide transparency and make codes open source.
+
+The script was developed on a Linux platform, and it was not planned to run on a non-Linux platform.
+Thus please run it on a Linux environment.
+
+
+To use the script, user need to:
+1. Extract files (in a Linux shell): tar -xvf offline_vcf_validator.tar
+2. Install required Perl modules (LWP::Simple, XML::XPath, XML::XPath::XMLParser, File::Basename Data::Dumper),
+   make sure the installed Perl modules is under Perl's module search path (PERL5LIB).  Also make sure the
+   script directory (offline_vcf_validator) is also in PERL5LIB.
+3. Provide the reference genome file in fasta format (uncompressed or gzip compressed).  For details,
+   refer to 'Customized genome fasta' section at https://www.ncbi.nlm.nih.gov/snp/docs/submission/vcf_online_validator/.
+4. Provide a chromosome identifier mapping file.  The chromosome identifier mapping file is a two-column,
+   tab-delimited file to provide the association between molecules in the customized assembly and the
+   identifiers in the VCF file: the first column contains the VCF identifiers under the '#CHROM' column,
+   and the second column will contain the corresponding identifiers from the definition line(s) of
+   the reference genome fasta file.  For details, refer to 'Chromosome identifier mapping file' section
+   at https://www.ncbi.nlm.nih.gov/snp/docs/submission/vcf_online_validator/.
+
+
+File list:
+README - this file
+dbsnp_vcf_sub_validator.pl - offline dbSNP vcf submission validator.
+GetSeqFromFasta.pl - script to retrieve sequence from fasta reference file.
+SNPVCFSubmissionValidator.pm - Perl module to validate dbSNP vcf submission file.
+ValidateVCFRefAllele.pm - Perl module to validate the reference allele.
+Util.pm - Perl utility module.
+GetAssGiFromGencoll.pm - NCBI internal use.
+example_data_from_custom_genome.vcf.gz - example vcf file to be submitted to dbSNP.
+example_custom_genome.fa.gz - example reference genome fasta file.
+example_custom_genome.chr.mapping - example chromosome identifier mapping file.
+example_data_from_custom_genome.vcf.gz.error.gz - expected error file after running the validator.
+
+Running the validator:
+./dbsnp_vcf_sub_validator.pl -file example_data_from_custom_genome.vcf.gz -gi_list example_custom_genome.chr.mapping -skip_dense 0 -getseq_path GetSeqFromFasta.pl -genome_fasta example_custom_genome.fa.gz
+
+
+Result:
+After script completes, the following output is expected:
+
+dbSNP vcf submission file validation result
+
+VCF Submisison file: example_data_from_custom_genome.vcf.gz
+Reference genome: custome_genome.
+Submission type: Variation and Genotype/Frequency
+Number of variation types:
+        DIV: 79
+        SNV: 902
+
+Filter summary:
+        .: 981
+
+Validation status: ERROR
+
+Problem in the content:
+        Ref allele mismatch: 1
+
+The issue lines are in file "example_data_from_custom_genome.vcf.gz.error.gz"
+
+
+Understand the output and the error file (if any):
+Refer to 'How to Read your Validation Report' section from https://www.ncbi.nlm.nih.gov/snp/docs/submission/vcf_online_validator/.
