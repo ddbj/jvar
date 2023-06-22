@@ -54,6 +54,7 @@ vcf_sv_f = ""
 submission_type = ""
 bioproject_accession = ""
 biosample_accession_a = []
+sample_name_a = []
 
 ## error, error_ignore, warning,
 warning_snp_a = []
@@ -1212,6 +1213,10 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 		sample_attr_h.store("sample_attribute", sample["Sample Attribute"]) unless sample["Sample Attribute"].empty?
 		sample_attr_h.store("sample_karyotype", sample["Sample Karyotype"]) unless sample["Sample Karyotype"].empty?
 
+		unless sample["Sample Name"].empty?
+			sample_name_a.push(sample["Sample Name"])
+		end
+
 		unless sample["BioSample Accession"].empty?
 
 			unless sample["BioSample Accession"] =~ /^SAMD\d{8}$/
@@ -1266,6 +1271,18 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 			non_merging_experiment_id_a.push(experiment["Experiment ID"])
 		end
 	}
+
+	## JV_C0059: Duplicated Sample Name
+	unless sample_name_a.select{|e| sample_name_a.count(e) > 1}.empty?
+		## JV_C0059: Duplicated Sample Name
+		error_common_a.push(["JV_C0059", "Sample Name must be unique within the study. Duplicated Sample Name: #{sample_name_a.select{|e| sample_name_a.count(e) > 1}.sort.uniq.join(",")}"])
+	end
+
+	## JV_C0060: Duplicated BioSample accession
+	unless biosample_accession_a.select{|e| biosample_accession_a.count(e) > 1}.empty?
+		## JV_C0060: Duplicated BioSample accession
+		error_common_a.push(["JV_C0060", "BioSample accession must be unique within the study. Duplicated BioSample accession: #{biosample_accession_a.select{|e| biosample_accession_a.count(e) > 1}.sort.uniq.join(",")}"])
+	end
 
 	## JV_C0037: Different SampleSet Size
 	for sampleset_id, sampleset_size in sampleset_id_size_h
@@ -3269,6 +3286,10 @@ if !vcf_snp_a.empty? || !vcf_sv_f.empty?
 	validation_result_f.puts vcf_validation_result_s
 	puts vcf_validation_result_s
 end
+
+## Common
+validation_result_f.puts validation_result_s
+puts validation_result_s
 
 if submission_type == "SNP"
 	validation_result_f.puts snp_validation_result_s
