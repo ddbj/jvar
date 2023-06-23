@@ -298,8 +298,33 @@ unless variant_region_table_parse_error_a.empty?
 end
 
 ##
-## Initial checks
+## Common checks
 ##
+
+# JV_C0008: Missing Assay
+if assay_a.empty?
+	error_common_a.unshift(["JV_C0008", "Assay is missing."])
+end
+
+# JV_C0007: Missing Experiment
+if experiment_pre_a.empty?
+	error_common_a.unshift(["JV_C0007", "Experiment is missing."])
+end
+
+# JV_C0005: Missing SampleSet
+if sampleset_a.empty?
+	error_common_a.unshift(["JV_C0005", "SampleSet is missing."])
+end
+
+# JV_C0002: Missing Study
+if study_h.empty?
+	error_common_a.unshift(["JV_C0002", "Study is missing."])
+end
+
+# JV_C0001: Missing Submission
+if submission_h.empty?
+	error_common_a.unshift(["JV_C0001", "Submission is missing."])
+end
 
 ## Experiment initial checks
 
@@ -383,10 +408,6 @@ for experiment_pre in experiment_pre_a
 	end
 
 end
-
-##
-## Common validation checks
-##
 
 ## JV_C0004: Invalid Submission Type
 submission_type_a = []
@@ -663,7 +684,7 @@ for object in required_fields_error_ignore_h.keys
 end
 
 ## JV_C0011: Invalid Study ID format
-if !study_h["Study ID"].empty? && study_h["Study ID"] !~ /^[A-Za-z]+2\d{3}$/
+if !study_h["Study ID"].empty? && study_h["Study ID"] !~ /^[A-Za-z]+2\d{3}[a-z]?$/
 	warning_common_a.push(["JV_C0011", "Study ID is not formatted as AuthorYear"])
 end
 
@@ -693,43 +714,76 @@ unless subject_id_a.select{|e| subject_id_a.count(e) > 1 }.empty?
 end
 
 ##
+## SampleSet common check
+## 
+sampleset_id_a = []
+sampleset_name_a = []
+sampleset_id_size_h = {}
+sampleset_id_sex_h = {}
+sampleset_name_per_sampleset_h = {}
+for sampleset in sampleset_a
+
+	sampleset_id = sampleset["SampleSet ID"]
+	unless sampleset["SampleSet ID"].empty?
+		sampleset_id_a.push(sampleset["SampleSet ID"])
+	end
+
+	unless sampleset["SampleSet Name"].empty?
+		sampleset_name_a.push(sampleset["SampleSet Name"])
+		sampleset_name_per_sampleset_h.store(sampleset_id, [sampleset["SampleSet Name"]])
+	end
+
+	unless sampleset["SampleSet Size"].empty?
+		sampleset_id_size_h.store(sampleset_id, sampleset["SampleSet Size"])
+	end
+
+	unless sampleset["SampleSet Sex"].empty?
+		sampleset_id_sex_h.store(sampleset["SampleSet ID"], sampleset["SampleSet Sex"])
+	end
+
+end
+
+##
 ## Subject check
 ##
-## JV_C0020 Invalid Maternal ID
-## JV_C0021 Non-female Maternal ID
-## JV_C0024 Invalid Paternal ID
-## JV_C0025 Non-male Paternal ID
-## JV_C0026 Subject is its own father
-## JV_C0027 Subject is its own mother
-## JV_C0040 Subject Sex (Male, Unknown) in SampleSet Sex (Female)
-## JV_C0041 Subject Sex (Female, Unknown) in SampleSet Sex (Male)
-
+sample_sampleset_id_a = []
 sample_name_accession_h = {}
 sampleset_biosample_acc_h = {}
 biosample_accession_per_sampleset_h = {}
 sample_name_per_sampleset_h = {}
+sample_sampleset_id_a = []
 for sample in sample_a
+
+	unless sample["Sample Name"].empty?
+		sample_name_a.push(sample["Sample Name"])
+	end
 
 	# sample name to biosample accession
 	if !sample["Sample Name"].empty? && !sample["BioSample Accession"].empty?
+		
 		sample_name_accession_h.store(sample["Sample Name"], sample["BioSample Accession"])
+		biosample_accession_a.push(sample["BioSample Accession"])
+		sample_sampleset_id_a.push(sample["SampleSet ID"])
 
 		# SampleSet ID and BioSample accession
 		unless sampleset_biosample_acc_h[sample["SampleSet ID"]]
 			sampleset_biosample_acc_h[sample["SampleSet ID"]] = [sample["BioSample Accession"]]
 		else
-			sampleset_biosample_acc_h[sample["SampleSet ID"]].push(sample["BioSample Accession"])
+			sampleset_biosample_acc_h[sample["SampleSet ID"]].push(sample["BioSample Accession"])			
 		end
 	end
 
 	## Maternal ID
 	if !sample["Subject Maternal ID"].empty?
 		unless subject_id_a.include?(sample["Subject Maternal ID"])
+			## JV_C0020 Invalid Maternal ID
 			error_ignore_common_a.push(["JV_C0020", "Subject Maternal ID must reference a subject in the same study #{sample["Subject Maternal ID"]}"])
 		else
 			sample_a.each{|sample_2|
+				## JV_C0021 Non-female Maternal ID
 				error_ignore_common_a.push(["JV_C0021", "Subject Maternal ID must reference a subject which is Female #{sample["Subject Maternal ID"]}"]) if sample_2["Subject ID"] == sample["Subject Maternal ID"] && sample_2["Subject Sex"] != "Female"
 			}
+			## JV_C0027 Subject is its own mother
 			error_ignore_common_a.push(["JV_C0027", "Subject is its own mother #{sample["Subject Maternal ID"]}"]) if sample["Subject ID"] == sample["Subject Maternal ID"]
 		end
 	end
@@ -737,11 +791,14 @@ for sample in sample_a
 	## Paternal ID
 	if !sample["Subject Paternal ID"].empty?
 		unless subject_id_a.include?(sample["Subject Paternal ID"])
+			## JV_C0024 Invalid Paternal ID
 			error_ignore_common_a.push(["JV_C0024", "Subject Paternal ID must reference a subject in the same study #{sample["Subject Paternal ID"]}"])
 		else
 			sample_a.each{|sample_2|
-				error_ignore_common_a.push(["JV_C0022", "Subject Paternal ID must reference a subject which is Male #{sample["Subject Paternal ID"]}"]) if sample_2["Subject ID"] == sample["Subject Paternal ID"] && sample_2["Subject Sex"] != "Male"
+				## JV_C0025 Non-male Paternal ID
+				error_ignore_common_a.push(["JV_C0025", "Subject Paternal ID must reference a subject which is Male #{sample["Subject Paternal ID"]}"]) if sample_2["Subject ID"] == sample["Subject Paternal ID"] && sample_2["Subject Sex"] != "Male"
 			}
+			## JV_C0026 Subject is its own father
 			error_ignore_common_a.push(["JV_C0026", "Subject cannot be its own father #{sample["Subject Paternal ID"]}"]) if sample["Subject ID"] == sample["Subject Paternal ID"]
 		end
 	end
@@ -749,12 +806,14 @@ for sample in sample_a
 	## Sex consistency check
 	if ["Male", "Unknown"].include?(sample["Subject Sex"])
 		for sampleset in sampleset_a
+			## JV_C0040 Subject Sex (Male, Unknown) in SampleSet Sex (Female)
 			error_ignore_common_a.push(["JV_C0040", "Subject Sex (Male, Unknown) in SampleSet Sex (Female) #{sample["Subject ID"]}"]) if sample["SampleSet ID"] == sampleset["SampleSet ID"] && sampleset["SampleSet Sex"] == "Female"
 		end
 	end
 
 	if ["Female", "Unknown"].include?(sample["Subject Sex"])
 		for sampleset in sampleset_a
+			## JV_C0041 Subject Sex (Female, Unknown) in SampleSet Sex (Male)
 			error_ignore_common_a.push(["JV_C0041", "If sample has subject with Subject Sex=Female or Unknown, it must not belong to a SampleSet with SampleSet Sex=Male #{sample["Subject ID"]}"]) if sample["SampleSet ID"] == sampleset["SampleSet ID"] && sampleset["SampleSet Sex"] == "Male"
 		end
 	end
@@ -773,6 +832,47 @@ for sample in sample_a
 	end
 
 end
+
+## JV_C0036: Duplicated SampleSet Name
+unless sampleset_name_a.select{|e| sampleset_name_a.count(e) > 1}.empty?
+	## JV_C0036: Duplicated SampleSet Name
+	error_ignore_common_a.push(["JV_C0036", "SampleSet Name must be unique within the study. Duplicated SampleSet Name: #{sampleset_name_a.select{|e| sampleset_name_a.count(e) > 1}.sort.uniq.join(",")}"])
+end
+
+## JV_C0035: Invalid SampleSet ID
+if [*1..sampleset_id_a.size] != sampleset_id_a.map{|e| e.to_i}
+	## JV_C0035: Invalid SampleSet ID
+	error_common_a.push(["JV_C0035", "SampleSet ID must be unique serial numbers within the study"])
+end
+
+## JV_C0059: Duplicated Sample Name
+unless sample_name_a.select{|e| sample_name_a.count(e) > 1}.empty?
+	## JV_C0059: Duplicated Sample Name
+	error_common_a.push(["JV_C0059", "Sample Name must be unique within the study. Duplicated Sample Name: #{sample_name_a.select{|e| sample_name_a.count(e) > 1}.sort.uniq.join(",")}"])
+end
+
+## JV_C0060: Duplicated BioSample accession
+unless biosample_accession_a.select{|e| biosample_accession_a.count(e) > 1}.empty?
+	## JV_C0060: Duplicated BioSample accession
+	error_common_a.push(["JV_C0060", "BioSample accession must be unique within the study. Duplicated BioSample accession: #{biosample_accession_a.select{|e| biosample_accession_a.count(e) > 1}.sort.uniq.join(",")}"])
+end
+
+## JV_C0037: Different SampleSet Size
+for sampleset_id, sampleset_size in sampleset_id_size_h
+	## JV_C0037: Different SampleSet Size
+	warning_common_a.push(["JV_C0037", "SampleSet Size differs from number of samples in the SampleSet. SampleSet ID: #{sampleset_id}"]) if sampleset_size.to_i != sample_sampleset_id_a.tally[sampleset_id]
+end
+
+# JV_C0006: Missing BioSample
+if biosample_accession_a.empty?
+	error_common_a.unshift(["JV_C0006", "BioSample is missing."])
+end
+
+# JV_C0003: Missing BioProject
+if bioproject_accession.empty?
+	error_common_a.unshift(["JV_C0003", "BioProject is missing."])
+end
+
 
 ###
 ### Short genetic variations (SNP) metadata generation
@@ -866,7 +966,7 @@ EOS
 population_s += <<EOS
 TYPE:\tPOPULATION
 HANDLE:\t#{submitter_handle}
-ID:\t#{submission_id}_ss#{sampleset["SampleSet ID"]}
+ID:\t#{sampleset["SampleSet Name"]}
 EOS
 
 		population_s += sampleset["SampleSet Population"].empty? ? "POPULATION:\t\n" : "POPULATION:\t#{sampleset["SampleSet Population"]}\n"
@@ -950,8 +1050,8 @@ EOS
 			vcf_variant_a.push(tmp_vcf_variant_a)
 
 			# JV_VCF0042: Invalid sample reference in VCF
-			if sample_name_per_sampleset_h[assay["SampleSet ID"]] && biosample_accession_per_sampleset_h[assay["SampleSet ID"]]
-				unless (tmp_vcf_sample_a - sample_name_per_sampleset_h[assay["SampleSet ID"]]).empty? || (tmp_vcf_sample_a - biosample_accession_per_sampleset_h[assay["SampleSet ID"]]).empty?
+			if sample_name_per_sampleset_h[assay["SampleSet ID"]] && biosample_accession_per_sampleset_h[assay["SampleSet ID"]] && sampleset_name_per_sampleset_h[assay["SampleSet ID"]]
+				unless (tmp_vcf_sample_a - sample_name_per_sampleset_h[assay["SampleSet ID"]]).empty? || (tmp_vcf_sample_a - biosample_accession_per_sampleset_h[assay["SampleSet ID"]]).empty? || (tmp_vcf_sample_a - sampleset_name_per_sampleset_h[assay["SampleSet ID"]]).empty?
 					invalid_sample_ref_vcf_a.push(assay["VCF Filename"])
 				end
 			end
@@ -960,10 +1060,11 @@ EOS
 			dbsnp_vcf_f = open("#{submission_id}_a#{assay["Assay ID"]}.vcf", "w")
 
 			first_info_f = true
+			format_f = false
 			tmp_vcf_variant_a.each{|line_a|
 
 				# submitter handle etc を挿入
-				if line_a =~ /##reference=/
+				if line_a =~ /^##reference=/
 					dbsnp_vcf_f.puts "##handle=#{submitter_handle}"
 					dbsnp_vcf_f.puts "##batch_id=#{vcf_header_assay_h[assay["Assay ID"]]["batch_id"]}" if vcf_header_assay_h[assay["Assay ID"]] && vcf_header_assay_h[assay["Assay ID"]]["batch_id"]
 					dbsnp_vcf_f.puts "##bioproject_id=#{bioproject_accession}" unless bioproject_accession.empty?
@@ -971,12 +1072,19 @@ EOS
 				end
 
 				# INFO 先頭に VRT 挿入、既存はスキップ
-				if line_a =~ /##INFO=/ && first_info_f
+				if line_a =~ /^##INFO=/ && first_info_f
 					dbsnp_vcf_f.puts '##INFO=<ID=VRT,Number=1,Type=Integer,Description="Variation type,1 - SNV: single nucleotide variation,2 - DIV: deletion/insertion variation,3 - HETEROZYGOUS: variable, but undefined at nucleotide level,4 - STR: short tandem repeat (microsatellite) variation, 5 - NAMED: insertion/deletion variation of named repetitive element,6 - NO VARIATION: sequence scanned for variation, but none observed,7 - MIXED: cluster contains submissions from 2 or more allelic classes (not used),8 - MNV: multiple nucleotide variation with alleles of common length greater than 1,9 - Exception">'
 					first_info_f = false
 				end
 
-				next if line_a =~ /##INFO=\<ID=VRT,/
+				next if line_a =~ /^##INFO=\<ID=VRT,/
+
+				# CHROM の前に挿入
+				if line_a =~ /^#CHROM/ && sampleset_name_per_sampleset_h[assay["SampleSet ID"]] && sampleset_name_per_sampleset_h[assay["SampleSet ID"]].size > 0
+					sampleset_name_per_sampleset_h[assay["SampleSet ID"]].each{|population_id|
+						dbsnp_vcf_f.puts "##population_id=#{population_id}"
+					}
+				end
 
 				dbsnp_vcf_f.puts line_a
 			}
@@ -989,7 +1097,8 @@ EOS
 
 	# JV_VCF0042: Invalid sample reference in VCF
 	unless invalid_sample_ref_vcf_a.sort.uniq.empty?
-		error_vcf_header_a.push(["JV_VCF0042", "Reference a Sample Name/BioSample Accession of a Sample in the SampleSet in the VCF sample column. #{invalid_sample_ref_vcf_a.sort.uniq.join(",")}"])
+		#error_vcf_header_a.push(["JV_VCF0042", "Reference a Sample Name/BioSample Accession of a Sample in the SampleSet in the VCF sample column. #{invalid_sample_ref_vcf_a.sort.uniq.join(",")}"])
+		error_vcf_header_a.push(["JV_VCF0042", "Reference a Sample Name/BioSample Accession of a Sample in the SampleSet or a SampleSet Name in the VCF sample column. #{invalid_sample_ref_vcf_a.sort.uniq.join(",")}"])
 	end
 
 end # if submission_h["Submission Type"] == "Short genetic variations"
@@ -1124,9 +1233,8 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 	## SAMPLESET
 	sampleset_id_a = []
-	sampleset_name_a = []
 	sampleset_id_size_h = {}
-	sampleset_id_sex_h = {}
+	sampleset_id_sex_h = {}	
 	for sampleset in sampleset_a
 
 		# SAMPLESET attributes
@@ -1189,20 +1297,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 	end	# for sampleset in sampleset_a
 
-	## JV_C0036: Duplicated SampleSet Name
-	unless sampleset_name_a.select{|e| sampleset_name_a.count(e) > 1}.empty?
-		## JV_C0036: Duplicated SampleSet Name
-		error_ignore_common_a.push(["JV_C0036", "SampleSet Name must be unique within the study. Duplicated SampleSet Name: #{sampleset_name_a.select{|e| sampleset_name_a.count(e) > 1}.sort.uniq.join(",")}"])
-	end
-
-	## JV_C0035: Invalid SampleSet ID
-	if [*1..sampleset_id_a.size] != sampleset_id_a.map{|e| e.to_i}
-		## JV_C0035: Invalid SampleSet ID
-		error_common_a.push(["JV_C0035", "SampleSet ID must be unique serial numbers within the study"])
-	end
-
 	## SAMPLE
-	sample_sampleset_id_a = []
 	for sample in sample_a
 
 		# SAMPLE attributes
@@ -1231,8 +1326,8 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 		submission.SAMPLE(sample_attr_h){|sample_e|
 			unless sample["SampleSet ID"].empty?
+
 				sample_e.SAMPLESET("sampleset_id" => sample["SampleSet ID"])
-				sample_sampleset_id_a.push(sample["SampleSet ID"])
 
 				unless sampleset_id_a.include?(sample["SampleSet ID"])
 					## JV_C0039: Invalid SampleSet ID
@@ -1272,23 +1367,6 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 		end
 	}
 
-	## JV_C0059: Duplicated Sample Name
-	unless sample_name_a.select{|e| sample_name_a.count(e) > 1}.empty?
-		## JV_C0059: Duplicated Sample Name
-		error_common_a.push(["JV_C0059", "Sample Name must be unique within the study. Duplicated Sample Name: #{sample_name_a.select{|e| sample_name_a.count(e) > 1}.sort.uniq.join(",")}"])
-	end
-
-	## JV_C0060: Duplicated BioSample accession
-	unless biosample_accession_a.select{|e| biosample_accession_a.count(e) > 1}.empty?
-		## JV_C0060: Duplicated BioSample accession
-		error_common_a.push(["JV_C0060", "BioSample accession must be unique within the study. Duplicated BioSample accession: #{biosample_accession_a.select{|e| biosample_accession_a.count(e) > 1}.sort.uniq.join(",")}"])
-	end
-
-	## JV_C0037: Different SampleSet Size
-	for sampleset_id, sampleset_size in sampleset_id_size_h
-		## JV_C0037: Different SampleSet Size
-		warning_common_a.push(["JV_C0037", "SampleSet Size differs from number of samples in the SampleSet. SampleSet ID: #{sampleset_id}"]) if sampleset_size.to_i != sample_sampleset_id_a.tally[sampleset_id]
-	end
 
 	## EXPERIMENT
 	experiment_type_h = {}
@@ -1380,12 +1458,6 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 		experiment_attr_h.store("experiment_type", experiment["Experiment Type"]) unless experiment["Experiment Type"].empty?
 
-		## JV_C0044: Invalid Reference SampleSet
-		error_common_a.push(["JV_C0044", "Reference Value must refer to a valid SampleSet if Reference Type=\"SampleSet\". Invalid SampleSet ID reference: #{experiment["Reference Value"]}"]) if experiment["Reference Type"] == "Sampleset" && !sampleset_id_a.include?(experiment["Reference Value"])
-
-		## JV_C0045: Invalid Reference Sample
-		error_common_a.push(["JV_C0045", "Reference Value must refer to a valid BioSample accession if Reference Type=\"Sample\". Invalid BioSample reference: #{experiment["Reference Value"]}"]) if experiment["Reference Type"] == "Sample" && !biosample_accession_a.include?(experiment["Reference Value"])
-
 		submission.EXPERIMENT(experiment_attr_h){|experiment_e|
 			if !experiment["Method Type"].empty?
 				experiment_e.METHOD("method_type" => experiment["Method Type"]){|method_e|
@@ -1448,6 +1520,12 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 				error_common_a.push(["JV_C0043", "Reference Value must refer to a valid Assembly if Reference Type=\"Assembly\". Experiment ID: #{experiment["Experiment ID"]}, #{experiment["Reference Value"]}"])
 			end
 		end
+
+		## JV_C0044: Invalid Reference SampleSet
+		error_common_a.push(["JV_C0044", "Reference Value must refer to a valid SampleSet if Reference Type=\"SampleSet\". Invalid SampleSet ID reference: #{experiment["Reference Value"]}"]) if experiment["Reference Type"] == "Sampleset" && !sampleset_id_a.include?(experiment["Reference Value"])
+
+		## JV_C0045: Invalid Reference Sample
+		error_common_a.push(["JV_C0045", "Reference Value must refer to a valid BioSample accession if Reference Type=\"Sample\". Invalid BioSample reference: #{experiment["Reference Value"]}"]) if experiment["Reference Type"] == "Sample" && !biosample_accession_a.include?(experiment["Reference Value"])
 
 		# Detection
 
@@ -1682,9 +1760,8 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 		# JV_VCF0042: Invalid sample reference in VCF
 		unless vcf_variant_call_h["FORMAT"].empty?
 			for ft_value_h in vcf_variant_call_h["FORMAT"]
-				if sample_name_per_sampleset_h[vcf_variant_call_h["SampleSet ID"]] && biosample_accession_per_sampleset_h[vcf_variant_call_h["SampleSet ID"]]
-				
-					unless (ft_value_h.keys - sample_name_per_sampleset_h[vcf_variant_call_h["SampleSet ID"]]).empty? || (ft_value_h.keys - biosample_accession_per_sampleset_h[vcf_variant_call_h["SampleSet ID"]]).empty?
+				if sample_name_per_sampleset_h[vcf_variant_call_h["SampleSet ID"]] && biosample_accession_per_sampleset_h[vcf_variant_call_h["SampleSet ID"]] && sampleset_name_per_sampleset_h[vcf_variant_call_h["SampleSet ID"]]
+					unless (ft_value_h.keys - sample_name_per_sampleset_h[vcf_variant_call_h["SampleSet ID"]]).empty? || (ft_value_h.keys - biosample_accession_per_sampleset_h[vcf_variant_call_h["SampleSet ID"]]).empty? || (ft_value_h.keys - sampleset_name_per_sampleset_h[vcf_variant_call_h["SampleSet ID"]]).empty?
 						invalid_sample_ref_vcf_a.push(vcf_sv_f)
 					end
 
@@ -1703,7 +1780,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 	# JV_VCF0042: Invalid sample reference in VCF
 	unless invalid_sample_ref_vcf_a.sort.uniq.empty?
-		error_vcf_header_a.push(["JV_VCF0042", "Reference a Sample Name/BioSample Accession of a Sample in the SampleSet in the VCF sample column. #{invalid_sample_ref_vcf_a.sort.uniq.join(",")}"])
+		error_vcf_header_a.push(["JV_VCF0042", "Reference a Sample Name/BioSample Accession of a Sample in the SampleSet or a SampleSet Name in the VCF sample column. #{invalid_sample_ref_vcf_a.sort.uniq.join(",")}"])
 	end
 
 	# variant call は sheet ではなく VCF を使用
@@ -3020,6 +3097,9 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 							ref_biosample_acc = sample_key
 						elsif sample_name_accession_h[sample_key]
 							ref_biosample_acc = sample_name_accession_h[sample_key]
+						# sampleset name であれば OK
+						elsif sampleset_name_per_sampleset_h[variant_call["SampleSet ID"]] && sampleset_name_per_sampleset_h[variant_call["SampleSet ID"]] == [sample_key]
+							ref_biosample_acc = sampleset_name_per_sampleset_h[variant_call["SampleSet ID"]]
 						end
 
 						missing_ref_biosample_acc_a.push(sample_key) if ref_biosample_acc.empty?
@@ -3055,49 +3135,14 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 		unless missing_ref_biosample_acc_a.empty?
 			# JV_VCF0042: Invalid sample reference in VCF
-			error_vcf_content_a.push(["JV_VCF0042", "Reference a Sample Name/BioSample Accession of a Sample in the SampleSet in the VCF sample column. #{missing_ref_biosample_acc_a.sort.uniq.join(",")}"])
+			error_vcf_content_a.push(["JV_VCF0042", "Reference a Sample Name/BioSample Accession of a Sample in the SampleSet or a SampleSet Name in the VCF sample column. #{missing_ref_biosample_acc_a.sort.uniq.join(",")}"])
 		end
 
 	end # if genotype_f
 
 } # SUBMISSION
 
-	# JV_C0008: Missing Assay
-	if assay_a.empty?
-		error_common_a.unshift(["JV_C0008", "Assay is missing."])
-	end
-
-	# JV_C0007: Missing Experiment
-	if experiment_pre_a.empty?
-		error_common_a.unshift(["JV_C0007", "Experiment is missing."])
-	end
-
-	# JV_C0006: Missing BioSample
-	if biosample_accession_a.empty?
-		error_common_a.unshift(["JV_C0006", "BioSample is missing."])
-	end
-
-	# JV_C0005: Missing SampleSet
-	if sampleset_a.empty?
-		error_common_a.unshift(["JV_C0005", "SampleSet is missing."])
-	end
-
-	# JV_C0003: Missing BioProject
-	if bioproject_accession.empty?
-		error_common_a.unshift(["JV_C0003", "BioProject is missing."])
-	end
-
-	# JV_C0002: Missing Study
-	if study_h.empty?
-		error_common_a.unshift(["JV_C0002", "Study is missing."])
-	end
-
-	# JV_C0001: Missing Submission
-	if submission_h.empty?
-		error_common_a.unshift(["JV_C0001", "Submission is missing."])
-	end
-
-end
+end # if submission_h["Submission Type"] == "Structural variations"
 
 # Variant Call TSV log
 # Excel sheet tsv log
@@ -3140,60 +3185,6 @@ vcf_validation_result_s = ""
 validation_result_s = ""
 snp_validation_result_s = ""
 sv_validation_result_s = ""
-if !vcf_snp_a.empty? || !vcf_sv_f.empty?
-
-vcf_validation_result_s = <<EOS
-JVar-#{submission_type == "SNP" ? "SNP" : "SV"} VCF validation results
-Header
----------------------------------------------
-Error
-EOS
-
-error_vcf_header_a.sort{|a,b| a[0] <=> b[0]}.each{|m| vcf_validation_result_s += m.join(": ") + "\n"}
-
-vcf_validation_result_s += <<EOS
-
-Error (ignore)
-EOS
-
-error_ignore_vcf_header_a.sort{|a,b| a[0] <=> b[0]}.each{|m| vcf_validation_result_s += m.join(": ") + "\n"}
-
-vcf_validation_result_s += <<EOS
-
-Warning
-EOS
-
-warning_vcf_header_a.sort{|a,b| a[0] <=> b[0]}.each{|m| vcf_validation_result_s += m.join(": ") + "\n"}
-vcf_validation_result_s += <<EOS
----------------------------------------------
-
-Content
----------------------------------------------
-Error
-EOS
-
-error_vcf_content_a.sort{|a,b| a[0] <=> b[0]}.each{|m| vcf_validation_result_s += m.join(": ") + "\n"}
-
-vcf_validation_result_s += <<EOS
-
-Error (ignore)
-EOS
-
-error_ignore_vcf_content_a.sort{|a,b| a[0] <=> b[0]}.each{|m| vcf_validation_result_s += m.join(": ") + "\n"}
-
-vcf_validation_result_s += <<EOS
-
-Warning
-EOS
-
-warning_vcf_content_a.sort{|a,b| a[0] <=> b[0]}.each{|m| vcf_validation_result_s += m.join(": ") + "\n"}
-
-vcf_validation_result_s += <<EOS
----------------------------------------------
-
-EOS
-
-end
 
 ## SNP/SV Common
 validation_result_s = <<EOS
@@ -3280,12 +3271,64 @@ sv_validation_result_s += <<EOS
 EOS
 end
 
+if !vcf_snp_a.empty? || !vcf_sv_f.empty?
+
+vcf_validation_result_s = <<EOS
+
+JVar-#{submission_type == "SNP" ? "SNP" : "SV"} VCF validation results
+Header
+---------------------------------------------
+Error
+EOS
+
+error_vcf_header_a.sort{|a,b| a[0] <=> b[0]}.each{|m| vcf_validation_result_s += m.join(": ") + "\n"}
+
+vcf_validation_result_s += <<EOS
+
+Error (ignore)
+EOS
+
+error_ignore_vcf_header_a.sort{|a,b| a[0] <=> b[0]}.each{|m| vcf_validation_result_s += m.join(": ") + "\n"}
+
+vcf_validation_result_s += <<EOS
+
+Warning
+EOS
+
+warning_vcf_header_a.sort{|a,b| a[0] <=> b[0]}.each{|m| vcf_validation_result_s += m.join(": ") + "\n"}
+vcf_validation_result_s += <<EOS
+---------------------------------------------
+
+Content
+---------------------------------------------
+Error
+EOS
+
+error_vcf_content_a.sort{|a,b| a[0] <=> b[0]}.each{|m| vcf_validation_result_s += m.join(": ") + "\n"}
+
+vcf_validation_result_s += <<EOS
+
+Error (ignore)
+EOS
+
+error_ignore_vcf_content_a.sort{|a,b| a[0] <=> b[0]}.each{|m| vcf_validation_result_s += m.join(": ") + "\n"}
+
+vcf_validation_result_s += <<EOS
+
+Warning
+EOS
+
+warning_vcf_content_a.sort{|a,b| a[0] <=> b[0]}.each{|m| vcf_validation_result_s += m.join(": ") + "\n"}
+
+vcf_validation_result_s += <<EOS
+---------------------------------------------
+
+EOS
+
+end
+
 ## validation 結果を出力
 validation_result_f = open("#{submission_id}_#{submission_type}.log.txt", "w")
-if !vcf_snp_a.empty? || !vcf_sv_f.empty?
-	validation_result_f.puts vcf_validation_result_s
-	puts vcf_validation_result_s
-end
 
 ## Common
 validation_result_f.puts validation_result_s
@@ -3301,4 +3344,9 @@ if submission_type == "SV"
 	puts sv_validation_result_s
 end
 
+# VCF
+if !vcf_snp_a.empty? || !vcf_sv_f.empty?
+	validation_result_f.puts vcf_validation_result_s
+	puts vcf_validation_result_s
+end
 

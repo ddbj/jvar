@@ -271,6 +271,9 @@ def vcf_parser(vcf_file, vcf_type)
 
 				# INFO definition
 				if line =~ /^##INFO=<ID=([^,]+),/
+					if info_def_h.key?($1)
+						error_vcf_header_a.push(["JV_VCF0044", "INFO tag ID must be unique in VCF. #{$1}"]) 
+					end
 					info_def_h.store($1, line.strip)
 				end
 
@@ -289,6 +292,9 @@ def vcf_parser(vcf_file, vcf_type)
 
 				# FORMAT definition
 				if line =~ /^##FORMAT=<ID=([^,]+),/
+					if format_def_h.key?($1)
+						error_vcf_header_a.push(["JV_VCF0045", "FORMAT tag ID must be unique in VCF. #{$1}"]) 
+					end
 					format_def_h.store($1, line.strip)
 				end
 
