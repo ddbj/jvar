@@ -659,7 +659,7 @@ def vcf_parser(vcf_file, vcf_type)
 			end
 
 			if snp_in_window_c > 10
-				vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_VCFP0001 Warning: Verify these regions are legitimate.")
+				vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_VCFP0001 Warning: Too many SNPs (more than 10 SNPs in 50bp). Verify these regions are legitimate.")
 				dense_snp_c += 1				
 			end
 
@@ -1416,9 +1416,13 @@ def vcf_parser(vcf_file, vcf_type)
 	## JV_VCF0027: Data not sorted based on positions
 	error_vcf_content_a.push(["JV_VCF0027", "Sort data based on their positions. #{vcf_file} #{not_sorted_pos_c} sites"]) if not_sorted_pos_c > 0
 
-	#JV_VCF0008-JV_VCF0010
+	## JV_VCF0008: Invalid position (POS)	
 	error_vcf_content_a.push(["JV_VCF0008", "Positions (POS) should be numbers. #{vcf_file} #{pos_not_number_c} sites"]) if pos_not_number_c > 0
+	
+	## JV_VCF0009: Local ID longer than 64 characters
 	error_vcf_content_a.push(["JV_VCF0009", "Provide unique local IDs shorter than 64 characters. #{vcf_file} #{id_not_within_size_c} sites"]) if id_not_within_size_c > 0
+	
+	## JV_VCF0010: Missing local ID
 	error_vcf_content_a.push(["JV_VCF0010", "Provide unique local IDs shorter than 64 characters. #{vcf_file} #{missing_id_c} sites"]) if missing_id_c > 0
 
 	# JV_VCF0017: Invalid chromosome name
@@ -1426,6 +1430,15 @@ def vcf_parser(vcf_file, vcf_type)
 
 	# JV_VCF0014: REF allele mismatch with reference
 	error_vcf_content_a.push(["JV_VCF0014", "Need to match the reference genome on the forward orientation. #{vcf_file} #{ref_mismatch_c} sites"]) if ref_mismatch_c > 0
+
+	# JV_VCF0013: Missing REF allele
+	error_vcf_content_a.push(["JV_VCF0013", "Provide REF allele. #{vcf_file} #{missing_ref_c} sites"]) if missing_ref_c > 0
+
+	# JV_VCF0016: Missing ALT allele
+	error_vcf_content_a.push(["JV_VCF0016", "Provide ALT allele. #{vcf_file} #{missing_alt_c} sites"]) if missing_alt_c > 0
+
+	## JV_VCF0022: Same REF and ALT alleles
+	error_vcf_content_a.push(["JV_VCF0022", "REF and ALT alleles should not be the same. #{vcf_file} #{same_ref_alt_c} sites"]) if same_ref_alt_c > 0
 
 	# JV_VCF0029: Chromosome position larger than chromosome size + 1
 	error_vcf_content_a.push(["JV_VCF0029", "Chromosome position is larger than chromosome size + 1. Check if the position is correct. #{vcf_file} #{pos_outside_chr_c} sites"]) if pos_outside_chr_c > 0
@@ -1505,15 +1518,6 @@ def vcf_parser(vcf_file, vcf_type)
 
 	end
 
-	# JV_VCF0013: Missing REF allele
-	error_vcf_content_a.push(["JV_VCF0013", "Provide REF allele. #{vcf_file} #{missing_ref_c} sites"]) if missing_ref_c > 0
-
-	# JV_VCF0016: Missing ALT allele
-	error_vcf_content_a.push(["JV_VCF0016", "Provide ALT allele. #{vcf_file} #{missing_alt_c} sites"]) if missing_alt_c > 0
-
-	## JV_VCF0022: Same REF and ALT alleles
-	error_vcf_content_a.push(["JV_VCF0022", "REF and ALT alleles should not be the same. #{vcf_file} #{same_ref_alt_c} sites"]) if same_ref_alt_c > 0
-
 	# VCF log error and warning
 	unless vcf_log_a.empty?
 		vcf_log_a.each{|log_line|
@@ -1537,9 +1541,6 @@ def vcf_parser(vcf_file, vcf_type)
 	vcf_f.close
 
 end
-
-
-
 
 ###
 ### 配列の次元を取得

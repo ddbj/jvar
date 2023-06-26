@@ -48,6 +48,32 @@ conf_path = "conf"
 #sin conf_path = "/usr/local/bin/conf"
 submitter_handle = "JVAR"
 
+ref_download_path = "reference-download"
+#sin ref_download_path = "/usr/local/bin/reference-download"
+
+ref_download_h = {}
+Dir.glob("#{ref_download_path}/*fna").each{|dl_fna|
+
+	accession = ""
+	length = ""
+
+	if dl_fna =~ /\.fna$/
+		accession = File.basename(dl_fna).sub(".fna", "")
+		
+		# if there is an index and length
+		if FileTest.exist?("#{ref_download_path}/#{accession}.fna.fai")
+			open("#{ref_download_path}/#{accession}.fna.fai").each{|fai_line|
+				length = fai_line.split("\t")[1] if fai_line.split("\t")[1]
+			}
+		end
+
+		if !accession.empty? && !length.empty?
+			ref_download_h.store(accession, length)
+		end
+
+	end
+}
+
 # SV is provided by VCF
 vcf_sv_f = ""
 
@@ -55,6 +81,10 @@ submission_type = ""
 bioproject_accession = ""
 biosample_accession_a = []
 sample_name_a = []
+
+# Download a contig fasta by an INSDC accession.
+contig_download_a = []
+contig_download_s = ""
 
 ## error, error_ignore, warning,
 warning_snp_a = []
@@ -382,7 +412,7 @@ for experiment_pre in experiment_pre_a
 
 			## JV_C0047: Invalid Merged Experiment ID reference
 			if !non_merging_experiment_id_a.include?(eid)
-				error_ignore_common_a.push(["JV_C0047", "Merged Exepriment/Experiment ID must refer to a valid experiment with the same Experiment Type. Experiment ID: #{eid}"])
+				error_ignore_common_a.push(["JV_C0047", "Merged Experiment/Experiment ID must refer to a valid experiment with the same Experiment Type. Experiment ID: #{eid}"])
 			end
 
 			for experiment in experiment_a
@@ -390,7 +420,7 @@ for experiment_pre in experiment_pre_a
 					combined_method_a.push(experiment["METHOD"])
 
 					## JV_C0047: Invalid Merged Experiment ID reference
-					error_ignore_common_a.push(["JV_C0047", "Merged Exepriment/Experiment ID must refer to a valid experiment with the same Experiment Type. Experiment ID: #{eid}"]) if experiment["Experiment Type"] != experiment_pre["Experiment Type"]
+					error_ignore_common_a.push(["JV_C0047", "Merged Experiment/Experiment ID must refer to a valid experiment with the same Experiment Type. Experiment ID: #{eid}"]) if experiment["Experiment Type"] != experiment_pre["Experiment Type"]
 
 				end
 			end
@@ -1071,13 +1101,16 @@ EOS
 					dbsnp_vcf_f.puts "##biosample_id=#{vcf_header_assay_h[assay["Assay ID"]]["biosample_ids"].join(",")}" if vcf_header_assay_h[assay["Assay ID"]] && vcf_header_assay_h[assay["Assay ID"]]["biosample_ids"]
 				end
 
-				# INFO 先頭に VRT 挿入、既存はスキップ
+				# INFO 先頭に VRT 挿入、既存 VRT はスキップ
 				if line_a =~ /^##INFO=/ && first_info_f
 					dbsnp_vcf_f.puts '##INFO=<ID=VRT,Number=1,Type=Integer,Description="Variation type,1 - SNV: single nucleotide variation,2 - DIV: deletion/insertion variation,3 - HETEROZYGOUS: variable, but undefined at nucleotide level,4 - STR: short tandem repeat (microsatellite) variation, 5 - NAMED: insertion/deletion variation of named repetitive element,6 - NO VARIATION: sequence scanned for variation, but none observed,7 - MIXED: cluster contains submissions from 2 or more allelic classes (not used),8 - MNV: multiple nucleotide variation with alleles of common length greater than 1,9 - Exception">'
 					first_info_f = false
 				end
 
 				next if line_a =~ /^##INFO=\<ID=VRT,/
+
+				# contig はスキップ
+				next if line_a =~ /^##contig=\<ID=/
 
 				# CHROM の前に挿入
 				if line_a =~ /^#CHROM/ && sampleset_name_per_sampleset_h[assay["SampleSet ID"]] && sampleset_name_per_sampleset_h[assay["SampleSet ID"]].size > 0
@@ -1574,7 +1607,6 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 				## JV_SV0015: Invalid Experiment link URL
 				warning_sv_a.push(["JV_SV0015", "Experiment link URL must be valid"]) unless experiment["External Links"] =~ /https?/
-
 			}
 
 			## JV_SV0013: Invlalid Platform link
@@ -1629,6 +1661,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 	chr_accession = ""
 	chr_length = 0
 	contig_accession = ""
+	assembly = ""
 
 	# tsv Assay ID to Experiment/SamplaSet IDs
 	assay_to_experiment_h = {}
@@ -1796,6 +1829,13 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 	vc_line = 0
 	for variant_call in variant_call_a
 
+		# variant call 毎に初期化
+		chr_name = ""
+		chr_accession = ""
+		chr_length = 0
+		contig_accession = ""
+		assembly = ""
+
 		# VARIANT_CALL attributes
 		variant_call_attr_h = {}
 
@@ -1824,7 +1864,6 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 				invalid_value_for_cv_call_a.push("#{variant_call_id} #{key}:#{value}")
 				variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_C0057 Error: Invalid value for controlled terms. #{key}:#{value}")
 			end
-
 		}
 
 		unless variant_call["Variant Call Type"].empty? && vtype_h["Variant Call Type"][variant_call["Variant Call Type"]]
@@ -1983,8 +2022,22 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 						## JV_SV0072: Invalid chromosome reference
 						valid_chr_f = false
 						for chromosome_per_assembly_h in chromosome_per_assembly_a
-							## translocation は assembled-molecule 想定
-							if variant_call["From Chr"] && chromosome_per_assembly_h["chrName"].downcase == variant_call["From Chr"].sub(/chr/i, "").downcase && chromosome_per_assembly_h["role"] == "assembled-molecule" && !valid_chr_f
+							## From Chr に sequence report にある RefSeq/GenBank accession が記載されているかどうか
+							if !variant_call["From Chr"].empty? && (chromosome_per_assembly_h["refseqAccession"].downcase == variant_call["From Chr"].downcase || chromosome_per_assembly_h["genbankAccession"].downcase == variant_call["From Chr"].downcase)
+								chr_name = ""
+								chr_accession = ""
+								chr_length = chromosome_per_assembly_h["length"]
+								contig_accession = chromosome_per_assembly_h["refseqAccession"] # fna は refseqAccession 記載
+								valid_contig_f = true						
+							# contig が download ref にあるかどうか. download にある = assembly には含まれていない
+							elsif !variant_call["From Chr"].empty? && ref_download_h.keys.map(&:downcase).include?(variant_call["From Chr"].downcase)
+								chr_name = ""
+								chr_accession = ""
+								chr_length = ref_download_h[variant_call["From Chr"]] if ref_download_h[variant_call["From Chr"]]
+								contig_accession = variant_call["From Chr"]
+								valid_contig_f = true
+								ref_download_f = true
+							elsif !variant_call["From Chr"].empty? && chromosome_per_assembly_h["chrName"].downcase == variant_call["From Chr"].sub(/chr/i, "").downcase && chromosome_per_assembly_h["role"] == "assembled-molecule"
 								chr_name = chromosome_per_assembly_h["chrName"]
 								chr_accession = chromosome_per_assembly_h["refseqAccession"]
 								chr_length = chromosome_per_assembly_h["length"]
@@ -1992,15 +2045,15 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 							end
 						end
 
-						## JV_SV0072: Invalid chromosome reference
-						unless valid_chr_f
+						## JV_SV0072: Invalid chromosome reference, to/from は contig 列がなく一体
+						if !variant_call["From Chr"].empty? && !valid_chr_f && !valid_contig_f
 							invalid_chr_ref_call_a.push(variant_call_id)
 							variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0072 Error: Invalid chromosome reference.")
 						end
 
 						genome_attr_h.store("chr_name", chr_name)
 						genome_attr_h.store("chr_accession", chr_accession)
-
+						genome_attr_h.store("contig_accession", contig_accession)
 						genome_attr_h.store("strand", variant_call["From Strand"])
 						genome_attr_h.store("start", variant_call["From Coord"])
 						genome_attr_h.store("stop", variant_call["From Coord"])
@@ -2022,8 +2075,22 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 						## JV_SV0072: Invalid chromosome reference
 						valid_chr_f = false
 						for chromosome_per_assembly_h in chromosome_per_assembly_a
-							## translocation は assembled-molecule 想定
-							if variant_call["To Chr"] && chromosome_per_assembly_h["chrName"].downcase == variant_call["To Chr"].sub(/chr/i, "").downcase && chromosome_per_assembly_h["role"] == "assembled-molecule" && !valid_chr_f
+							## From Chr に sequence report にある RefSeq/GenBank accession が記載されているかどうか
+							if !variant_call["To Chr"].empty? && (chromosome_per_assembly_h["refseqAccession"].downcase == variant_call["To Chr"].downcase || chromosome_per_assembly_h["genbankAccession"].downcase == variant_call["To Chr"].downcase)
+								chr_name = ""
+								chr_accession = ""
+								chr_length = chromosome_per_assembly_h["length"]
+								contig_accession = chromosome_per_assembly_h["refseqAccession"] # fna は refseqAccession 記載
+								valid_contig_f = true						
+							# contig が download ref にあるかどうか. download にある = assembly には含まれていない
+							elsif !variant_call["To Chr"].empty? && ref_download_h.keys.map(&:downcase).include?(variant_call["To Chr"].downcase)
+								chr_name = ""
+								chr_accession = ""
+								chr_length = ref_download_h[variant_call["To Chr"]] if ref_download_h[variant_call["To Chr"]]
+								contig_accession = variant_call["To Chr"]
+								valid_contig_f = true
+								ref_download_f = true
+							elsif !variant_call["To Chr"].empty? && chromosome_per_assembly_h["chrName"].downcase == variant_call["To Chr"].sub(/chr/i, "").downcase && chromosome_per_assembly_h["role"] == "assembled-molecule"
 								chr_name = chromosome_per_assembly_h["chrName"]
 								chr_accession = chromosome_per_assembly_h["refseqAccession"]
 								chr_length = chromosome_per_assembly_h["length"]
@@ -2031,14 +2098,15 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 							end
 						end
 
-						## JV_SV0072: Invalid chromosome reference
-						unless valid_chr_f
+						## JV_SV0072: Invalid chromosome reference, to/from は contig 列がなく一体
+						if !variant_call["To Chr"].empty? && !valid_chr_f && !valid_contig_f
 							invalid_chr_ref_call_a.push(variant_call_id)
 							variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0072 Error: Invalid chromosome reference.")
 						end
 
 						genome_attr_h.store("chr_name", chr_name)
 						genome_attr_h.store("chr_accession", chr_accession)
+						genome_attr_h.store("contig_accession", contig_accession)
 						genome_attr_h.store("strand", variant_call["To Strand"])
 						genome_attr_h.store("start", variant_call["To Coord"])
 						genome_attr_h.store("stop", variant_call["To Coord"])
@@ -2100,39 +2168,45 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 					# GENOME
 					genome_attr_h = {}
 
-					unless variant_call["Assembly"].empty?
-						variant_call_assembly_a.push(variant_call["Assembly"])
-						genome_attr_h.store("assembly", variant_call["Assembly"])
-					end
-
-					## JV_SV0077: Contig accession exists for chromosome accession
-					if !variant_call["Contig"].empty? && variant_call["Chr"].empty?
-						contig_acc_for_chr_acc_call_a.push(variant_call_id)
-						variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0077 Error: Contig accession exists for chromosome accession.")
-					end
-
 					## JV_SV0072: Invalid chromosome reference
 					valid_chr_f = false
 					valid_contig_f = false
-
+					ref_download_f = false
 					for chromosome_per_assembly_h in chromosome_per_assembly_a
-						# chr と contig 両方書いてある場合は contig を使用
-						if !variant_call["Contig"].empty? && variant_call["Chr"].empty? && chromosome_per_assembly_h["role"] != "assembled-molecule" && (chromosome_per_assembly_h["refseqAccession"].downcase == variant_call["Contig"].downcase || chromosome_per_assembly_h["genbankAccession"].downcase == variant_call["Contig"].downcase)
+						
+						# contig が sequence report の RefSeq/GenBank accession にあるかどうか、chr と contig 両方書いてある場合は contig を使用
+						if !variant_call["Contig"].empty? && variant_call["Chr"].empty? && (chromosome_per_assembly_h["refseqAccession"].downcase == variant_call["Contig"].downcase || chromosome_per_assembly_h["genbankAccession"].downcase == variant_call["Contig"].downcase)
 							chr_name = ""
 							chr_accession = ""
 							chr_length = chromosome_per_assembly_h["length"]
-							contig_accession = chromosome_per_assembly_h["refseqAccession"]
+							contig_accession = chromosome_per_assembly_h["refseqAccession"] # fna は refseqAccession 記載
 							valid_contig_f = true
+						# contig が download ref にあるかどうか. download にある=assembly には含まれていない
+						elsif !variant_call["Contig"].empty? && variant_call["Chr"].empty? && ref_download_h.keys.map(&:downcase).include?(variant_call["Contig"].downcase)
+							chr_name = ""
+							chr_accession = ""
+							chr_length = ref_download_h[variant_call["Contig"]] if ref_download_h[variant_call["Contig"]]
+							contig_accession = variant_call["Contig"]
+							valid_contig_f = true
+							ref_download_f = true
+						# chr が sequence report の chrName にあるかどうか
 						elsif !variant_call["Chr"].empty? && variant_call["Contig"].empty? && chromosome_per_assembly_h["chrName"].downcase == variant_call["Chr"].sub(/chr/i, "").downcase && chromosome_per_assembly_h["role"] == "assembled-molecule"
 							chr_name = chromosome_per_assembly_h["chrName"]
 							chr_accession = chromosome_per_assembly_h["refseqAccession"]
 							chr_length = chromosome_per_assembly_h["length"]
 							valid_chr_f = true
 						end
+
+					end
+
+					## JV_SV0077: Contig accession exists for chromosome accession
+					if !variant_call["Contig"].empty? && !variant_call["Chr"].empty?
+						contig_acc_for_chr_acc_call_a.push(variant_call_id)
+						variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0077 Error: Contig accession exists for chromosome accession.")
 					end
 
 					## JV_SV0072: Invalid chromosome reference
-					unless valid_chr_f
+					if !variant_call["Chr"].empty? && !valid_chr_f
 						invalid_chr_ref_call_a.push(variant_call_id)
 						variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0072 Error: Invalid chromosome reference.")
 					end
@@ -2141,6 +2215,10 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 					if !variant_call["Contig"].empty? && !valid_contig_f
 						invalid_contig_acc_ref_call_a.push("#{variant_call_id} #{variant_call["Contig"]}")
 						variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0074 Error: Invalid contig accession reference.")
+
+						# download fasta
+						contig_download_a.push("wget \"http://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=nucleotide&id=#{variant_call["Contig"]}&rettype=fasta\" -O #{ref_download_path}/#{variant_call["Contig"]}.fna")
+						contig_download_a.push("samtools faidx #{variant_call["Contig"]}.fna")
 					end
 
 					## JV_SV0076: Missing chromosome/contig accession
@@ -2155,6 +2233,18 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 						variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0059 Warning: Chromosome Y for female")
 					end
 
+					## genome_attr_h
+					## download に存在　=　Assembly　には含まれていない					
+					if ref_download_f
+						assembly = ""
+						genome_attr_h.store("assembly", assembly)
+					elsif !variant_call["Assembly"].empty?
+						assembly = variant_call["Assembly"]
+						variant_call_assembly_a.push(assembly)
+						genome_attr_h.store("assembly", assembly)
+					end
+
+					## chr/chr_accession/contig_accession
 					genome_attr_h.store("chr_name", chr_name)
 					genome_attr_h.store("chr_accession", chr_accession)
 					genome_attr_h.store("contig_accession", contig_accession)
@@ -2275,7 +2365,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 					placement_e.GENOME(genome_attr_h)
 
 					## parent region の placement との整合性チェック
-					variant_call_placement_h.store(variant_call_id, {"Assembly" => variant_call["Assembly"], "Chr" => variant_call["Chr"], "Contig" => variant_call["Contig"], "Outer Start" => variant_call["Outer Start"], "Start" => variant_call["Start"], "Inner Start" => variant_call["Inner Start"], "Stop" => variant_call["Stop"], "Inner Stop" => variant_call["Inner Stop"], "Outer Stop" => variant_call["Outer Stop"]})
+					variant_call_placement_h.store(variant_call_id, {"Assembly" => assembly, "Chr" => chr_name, "Contig" => contig_accession, "Outer Start" => variant_call["Outer Start"], "Start" => variant_call["Start"], "Inner Start" => variant_call["Inner Start"], "Stop" => variant_call["Stop"], "Inner Stop" => variant_call["Inner Stop"], "Outer Stop" => variant_call["Outer Stop"]})
 
 				} # placement_e
 
@@ -2361,7 +2451,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 	## Variant Call, Error
 	error_sv_a.push(["JV_SV0072", "chr_name or chr_accession must refer to a valid chromosome for the specified assembly, and chr_name can contain 'chr'. Variant Call: #{invalid_chr_ref_call_a.size} sites, #{invalid_chr_ref_call_a.size > 4? invalid_chr_ref_call_a[0, limit_for_etc].join(",") + " etc" : invalid_chr_ref_call_a.join(",")}"]) unless invalid_chr_ref_call_a.empty?
-	error_sv_a.push(["JV_SV0074", "Contig_accession must refer to a valid contig belonging to the assembly. Variant Call: #{invalid_contig_acc_ref_call_a.size} sites, #{invalid_contig_acc_ref_call_a.size > 4? invalid_contig_acc_ref_call_a[0, limit_for_etc].join(",") + " etc" : invalid_contig_acc_ref_call_a.join(",")}"]) unless invalid_contig_acc_ref_call_a.empty?
+	error_sv_a.push(["JV_SV0074", "Contig accession must refer to a valid INSDC accession and version. Variant Call: #{invalid_contig_acc_ref_call_a.size} sites, #{invalid_contig_acc_ref_call_a.size > 4? invalid_contig_acc_ref_call_a[0, limit_for_etc].join(",") + " etc" : invalid_contig_acc_ref_call_a.join(",")}"]) unless invalid_contig_acc_ref_call_a.empty?
 	error_sv_a.push(["JV_SV0076", "Genomic placement must contain either a chr_name, chr_accession, or contig_accession unless it is on a novel sequence insertion or translocation. Variant Call: #{missing_chr_contig_acc_call_a.size} sites, #{missing_chr_contig_acc_call_a.size > 4? missing_chr_contig_acc_call_a[0, limit_for_etc].join(",") + " etc" : missing_chr_contig_acc_call_a.join(",")}"]) unless missing_chr_contig_acc_call_a.empty?
 	error_sv_a.push(["JV_SV0077", "Genomic placement should not have a contig_accession if there is also a chr_name or chr_accession. Variant Call: #{contig_acc_for_chr_acc_call_a.size} sites, #{contig_acc_for_chr_acc_call_a.size > 4? contig_acc_for_chr_acc_call_a[0, limit_for_etc].join(",") + " etc" : contig_acc_for_chr_acc_call_a.join(",")}"]) unless contig_acc_for_chr_acc_call_a.empty?
 	error_sv_a.push(["JV_SV0099", "Provide a valid assay ID. Variant Call: #{invalid_assay_id_call_a.size} sites, #{invalid_assay_id_call_a.size > 4? invalid_assay_id_call_a[0, limit_for_etc].join(",") + " etc" : invalid_assay_id_call_a.join(",")}"]) unless invalid_assay_id_call_a.empty?
@@ -2429,6 +2519,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 	chr_accession = ""
 	chr_length = 0
 	contig_accession = ""
+	assembly = ""
 
 	# error and warning counts
 	duplicated_variant_region_id_a = [] # JV_SV0064
@@ -2509,7 +2600,6 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 				variant_region_tsv_log_a.push("#{variant_region["row"].join("\t")}\t# JV_C0057 Error: Value is not in controlled terms.")
 			end
 		}
-
 
 		unless variant_region["Variant Region Type"].empty? && vtype_h["Variant Region Type"][variant_region["Variant Region Type"]]
 			variant_region_type = vtype_h["Variant Region Type"][variant_region["Variant Region Type"]]
@@ -2726,42 +2816,45 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 	        variant_region_e.PLACEMENT(placement_attr_h){|placement_e|
 
-	            # GENOME
-	            genome_attr_h = {}
-
-	            unless variant_region["Assembly"].empty?
-					variant_region_assembly_a.push(variant_region["Assembly"])
-					genome_attr_h.store("assembly", variant_region["Assembly"])
-	            end
-
-				## JV_SV0077: Contig accession exists for chromosome accession
-				if !variant_region["Contig"].empty? && variant_region["Chr"].empty?
-					contig_acc_for_chr_acc_region_a.push(variant_region_id)
-					variant_region_tsv_log_a.push("#{variant_region["row"].join("\t")}\t# JV_SV0077 Error: Contig accession exists for chromosome accession.")
-				end
-
 				## JV_SV0072: Invalid chromosome reference
 				valid_chr_f = false
 				valid_contig_f = false
-
+				ref_download_f = false
 				for chromosome_per_assembly_h in chromosome_per_assembly_a
-					# chr と contig 両方書いてある場合は contig を使用
-					if !variant_region["Contig"].empty? && variant_region["Chr"].empty? && chromosome_per_assembly_h["role"] != "assembled-molecule" && (chromosome_per_assembly_h["refseqAccession"].downcase == variant_region["Contig"].downcase || chromosome_per_assembly_h["genbankAccession"].downcase == variant_region["Contig"].downcase)
+
+					# contig が sequence report の RefSeq/GenBank accession にあるかどうか、chr と contig 両方書いてある場合は contig を使用
+					if !variant_region["Contig"].empty? && variant_region["Chr"].empty? && (chromosome_per_assembly_h["refseqAccession"].downcase == variant_region["Contig"].downcase || chromosome_per_assembly_h["genbankAccession"].downcase == variant_region["Contig"].downcase)
 						chr_name = ""
 						chr_accession = ""
 						chr_length = chromosome_per_assembly_h["length"]
-						contig_accession = chromosome_per_assembly_h["refseqAccession"]
+						contig_accession = chromosome_per_assembly_h["refseqAccession"] # fna は refseqAccession 記載
 						valid_contig_f = true
+					# contig が download ref にあるかどうか. download にある=assembly には含まれていない
+					elsif !variant_region["Contig"].empty? && variant_region["Chr"].empty? && ref_download_h.keys.map(&:downcase).include?(variant_region["Contig"].downcase)
+						chr_name = ""
+						chr_accession = ""
+						chr_length = ref_download_h[variant_region["Contig"]] if ref_download_h[variant_region["Contig"]]
+						contig_accession = variant_region["Contig"]
+						valid_contig_f = true
+						ref_download_f = true
+					# chr が sequence report の chrName にあるかどうか
 					elsif !variant_region["Chr"].empty? && variant_region["Contig"].empty? && chromosome_per_assembly_h["chrName"].downcase == variant_region["Chr"].sub(/chr/i, "").downcase && chromosome_per_assembly_h["role"] == "assembled-molecule"
 						chr_name = chromosome_per_assembly_h["chrName"]
 						chr_accession = chromosome_per_assembly_h["refseqAccession"]
 						chr_length = chromosome_per_assembly_h["length"]
 						valid_chr_f = true
 					end
+
+				end
+
+				## JV_SV0077: Contig accession exists for chromosome accession
+				if !variant_region["Contig"].empty? && !variant_region["Chr"].empty?
+					contig_acc_for_chr_acc_region_a.push(variant_region_id)
+					variant_region_tsv_log_a.push("#{variant_region["row"].join("\t")}\t# JV_SV0077 Error: Contig accession exists for chromosome accession.")
 				end
 
 				## JV_SV0072: Invalid chromosome reference
-				if !variant_region["Chr"].empty? && variant_region["Contig"].empty? && !valid_chr_f && !valid_contig_f
+				if !variant_region["Chr"].empty? && !valid_chr_f
 					invalid_chr_ref_region_a.push(variant_region_id)
 					variant_region_tsv_log_a.push("#{variant_region["row"].join("\t")}\t# JV_SV0072 Error: Contig accession exists for chromosome accession.")
 				end
@@ -2769,7 +2862,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 				## JV_SV0074: Invalid contig accession reference
 				if !variant_region["Contig"].empty? && !valid_contig_f
 					invalid_contig_acc_ref_region_a.push(variant_region_id)
-					variant_region_tsv_log_a.push("#{variant_region["row"].join("\t")}\t# JV_SV0074 Error: Contig_accession must refer to a valid contig belonging to the assembly.")
+					variant_region_tsv_log_a.push("#{variant_region["row"].join("\t")}\t# JV_SV0074 Error: Contig accession must refer to a valid INSDC accession and version.")
 				end
 
 				## JV_SV0076: Missing chromosome/contig accession
@@ -2777,6 +2870,18 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 					missing_chr_contig_acc_region_a.push(variant_region_id)
 					variant_region_tsv_log_a.push("#{variant_region["row"].join("\t")}\t# JV_SV0076 Error: Genomic placement must contain either a chr_name, chr_accession, or contig_accession unless it is on a novel sequence insertion or translocation.")
 				end
+
+	            # GENOME
+	            genome_attr_h = {}
+
+				if ref_download_f
+					assembly = ""
+					genome_attr_h.store("assembly", assembly)
+	            elsif !variant_region["Assembly"].empty?
+					assembly = variant_region["Assembly"]
+					variant_region_assembly_a.push(assembly)
+					genome_attr_h.store("assembly", assembly)
+	            end
 
 				genome_attr_h.store("chr_name", chr_name)
 				genome_attr_h.store("chr_accession", chr_accession)
@@ -2965,11 +3070,11 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 		error_sv_a.push(["JV_SV0071", "Assembly must refer to a valid assembly db name, UCSC name, assembly RefSeq accession, or assembly INSDC accession. Variant call and region: #{(variant_call_assembly_a + variant_region_assembly_a).sort.uniq.join(",")}"])
  	end
 
-	## JV_SV0068: Missing assertion_method
-	error_ignore_sv_a.push(["JV_SV0068", "Region MUST have an assertion_method. JVar will fill in this field. Variant Region: #{missing_assertion_method_region_a.size} sites, #{missing_assertion_method_region_a.size > 4? missing_assertion_method_region_a[0, limit_for_etc].join(",") + " etc" : missing_assertion_method_region_a.join(",")}"]) unless missing_assertion_method_region_a.empty?
-
 	## JV_C0057: Invalid value for controlled terms
 	error_ignore_sv_a.push(["JV_C0057", "Value is not in controlled terms. Variant Region: #{invalid_value_for_cv_region_a.size} sites, #{invalid_value_for_cv_region_a.size > 4? invalid_value_for_cv_region_a[0, limit_for_etc].join(",") + " etc" : invalid_value_for_cv_region_a.join(",")}"]) unless invalid_value_for_cv_region_a.empty?
+
+	## JV_SV0068: Missing assertion_method
+	error_ignore_sv_a.push(["JV_SV0068", "Region MUST have an assertion_method. JVar will fill in this field. Variant Region: #{missing_assertion_method_region_a.size} sites, #{missing_assertion_method_region_a.size > 4? missing_assertion_method_region_a[0, limit_for_etc].join(",") + " etc" : missing_assertion_method_region_a.join(",")}"]) unless missing_assertion_method_region_a.empty?
 
 	## JV_SV0050: Inconsistent Variant Call Type and Variant Region Type
 	warning_sv_a.push(["JV_SV0050", "Inconsistent Variant Call Type and Variant Region Type. Variant Region: #{inconsistent_type_region_a.size} sites, #{inconsistent_type_region_a.size > 4? inconsistent_type_region_a[0, limit_for_etc].join(",") + " etc" : inconsistent_type_region_a.join(",")}"]) unless inconsistent_type_region_a.empty?
@@ -3327,6 +3432,21 @@ EOS
 
 end
 
+## Assembly にない INSDC fasta を download & index
+unless contig_download_a.empty?
+	
+	contig_download_s = <<EOS
+
+Download and index reference sequences
+---------------------------------------------
+EOS
+
+	for command_line in contig_download_a
+		contig_download_s += "#{command_line}\n"
+	end
+
+end
+
 ## validation 結果を出力
 validation_result_f = open("#{submission_id}_#{submission_type}.log.txt", "w")
 
@@ -3348,5 +3468,11 @@ end
 if !vcf_snp_a.empty? || !vcf_sv_f.empty?
 	validation_result_f.puts vcf_validation_result_s
 	puts vcf_validation_result_s
+end
+
+# Download contig
+unless contig_download_s.empty?
+	validation_result_f.puts contig_download_s
+	puts contig_download_s
 end
 
