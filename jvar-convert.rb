@@ -51,7 +51,7 @@ submitter_handle = "JVAR"
 ref_download_path = "reference-download"
 #sin ref_download_path = "/usr/local/bin/reference-download"
 
-ref_download_h = {}
+$ref_download_h = {}
 Dir.glob("#{ref_download_path}/*fna").each{|dl_fna|
 
 	accession = ""
@@ -68,7 +68,7 @@ Dir.glob("#{ref_download_path}/*fna").each{|dl_fna|
 		end
 
 		if !accession.empty? && !length.empty?
-			ref_download_h.store(accession, length)
+			$ref_download_h.store(accession, length)
 		end
 
 	end
@@ -157,7 +157,7 @@ allowed_assembly_a = []
 assembly_a.each{|assembly_h|
 	allowed_assembly_a.push(assembly_h.values)
 }
-allowed_assembly_a = allowed_assembly_a.flatten.map(&:downcase)
+allowed_assembly_a = allowed_assembly_a.flatten
 
 ## chromosomes
 sequence_a = []
@@ -1079,8 +1079,8 @@ EOS
 			warning_vcf_content_a += tmp_warning_vcf_content_a
 			vcf_variant_a.push(tmp_vcf_variant_a)
 
-			# JV_VCF0042: Invalid sample reference in VCF
-			if sample_name_per_sampleset_h[assay["SampleSet ID"]] && biosample_accession_per_sampleset_h[assay["SampleSet ID"]] && sampleset_name_per_sampleset_h[assay["SampleSet ID"]]
+			# JV_VCF0042: Invalid sample reference in VCF			
+			if sample_name_per_sampleset_h[assay["SampleSet ID"]] && biosample_accession_per_sampleset_h[assay["SampleSet ID"]] && sampleset_name_per_sampleset_h[assay["SampleSet ID"]] && !tmp_vcf_sample_a.empty?
 				unless (tmp_vcf_sample_a - sample_name_per_sampleset_h[assay["SampleSet ID"]]).empty? || (tmp_vcf_sample_a - biosample_accession_per_sampleset_h[assay["SampleSet ID"]]).empty? || (tmp_vcf_sample_a - sampleset_name_per_sampleset_h[assay["SampleSet ID"]]).empty?
 					invalid_sample_ref_vcf_a.push(assay["VCF Filename"])
 				end
@@ -1549,7 +1549,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 		# JV_C0043: Invalid Reference Assembly 
 		if !experiment["Reference Type"].empty? && !experiment["Reference Value"].empty? && experiment["Reference Type"] == "Assembly"
 			## assembly から refseq accession 取得
-			unless allowed_assembly_a.map(&:downcase).include?(experiment["Reference Value"].downcase)
+			unless allowed_assembly_a.include?(experiment["Reference Value"])
 				error_common_a.push(["JV_C0043", "Reference Value must refer to a valid Assembly if Reference Type=\"Assembly\". Experiment ID: #{experiment["Experiment ID"]}, #{experiment["Reference Value"]}"])
 			end
 		end
@@ -1703,6 +1703,8 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 	invalid_placements_pe_seq_call_a = [] # JV_SV0054
 	invalid_seq_call_a = [] # JV_SV0060
 	invalid_assay_id_call_a = [] # JV_SV0099
+
+	pos_outside_chr_call_a = [] # JV_C0061
 
 	## Variant Call Sheet or VCF
 	error_vcf_header_a, error_ignore_vcf_header_a, error_exchange_vcf_header_a, warning_vcf_header_a, error_vcf_content_a, error_ignore_vcf_content_a, error_exchange_vcf_content_a, warning_vcf_content_a, vcf_variant_call_a, vcf_variant_region_a, vcf_content_log_a = [], [], [], [], [], [], [], [], [], []
@@ -1998,7 +2000,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 						## assembly から refseq accession 取得
 						assembly_a.each{|assembly_h|
-							refseq_assembly = assembly_h["refseq_assembly"] if assembly_h.values.map(&:downcase).include?(variant_call["Assembly for Translocation Breakpoint"].downcase)
+							refseq_assembly = assembly_h["refseq_assembly"] if assembly_h.values.include?(variant_call["Assembly for Translocation Breakpoint"])
 						}
 
 						## refseq assembly から構成配列を取得
@@ -2015,45 +2017,70 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 					variant_call_e.PLACEMENT(placement_attr_h){|placement_e|
 
-						# GENOME
-						genome_attr_h = {}
-						genome_attr_h.store("assembly", variant_call["Assembly for Translocation Breakpoint"])
+						# variant call 毎に初期化
+						from_chr_name = ""
+						from_chr_accession = ""
+						from_chr_length = 0
+						from_contig_accession = ""
+						from_assembly = ""
 
 						## JV_SV0072: Invalid chromosome reference
-						valid_chr_f = false
-						for chromosome_per_assembly_h in chromosome_per_assembly_a
-							## From Chr に sequence report にある RefSeq/GenBank accession が記載されているかどうか
-							if !variant_call["From Chr"].empty? && (chromosome_per_assembly_h["refseqAccession"].downcase == variant_call["From Chr"].downcase || chromosome_per_assembly_h["genbankAccession"].downcase == variant_call["From Chr"].downcase)
-								chr_name = ""
-								chr_accession = ""
-								chr_length = chromosome_per_assembly_h["length"]
-								contig_accession = chromosome_per_assembly_h["refseqAccession"] # fna は refseqAccession 記載
-								valid_contig_f = true						
-							# contig が download ref にあるかどうか. download にある = assembly には含まれていない
-							elsif !variant_call["From Chr"].empty? && ref_download_h.keys.map(&:downcase).include?(variant_call["From Chr"].downcase)
-								chr_name = ""
-								chr_accession = ""
-								chr_length = ref_download_h[variant_call["From Chr"]] if ref_download_h[variant_call["From Chr"]]
-								contig_accession = variant_call["From Chr"]
-								valid_contig_f = true
-								ref_download_f = true
-							elsif !variant_call["From Chr"].empty? && chromosome_per_assembly_h["chrName"].downcase == variant_call["From Chr"].sub(/chr/i, "").downcase && chromosome_per_assembly_h["role"] == "assembled-molecule"
-								chr_name = chromosome_per_assembly_h["chrName"]
-								chr_accession = chromosome_per_assembly_h["refseqAccession"]
-								chr_length = chromosome_per_assembly_h["length"]
-								valid_chr_f = true
-							end
-						end
+						from_valid_chr_f = false
+						from_valid_contig_f = false
+						from_ref_download_f = false
+						from_found_f = false
+
+						# contig が download ref にあるかどうか. download にある = assembly には含まれていない
+						if !variant_call["From Chr"].empty? && $ref_download_h.keys.include?(variant_call["From Chr"]) && !from_found_f
+							from_assembly = ""
+							from_chr_name = ""
+							from_chr_accession = ""
+							from_chr_length = $ref_download_h[variant_call["From Chr"]] if $ref_download_h[variant_call["From Chr"]]
+							from_contig_accession = variant_call["From Chr"]
+							
+							from_valid_contig_f = true
+							from_ref_download_f = true
+							from_found_f = true
+						else
+							for chromosome_per_assembly_h in chromosome_per_assembly_a
+								## From Chr に sequence report にある RefSeq/GenBank accession が記載されているかどうか
+								if !variant_call["From Chr"].empty? && (chromosome_per_assembly_h["refseqAccession"] == variant_call["From Chr"] || chromosome_per_assembly_h["genbankAccession"] == variant_call["From Chr"]) && !from_found_f
+									from_assembly = variant_call["Assembly for Translocation Breakpoint"]
+									from_chr_name = ""
+									from_chr_accession = ""
+									from_chr_length = chromosome_per_assembly_h["length"]
+									from_contig_accession = chromosome_per_assembly_h["refseqAccession"] # fna は refseqAccession 記載
+									
+									from_valid_contig_f = true						
+									from_found_f = true
+								elsif !variant_call["From Chr"].empty? && chromosome_per_assembly_h["chrName"] == variant_call["From Chr"].sub(/chr/i, "") && chromosome_per_assembly_h["role"] == "assembled-molecule" && !from_found_f
+									from_assembly = variant_call["Assembly for Translocation Breakpoint"]
+									from_chr_name = chromosome_per_assembly_h["chrName"]
+									from_chr_accession = chromosome_per_assembly_h["refseqAccession"]
+									from_chr_length = chromosome_per_assembly_h["length"]
+									from_contig_accession = ""
+									
+									from_valid_chr_f = true
+									from_found_f = true
+								end
+							
+							end # for chromosome_per_assembly_h in chromosome_per_assembly_a						
+
+						end # if !variant_call["From Chr"].empty? && $ref_download_h.keys.include?(variant_call["From Chr"])
 
 						## JV_SV0072: Invalid chromosome reference, to/from は contig 列がなく一体
-						if !variant_call["From Chr"].empty? && !valid_chr_f && !valid_contig_f
+						if !variant_call["From Chr"].empty? && !from_valid_chr_f && !from_valid_contig_f
 							invalid_chr_ref_call_a.push(variant_call_id)
 							variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0072 Error: Invalid chromosome reference.")
 						end
 
-						genome_attr_h.store("chr_name", chr_name)
-						genome_attr_h.store("chr_accession", chr_accession)
-						genome_attr_h.store("contig_accession", contig_accession)
+						# GENOME
+						genome_attr_h = {}
+						genome_attr_h.store("assembly", from_assembly)
+
+						genome_attr_h.store("chr_name", from_chr_name)
+						genome_attr_h.store("chr_accession", from_chr_accession)
+						genome_attr_h.store("contig_accession", from_contig_accession)
 						genome_attr_h.store("strand", variant_call["From Strand"])
 						genome_attr_h.store("start", variant_call["From Coord"])
 						genome_attr_h.store("stop", variant_call["From Coord"])
@@ -2068,45 +2095,70 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 					variant_call_e.PLACEMENT(placement_attr_h){|placement_e|
 
-						# GENOME
-						genome_attr_h = {}
-						genome_attr_h.store("assembly", variant_call["Assembly for Translocation Breakpoint"])
+						# variant call 毎に初期化
+						to_chr_name = ""
+						to_chr_accession = ""
+						to_chr_length = 0
+						to_contig_accession = ""
+						to_assembly = ""
 
 						## JV_SV0072: Invalid chromosome reference
-						valid_chr_f = false
-						for chromosome_per_assembly_h in chromosome_per_assembly_a
-							## From Chr に sequence report にある RefSeq/GenBank accession が記載されているかどうか
-							if !variant_call["To Chr"].empty? && (chromosome_per_assembly_h["refseqAccession"].downcase == variant_call["To Chr"].downcase || chromosome_per_assembly_h["genbankAccession"].downcase == variant_call["To Chr"].downcase)
-								chr_name = ""
-								chr_accession = ""
-								chr_length = chromosome_per_assembly_h["length"]
-								contig_accession = chromosome_per_assembly_h["refseqAccession"] # fna は refseqAccession 記載
-								valid_contig_f = true						
-							# contig が download ref にあるかどうか. download にある = assembly には含まれていない
-							elsif !variant_call["To Chr"].empty? && ref_download_h.keys.map(&:downcase).include?(variant_call["To Chr"].downcase)
-								chr_name = ""
-								chr_accession = ""
-								chr_length = ref_download_h[variant_call["To Chr"]] if ref_download_h[variant_call["To Chr"]]
-								contig_accession = variant_call["To Chr"]
-								valid_contig_f = true
-								ref_download_f = true
-							elsif !variant_call["To Chr"].empty? && chromosome_per_assembly_h["chrName"].downcase == variant_call["To Chr"].sub(/chr/i, "").downcase && chromosome_per_assembly_h["role"] == "assembled-molecule"
-								chr_name = chromosome_per_assembly_h["chrName"]
-								chr_accession = chromosome_per_assembly_h["refseqAccession"]
-								chr_length = chromosome_per_assembly_h["length"]
-								valid_chr_f = true
-							end
-						end
+						to_valid_chr_f = false
+						to_valid_contig_f = false
+						to_ref_download_f = false
+						to_found_f = false
+
+						# contig が download ref にあるかどうか. download にある = assembly には含まれていない
+						if !variant_call["To Chr"].empty? && $ref_download_h.keys.include?(variant_call["To Chr"]) && !to_found_f
+							to_assembly = ""
+							to_chr_name = ""
+							to_chr_accession = ""
+							to_chr_length = $ref_download_h[variant_call["To Chr"]] if $ref_download_h[variant_call["To Chr"]]
+							to_contig_accession = variant_call["To Chr"]
+							
+							to_valid_contig_f = true
+							to_ref_download_f = true
+							to_found_f = true
+						else
+							for chromosome_per_assembly_h in chromosome_per_assembly_a
+								## From Chr に sequence report にある RefSeq/GenBank accession が記載されているかどうか
+								if !variant_call["To Chr"].empty? && (chromosome_per_assembly_h["refseqAccession"] == variant_call["To Chr"] || chromosome_per_assembly_h["genbankAccession"] == variant_call["To Chr"]) && !to_found_f
+									to_assembly = variant_call["Assembly for Translocation Breakpoint"]
+									to_chr_name = ""
+									to_chr_accession = ""
+									to_chr_length = chromosome_per_assembly_h["length"]
+									to_contig_accession = chromosome_per_assembly_h["refseqAccession"] # fna は refseqAccession 記載
+									
+									to_valid_contig_f = true						
+									to_found_f = true
+								elsif !variant_call["To Chr"].empty? && chromosome_per_assembly_h["chrName"] == variant_call["To Chr"].sub(/chr/i, "") && chromosome_per_assembly_h["role"] == "assembled-molecule" && !to_found_f
+									to_assembly = variant_call["Assembly for Translocation Breakpoint"]
+									to_chr_name = chromosome_per_assembly_h["chrName"]
+									to_chr_accession = chromosome_per_assembly_h["refseqAccession"]
+									to_chr_length = chromosome_per_assembly_h["length"]
+									to_contig_accession = ""
+
+									to_valid_chr_f = true
+									to_found_f = true
+								end
+							
+							end # for chromosome_per_assembly_h in chromosome_per_assembly_a						
+
+						end # if !variant_call["To Chr"].empty? && $ref_download_h.keys.include?(variant_call["To Chr"])
 
 						## JV_SV0072: Invalid chromosome reference, to/from は contig 列がなく一体
-						if !variant_call["To Chr"].empty? && !valid_chr_f && !valid_contig_f
+						if !variant_call["To Chr"].empty? && !to_valid_chr_f && !to_valid_contig_f
 							invalid_chr_ref_call_a.push(variant_call_id)
 							variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0072 Error: Invalid chromosome reference.")
 						end
 
-						genome_attr_h.store("chr_name", chr_name)
-						genome_attr_h.store("chr_accession", chr_accession)
-						genome_attr_h.store("contig_accession", contig_accession)
+						# GENOME
+						genome_attr_h = {}
+						genome_attr_h.store("assembly", to_assembly)
+
+						genome_attr_h.store("chr_name", to_chr_name)
+						genome_attr_h.store("chr_accession", to_chr_accession)
+						genome_attr_h.store("contig_accession", to_contig_accession)
 						genome_attr_h.store("strand", variant_call["To Strand"])
 						genome_attr_h.store("start", variant_call["To Coord"])
 						genome_attr_h.store("stop", variant_call["To Coord"])
@@ -2139,7 +2191,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 					## assembly から refseq accession 取得
 					assembly_a.each{|assembly_h|
-						refseq_assembly = assembly_h["refseq_assembly"] if assembly_h.values.map(&:downcase).include?(variant_call["Assembly"].downcase)
+						refseq_assembly = assembly_h["refseq_assembly"] if assembly_h.values.include?(variant_call["Assembly"])
 					}
 
 					## refseq assembly から構成配列を取得
@@ -2169,34 +2221,61 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 					genome_attr_h = {}
 
 					## JV_SV0072: Invalid chromosome reference
-					valid_chr_f = false
-					valid_contig_f = false
-					ref_download_f = false
-					for chromosome_per_assembly_h in chromosome_per_assembly_a
-						
-						# contig が sequence report の RefSeq/GenBank accession にあるかどうか、chr と contig 両方書いてある場合は contig を使用
-						if !variant_call["Contig"].empty? && variant_call["Chr"].empty? && (chromosome_per_assembly_h["refseqAccession"].downcase == variant_call["Contig"].downcase || chromosome_per_assembly_h["genbankAccession"].downcase == variant_call["Contig"].downcase)
+						# variant call 毎に初期化
+						chr_name = ""
+						chr_accession = ""
+						chr_length = 0
+						contig_accession = ""
+						assembly = ""
+
+						## JV_SV0072: Invalid chromosome reference
+						valid_chr_f = false
+						valid_contig_f = false
+						ref_download_f = false
+						found_f = false
+
+						# contig が download ref にあるかどうか. download にある = assembly には含まれていない
+						if !variant_call["Chr"].empty? && $ref_download_h.keys.include?(variant_call["Chr"]) && !found_f
+							assembly = ""
 							chr_name = ""
 							chr_accession = ""
-							chr_length = chromosome_per_assembly_h["length"]
-							contig_accession = chromosome_per_assembly_h["refseqAccession"] # fna は refseqAccession 記載
-							valid_contig_f = true
-						# contig が download ref にあるかどうか. download にある=assembly には含まれていない
-						elsif !variant_call["Contig"].empty? && variant_call["Chr"].empty? && ref_download_h.keys.map(&:downcase).include?(variant_call["Contig"].downcase)
-							chr_name = ""
-							chr_accession = ""
-							chr_length = ref_download_h[variant_call["Contig"]] if ref_download_h[variant_call["Contig"]]
-							contig_accession = variant_call["Contig"]
+							chr_length = $ref_download_h[variant_call["Chr"]] if $ref_download_h[variant_call["Chr"]]
+							contig_accession = variant_call["Chr"]
+							
 							valid_contig_f = true
 							ref_download_f = true
-						# chr が sequence report の chrName にあるかどうか
-						elsif !variant_call["Chr"].empty? && variant_call["Contig"].empty? && chromosome_per_assembly_h["chrName"].downcase == variant_call["Chr"].sub(/chr/i, "").downcase && chromosome_per_assembly_h["role"] == "assembled-molecule"
-							chr_name = chromosome_per_assembly_h["chrName"]
-							chr_accession = chromosome_per_assembly_h["refseqAccession"]
-							chr_length = chromosome_per_assembly_h["length"]
-							valid_chr_f = true
-						end
+							found_f = true
+						else
+							for chromosome_per_assembly_h in chromosome_per_assembly_a
+								## From Chr に sequence report にある RefSeq/GenBank accession が記載されているかどうか
+								if !variant_call["Chr"].empty? && (chromosome_per_assembly_h["refseqAccession"] == variant_call["Chr"] || chromosome_per_assembly_h["genbankAccession"] == variant_call["Chr"]) && !found_f
+									assembly = variant_call["Assembly for Translocation Breakpoint"]
+									chr_name = ""
+									chr_accession = ""
+									chr_length = chromosome_per_assembly_h["length"]
+									contig_accession = chromosome_per_assembly_h["refseqAccession"] # fna は refseqAccession 記載
+									
+									valid_contig_f = true						
+									found_f = true
+								elsif !variant_call["Chr"].empty? && chromosome_per_assembly_h["chrName"] == variant_call["Chr"].sub(/chr/i, "") && chromosome_per_assembly_h["role"] == "assembled-molecule" && !found_f
+									assembly = variant_call["Assembly for Translocation Breakpoint"]
+									chr_name = chromosome_per_assembly_h["chrName"]
+									chr_accession = chromosome_per_assembly_h["refseqAccession"]
+									chr_length = chromosome_per_assembly_h["length"]
+									contig_accession = ""
 
+									valid_chr_f = true
+									found_f = true
+								end
+							
+							end # for chromosome_per_assembly_h in chromosome_per_assembly_a						
+
+						end # if !variant_call["Chr"].empty? && $ref_download_h.keys.include?(variant_call["Chr"])
+
+					# JV_C0061: Chromosome position larger than chromosome size + 1
+					if chr_length != 0 && (pos > chr_length + 1)
+						pos_outside_chr_call_a.push(variant_call_id)
+						variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_C0061 Error: Chromosome position is larger than chromosome size + 1. Check if the position is correct.")
 					end
 
 					## JV_SV0077: Contig accession exists for chromosome accession
@@ -2235,14 +2314,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 					## genome_attr_h
 					## download に存在　=　Assembly　には含まれていない					
-					if ref_download_f
-						assembly = ""
-						genome_attr_h.store("assembly", assembly)
-					elsif !variant_call["Assembly"].empty?
-						assembly = variant_call["Assembly"]
-						variant_call_assembly_a.push(assembly)
-						genome_attr_h.store("assembly", assembly)
-					end
+					genome_attr_h.store("assembly", assembly)
 
 					## chr/chr_accession/contig_accession
 					genome_attr_h.store("chr_name", chr_name)
@@ -2558,6 +2630,8 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 	start_outer_inner_start_coexist_region_a = [] # JV_SV0091
 	stop_outer_inner_stop_coexist_region_a = [] # JV_SV0092
 
+	pos_outside_chr_region_a = [] # JV_C0061
+
 	# VCF での variant region 登録はないとする
 
 	## variant call と region で assembly は同じとする
@@ -2823,28 +2897,34 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 				for chromosome_per_assembly_h in chromosome_per_assembly_a
 
 					# contig が sequence report の RefSeq/GenBank accession にあるかどうか、chr と contig 両方書いてある場合は contig を使用
-					if !variant_region["Contig"].empty? && variant_region["Chr"].empty? && (chromosome_per_assembly_h["refseqAccession"].downcase == variant_region["Contig"].downcase || chromosome_per_assembly_h["genbankAccession"].downcase == variant_region["Contig"].downcase)
+					if !variant_region["Contig"].empty? && variant_region["Chr"].empty? && (chromosome_per_assembly_h["refseqAccession"] == variant_region["Contig"] || chromosome_per_assembly_h["genbankAccession"] == variant_region["Contig"])
 						chr_name = ""
 						chr_accession = ""
 						chr_length = chromosome_per_assembly_h["length"]
 						contig_accession = chromosome_per_assembly_h["refseqAccession"] # fna は refseqAccession 記載
 						valid_contig_f = true
 					# contig が download ref にあるかどうか. download にある=assembly には含まれていない
-					elsif !variant_region["Contig"].empty? && variant_region["Chr"].empty? && ref_download_h.keys.map(&:downcase).include?(variant_region["Contig"].downcase)
+					elsif !variant_region["Contig"].empty? && variant_region["Chr"].empty? && $ref_download_h.keys.include?(variant_region["Contig"])
 						chr_name = ""
 						chr_accession = ""
-						chr_length = ref_download_h[variant_region["Contig"]] if ref_download_h[variant_region["Contig"]]
+						chr_length = $ref_download_h[variant_region["Contig"]] if $ref_download_h[variant_region["Contig"]]
 						contig_accession = variant_region["Contig"]
 						valid_contig_f = true
 						ref_download_f = true
 					# chr が sequence report の chrName にあるかどうか
-					elsif !variant_region["Chr"].empty? && variant_region["Contig"].empty? && chromosome_per_assembly_h["chrName"].downcase == variant_region["Chr"].sub(/chr/i, "").downcase && chromosome_per_assembly_h["role"] == "assembled-molecule"
+					elsif !variant_region["Chr"].empty? && variant_region["Contig"].empty? && chromosome_per_assembly_h["chrName"] == variant_region["Chr"].sub(/chr/i, "") && chromosome_per_assembly_h["role"] == "assembled-molecule"
 						chr_name = chromosome_per_assembly_h["chrName"]
 						chr_accession = chromosome_per_assembly_h["refseqAccession"]
 						chr_length = chromosome_per_assembly_h["length"]
 						valid_chr_f = true
 					end
 
+				end
+
+				# JV_C0061: Chromosome position larger than chromosome size + 1
+				if chr_length != 0 && (pos > chr_length + 1)
+					pos_outside_chr_region_a.push(variant_region_id)
+					variant_region_tsv_log_a.push("#{variant_region["row"].join("\t")}\t# JV_C0061 Error: Chromosome position is larger than chromosome size + 1. Check if the position is correct.")
 				end
 
 				## JV_SV0077: Contig accession exists for chromosome accession
@@ -3048,19 +3128,19 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 	## Assembly reference check - variant call and region
 	## JV_SV0071: Invalid assembly reference
 	if translocation_assembly_a.sort.uniq.size == 1
-		error_sv_a.push(["JV_SV0071", "Assembly must refer to a valid assembly db name, UCSC name, assembly RefSeq accession, or assembly INSDC accession. Translocation: #{translocation_assembly_a.sort.uniq[0]}"]) if translocation_assembly_a.sort.uniq[0] && !allowed_assembly_a.include?(translocation_assembly_a.sort.uniq[0].downcase)
+		error_sv_a.push(["JV_SV0071", "Assembly must refer to a valid assembly db name, UCSC name, assembly RefSeq accession, or assembly INSDC accession. Translocation: #{translocation_assembly_a.sort.uniq[0]}"]) if translocation_assembly_a.sort.uniq[0] && !allowed_assembly_a.include?(translocation_assembly_a.sort.uniq[0])
 	elsif translocation_assembly_a.sort.uniq.size > 1
 		error_sv_a.push(["JV_SV0071", "Assembly must refer to a valid assembly db name, UCSC name, assembly RefSeq accession, or assembly INSDC accession. Translocation: #{translocation_assembly_a.sort.uniq.join(",")}"])
 	end
 
 	if variant_call_assembly_a.sort.uniq.size == 1
-		error_sv_a.push(["JV_SV0071", "Assembly must refer to a valid assembly db name, UCSC name, assembly RefSeq accession, or assembly INSDC accession. Variant call: #{variant_call_assembly_a.sort.uniq[0]}"]) if variant_call_assembly_a.sort.uniq[0] && !allowed_assembly_a.include?(variant_call_assembly_a.sort.uniq[0].downcase)
+		error_sv_a.push(["JV_SV0071", "Assembly must refer to a valid assembly db name, UCSC name, assembly RefSeq accession, or assembly INSDC accession. Variant call: #{variant_call_assembly_a.sort.uniq[0]}"]) if variant_call_assembly_a.sort.uniq[0] && !allowed_assembly_a.include?(variant_call_assembly_a.sort.uniq[0])
 	elsif variant_call_assembly_a.sort.uniq.size > 1
 		error_sv_a.push(["JV_SV0071", "Assembly must refer to a valid assembly db name, UCSC name, assembly RefSeq accession, or assembly INSDC accession. Variant call: #{variant_call_assembly_a.sort.uniq.join(",")}"])
 	end
 
 	if variant_region_assembly_a.sort.uniq.size == 1
-		error_sv_a.push(["JV_SV0071", "Assembly must refer to a valid assembly db name, UCSC name, assembly RefSeq accession, or assembly INSDC accession. Variant region: #{variant_region_assembly_a.sort.uniq[0]}"]) if variant_region_assembly_a.sort.uniq[0] && !allowed_assembly_a.include?(variant_region_assembly_a.sort.uniq[0].downcase)
+		error_sv_a.push(["JV_SV0071", "Assembly must refer to a valid assembly db name, UCSC name, assembly RefSeq accession, or assembly INSDC accession. Variant region: #{variant_region_assembly_a.sort.uniq[0]}"]) if variant_region_assembly_a.sort.uniq[0] && !allowed_assembly_a.include?(variant_region_assembly_a.sort.uniq[0])
 	elsif variant_region_assembly_a.sort.uniq.size > 1
 		error_sv_a.push(["JV_SV0071", "Assembly must refer to a valid assembly db name, UCSC name, assembly RefSeq accession, or assembly INSDC accession. Variant region: #{variant_region_assembly_a.sort.uniq.join(",")}"])
 	end
@@ -3072,6 +3152,9 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 	## JV_C0057: Invalid value for controlled terms
 	error_ignore_sv_a.push(["JV_C0057", "Value is not in controlled terms. Variant Region: #{invalid_value_for_cv_region_a.size} sites, #{invalid_value_for_cv_region_a.size > 4? invalid_value_for_cv_region_a[0, limit_for_etc].join(",") + " etc" : invalid_value_for_cv_region_a.join(",")}"]) unless invalid_value_for_cv_region_a.empty?
+
+	## JV_C0061: Chromosome position larger than chromosome size + 1
+
 
 	## JV_SV0068: Missing assertion_method
 	error_ignore_sv_a.push(["JV_SV0068", "Region MUST have an assertion_method. JVar will fill in this field. Variant Region: #{missing_assertion_method_region_a.size} sites, #{missing_assertion_method_region_a.size > 4? missing_assertion_method_region_a[0, limit_for_etc].join(",") + " etc" : missing_assertion_method_region_a.join(",")}"]) unless missing_assertion_method_region_a.empty?

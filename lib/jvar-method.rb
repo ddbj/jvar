@@ -103,9 +103,9 @@ $sv_type_alt_h = {
 	"DUP:TANDEM" => "tandem duplication",
 	"INS:NOVEL" => "novel sequence insertion",
 	"INS:ME" => "mobile element insertion",
-	"INS:ME:ALU" => "Alu insertion",
+	"INS:ME:ALU" => "alu insertion",
 	"DEL:ME" => "mobile element deletion",
-	"DEL:ME:ALU" => "Alu deletion"
+	"DEL:ME:ALU" => "alu deletion"
 }
 
 # SV VCF INFO SVTYPE
@@ -347,10 +347,10 @@ def vcf_parser(vcf_file, vcf_type)
 			end
 
 			## sample columns
-			if vcf_column_out_a.empty?
-				vcf_sample_a = vcf_column_a[9..-1]
+			if vcf_column_out_a.empty?				
+				vcf_sample_a = vcf_column_a[9..-1] if vcf_column_a[9..-1]
 			else
-				vcf_sample_a = vcf_column_out_a[9..-1]
+				vcf_sample_a = vcf_column_out_a[9..-1] if vcf_column_out_a[9..-1]
 			end
 
 	 	end
@@ -385,7 +385,7 @@ def vcf_parser(vcf_file, vcf_type)
 	## assembly から refseq accession 取得
 	refseq_assembly = ""
 	assembly_a.each{|assembly_h|
-		refseq_assembly = assembly_h["refseq_assembly"] if assembly_h.values.map(&:downcase).include?(reference.downcase)
+		refseq_assembly = assembly_h["refseq_assembly"] if assembly_h.values.include?(reference)
 	}
 
 	## JV_VCF0003: Invalid reference genome
@@ -474,6 +474,9 @@ def vcf_parser(vcf_file, vcf_type)
 	multi_allelic_c = 0
 	invalid_translocation_c = 0
 
+	# fasta
+	ref_fasta_no_exist_a = []
+
 	# SV
 	missing_svtype_c = 0
 	invalid_svtype_c = 0
@@ -510,6 +513,11 @@ def vcf_parser(vcf_file, vcf_type)
 		vrt = ""
 		vrt_number = ""
 		sv_type = ""
+
+		# chromosome
+		chr_name = ""
+		chr_accession = ""
+		chr_length = 0
 
 		## JV_VCF0005: White space characters before/after column header
 		vcf_field_whitespaces_a = []
@@ -611,11 +619,6 @@ def vcf_parser(vcf_file, vcf_type)
 			vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_VCF0041 Warning: The INFO key is not defined in the VCF header. #{undefined_info_key_a.sort.uniq.join(",")}")
 		end
 
-		# chromosome
-		chr_name = ""
-		chr_accession = ""
-		chr_length = 0
-
 		# JV_VCF0021: Duplicated local IDs
 		if id && !id.empty?
 			if id_a.include?(id)
@@ -701,6 +704,7 @@ def vcf_parser(vcf_file, vcf_type)
 
 		# reference chromosome
 		invalid_chr_f = true
+		ref_download_f = false
 		for chromosome_per_assembly_h in chromosome_per_assembly_a
 
 			## SNP は assembled-molecule 想定
@@ -710,16 +714,21 @@ def vcf_parser(vcf_file, vcf_type)
 				chr_length = chromosome_per_assembly_h["length"]
 
 				invalid_chr_f = false
+			elsif chrom && (chromosome_per_assembly_h["refseqAccession"] == chrom || chromosome_per_assembly_h["genbankAccession"] == chrom)
+				chr_name = chrom
+				chr_accession = chrom
+				chr_length = chromosome_per_assembly_h["length"]
+
+				invalid_chr_f = false
+			elsif chrom && $ref_download_h.keys.include?(chrom)
+				chr_name = chrom
+				chr_accession = chrom
+				chr_length = $ref_download_h[chrom].to_i if $ref_download_h[chrom].to_i
+
+				invalid_chr_f = false
+				ref_download_f = true
 			end
 
-		end
-
-		# JV_VCF0029: Chromosome position larger than chromosome size + 1
-		pos_outside_chr_f = false
-		if chr_length != 0 && (pos > chr_length + 1)
-			vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_VCF0029 Error: Chromosome position is larger than chromosome size + 1. Check if the position is correct.")
-			pos_outside_chr_c += 1
-			pos_outside_chr_f = true
 		end
 
 		# JV_VCF0035: Variant at telomere
@@ -738,8 +747,14 @@ def vcf_parser(vcf_file, vcf_type)
 
 			ref_fasta = ""
 			ref_fasta_extracted = ""
-			ref_fasta_extracted = `samtools faidx reference/#{refseq_assembly}.fna #{chr_accession}:#{pos}-#{pos+ref.size-1}`
-#sin		ref_fasta_extracted = `/usr/local/bin/samtools faidx reference/#{refseq_assembly}.fna #{chr_accession}:#{pos}-#{pos+ref.size-1}`
+			
+			if !ref_download_f
+				ref_fasta_extracted = `samtools faidx reference/#{refseq_assembly}.fna #{chr_accession}:#{pos}-#{pos+ref.size-1}`
+#sin			ref_fasta_extracted = `/usr/local/bin/samtools faidx reference/#{refseq_assembly}.fna #{chr_accession}:#{pos}-#{pos+ref.size-1}`
+			elsif ref_download_f
+				ref_fasta_extracted = `samtools faidx reference-download/#{chr_accession}.fna #{chr_accession}:#{pos}-#{pos+ref.size-1}`
+#sin			ref_fasta_extracted = `/usr/local/bin/samtools faidx reference-download/#{chr_accession}.fna #{chr_accession}:#{pos}-#{pos+ref.size-1}`
+			end
 
 			if ref_fasta_extracted =~ /\n([ATGCN]+)$/im
 				ref_fasta = $1.upcase
@@ -1061,7 +1076,7 @@ def vcf_parser(vcf_file, vcf_type)
 
 			mutation_id = info_h["EVENT"] if info_h["EVENT"] && info_h["EVENT"]
 
-			chr_trans_regex = "((?:chr)?[12]?[0-9XY]):([0-9]+)"
+			chr_trans_regex = "([A-Za-z0-9_.]+):([0-9]+)"
 			if alt =~ /\[.*\[/ || alt =~ /\].*\]/
 
 				valid_translocation_f = false
@@ -1077,9 +1092,8 @@ def vcf_parser(vcf_file, vcf_type)
 						to_coord = $3.to_i
 						to_chr = $2.sub(/chr/i, "")
 						to_strand = "+"
-
+						
 						valid_translocation_f = true
-
 					elsif alt =~ /#{ref}([ATGCN]*)\]#{chr_trans_regex}\]/i
 						from_chr = chrom
 						from_coord = pos
@@ -1099,7 +1113,6 @@ def vcf_parser(vcf_file, vcf_type)
 						variant_sequence = $3
 						to_coord = $2.to_i
 						to_chr = $1.sub(/chr/i, "")
-
 						to_strand = "-"
 
 						valid_translocation_f = true
@@ -1111,11 +1124,11 @@ def vcf_parser(vcf_file, vcf_type)
 						variant_sequence = $3
 						to_coord = $2.to_i
 						to_chr = $1.sub(/chr/i, "")
-
 						to_strand = "+"
 
 						valid_translocation_f = true
 					end
+
 				elsif pos == 0
 					if alt =~ /\.([ATGCN]*)\[#{chr_trans_regex}\[/i
 						from_chr = chrom
@@ -1167,8 +1180,9 @@ def vcf_parser(vcf_file, vcf_type)
 
 				end
 
-				# translocation && valid translocation
+				# translocation && valid translocation、より深いチェックは convert で.
 				if valid_translocation_f
+					
 					vcf_variant_call_h.store("From Chr", from_chr)
 					vcf_variant_call_h.store("From Coord", from_coord.to_s)
 					vcf_variant_call_h.store("From Strand", from_strand)
@@ -1328,7 +1342,7 @@ def vcf_parser(vcf_file, vcf_type)
 			# Start CIPOS
 			cipos_f = false
 			if info_h["CIPOS"] && info_h["CIPOS"].split(",")[0] && info_h["CIPOS"].split(",")[1]
-				ciposleft = info_h["CIPOS"].split(",")[0] unless info_h["CIPOS"].split(",")[0] == "."
+				ciposleft = info_h["CIPOS"].split(",")[0].sub(/^-/, "") unless info_h["CIPOS"].split(",")[0] == "."
 				ciposright = info_h["CIPOS"].split(",")[1] unless info_h["CIPOS"].split(",")[1] == "."
 				posrange_f = true
 			end
@@ -1336,7 +1350,7 @@ def vcf_parser(vcf_file, vcf_type)
 			# End CIEND
 			ciend_f = false
 			if info_h["CIEND"] && info_h["CIEND"].split(",")[0] && info_h["CIEND"].split(",")[1]
-				ciendleft = info_h["CIEND"].split(",")[0] unless info_h["CIEND"].split(",")[0] == "."
+				ciendleft = info_h["CIEND"].split(",")[0].sub(/^-/, "") unless info_h["CIEND"].split(",")[0] == "."
 				ciendright = info_h["CIEND"].split(",")[1] unless info_h["CIEND"].split(",")[1] == "."
 				ciend_f = true
 			end
@@ -1439,9 +1453,6 @@ def vcf_parser(vcf_file, vcf_type)
 
 	## JV_VCF0022: Same REF and ALT alleles
 	error_vcf_content_a.push(["JV_VCF0022", "REF and ALT alleles should not be the same. #{vcf_file} #{same_ref_alt_c} sites"]) if same_ref_alt_c > 0
-
-	# JV_VCF0029: Chromosome position larger than chromosome size + 1
-	error_vcf_content_a.push(["JV_VCF0029", "Chromosome position is larger than chromosome size + 1. Check if the position is correct. #{vcf_file} #{pos_outside_chr_c} sites"]) if pos_outside_chr_c > 0
 
 	# JV_VCF0035: Variant at telomere
 	warning_vcf_content_a.push(["JV_VCF0035", "Variant at telomere. #{vcf_file} #{telomere_c} sites"]) if telomere_c > 0
