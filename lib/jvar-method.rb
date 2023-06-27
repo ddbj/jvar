@@ -743,7 +743,7 @@ def vcf_parser(vcf_file, vcf_type)
 		if invalid_chr_f
 			vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_VCF0017 Error: Chromosome name need to match the INSDC reference assembly.")
 			invalid_chr_c += 1
-		elsif !pos_outside_chr_f && pos > 0 && pos != chr_length + 1
+		elsif pos > 0 && (pos < chr_length + 1)
 
 			ref_fasta = ""
 			ref_fasta_extracted = ""
@@ -946,6 +946,12 @@ def vcf_parser(vcf_file, vcf_type)
 			if vrt == "DIV" && pos == 1
 				vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_VCFP0004 Warning: Provide a base after the insertion and deletion at base position 1.")
 				pos_one_c += 1
+			end
+
+			# JV_C0061: Chromosome position larger than chromosome size + 1
+			if pos > chr_length + 1
+				vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_C0061 Error: Chromosome position is larger than chromosome size + 1. Check if the position is correct.")
+				pos_outside_chr_c += 1
 			end
 
 		end # if vcf_type == "SNP"
@@ -1498,6 +1504,9 @@ def vcf_parser(vcf_file, vcf_type)
 
 		# JV_VCF0023: REF and ALT alleles without leading base
 		error_vcf_content_a.push(["JV_VCF0023", "Indels need leading bases in REF and ALT alleles. #{vcf_file} #{no_leading_base_indel_c} sites"]) if no_leading_base_indel_c > 0
+
+		# JV_C0061: Chromosome position larger than chromosome size + 1
+		error_vcf_content_a.push(["JV_C0061", "Chromosome position is larger than chromosome size + 1. Check if the position is correct. #{vcf_file} #{pos_outside_chr_c} sites"]) if pos_outside_chr_c > 0
 
 		# JV_VCFP0004: Insertion and deletion at base position 1
 		warning_vcf_content_a.push(["JV_VCFP0004", "Provide a base after the insertion and deletion at base position 1. #{vcf_file} #{pos_one_c} sites"]) if pos_one_c > 0

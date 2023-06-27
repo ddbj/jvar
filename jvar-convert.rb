@@ -2021,6 +2021,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 						from_chr_name = ""
 						from_chr_accession = ""
 						from_chr_length = 0
+						from_coord = -1
 						from_contig_accession = ""
 						from_assembly = ""
 
@@ -2035,7 +2036,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 							from_assembly = ""
 							from_chr_name = ""
 							from_chr_accession = ""
-							from_chr_length = $ref_download_h[variant_call["From Chr"]] if $ref_download_h[variant_call["From Chr"]]
+							from_chr_length = $ref_download_h[variant_call["From Chr"]].to_i if $ref_download_h[variant_call["From Chr"]].to_i
 							from_contig_accession = variant_call["From Chr"]
 							
 							from_valid_contig_f = true
@@ -2082,11 +2083,27 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 						genome_attr_h.store("chr_accession", from_chr_accession)
 						genome_attr_h.store("contig_accession", from_contig_accession)
 						genome_attr_h.store("strand", variant_call["From Strand"])
-						genome_attr_h.store("start", variant_call["From Coord"])
-						genome_attr_h.store("stop", variant_call["From Coord"])
+												
+						# FROM COORD
+						if variant_call["From Coord"] && variant_call["From Coord"].to_i
+							from_coord = variant_call["From Coord"].to_i
+							genome_attr_h.store("start", variant_call["From Coord"])
+							genome_attr_h.store("stop", variant_call["From Coord"])
+						else
+							genome_attr_h.store("start", "")
+							genome_attr_h.store("stop", "")
+						end
 
 						# GENOME attributes
 						placement_e.GENOME(genome_attr_h)
+
+						## JV_C0061: Chromosome position larger than chromosome size + 1
+						if from_chr_length != 0 
+							if from_coord != -1 && (from_coord > from_chr_length + 1)
+								pos_outside_chr_call_a.push(variant_call_id)
+								variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_C0061 Error: Chromosome position is larger than chromosome size + 1. Check if the position is correct.")
+							end
+						end
 
 					} # placement_e
 
@@ -2099,6 +2116,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 						to_chr_name = ""
 						to_chr_accession = ""
 						to_chr_length = 0
+						to_coord = -1
 						to_contig_accession = ""
 						to_assembly = ""
 
@@ -2113,7 +2131,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 							to_assembly = ""
 							to_chr_name = ""
 							to_chr_accession = ""
-							to_chr_length = $ref_download_h[variant_call["To Chr"]] if $ref_download_h[variant_call["To Chr"]]
+							to_chr_length = $ref_download_h[variant_call["To Chr"]].to_i if $ref_download_h[variant_call["To Chr"]].to_i
 							to_contig_accession = variant_call["To Chr"]
 							
 							to_valid_contig_f = true
@@ -2160,11 +2178,27 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 						genome_attr_h.store("chr_accession", to_chr_accession)
 						genome_attr_h.store("contig_accession", to_contig_accession)
 						genome_attr_h.store("strand", variant_call["To Strand"])
-						genome_attr_h.store("start", variant_call["To Coord"])
-						genome_attr_h.store("stop", variant_call["To Coord"])
+
+						# TO COORD
+						if variant_call["To Coord"] && variant_call["To Coord"].to_i
+							to_coord = variant_call["To Coord"].to_i
+							genome_attr_h.store("start", variant_call["To Coord"])
+							genome_attr_h.store("stop", variant_call["To Coord"])
+						else
+							genome_attr_h.store("start", "")
+							genome_attr_h.store("stop", "")
+						end
 
 						# GENOME attributes
 						placement_e.GENOME(genome_attr_h)
+
+						## JV_C0061: Chromosome position larger than chromosome size + 1
+						if to_chr_length != 0 
+							if to_coord != -1 && (to_coord > to_chr_length + 1)
+								pos_outside_chr_call_a.push(variant_call_id)
+								variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_C0061 Error: Chromosome position is larger than chromosome size + 1. Check if the position is correct.")
+							end
+						end
 
 					} # placement_e
 
@@ -2227,6 +2261,8 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 						chr_length = 0
 						contig_accession = ""
 						assembly = ""
+						start_pos = -1
+						stop_pos = -1
 
 						## JV_SV0072: Invalid chromosome reference
 						valid_chr_f = false
@@ -2239,7 +2275,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 							assembly = ""
 							chr_name = ""
 							chr_accession = ""
-							chr_length = $ref_download_h[variant_call["Chr"]] if $ref_download_h[variant_call["Chr"]]
+							chr_length = $ref_download_h[variant_call["Chr"]].to_i if $ref_download_h[variant_call["Chr"]].to_i
 							contig_accession = variant_call["Chr"]
 							
 							valid_contig_f = true
@@ -2271,12 +2307,6 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 							end # for chromosome_per_assembly_h in chromosome_per_assembly_a						
 
 						end # if !variant_call["Chr"].empty? && $ref_download_h.keys.include?(variant_call["Chr"])
-
-					# JV_C0061: Chromosome position larger than chromosome size + 1
-					if chr_length != 0 && (pos > chr_length + 1)
-						pos_outside_chr_call_a.push(variant_call_id)
-						variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_C0061 Error: Chromosome position is larger than chromosome size + 1. Check if the position is correct.")
-					end
 
 					## JV_SV0077: Contig accession exists for chromosome accession
 					if !variant_call["Contig"].empty? && !variant_call["Chr"].empty?
@@ -2436,6 +2466,24 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 					# GENOME attributes
 					placement_e.GENOME(genome_attr_h)
 
+					# min start
+					if [variant_call["Outer Start"], variant_call["Start"], variant_call["Inner Start"]].reject{|e| e.empty? }.map{|e| e.to_i}.min
+						start_pos = [variant_call["Outer Start"], variant_call["Start"], variant_call["Inner Start"]].reject{|e| e.empty? }.map{|e| e.to_i}.min
+					end
+					
+					# max stop
+					if [variant_call["Outer Stop"], variant_call["Stop"], variant_call["Inner Stop"]].reject{|e| e.empty? }.map{|e| e.to_i}.max
+						stop_pos = [variant_call["Outer Stop"], variant_call["Stop"], variant_call["Inner Stop"]].reject{|e| e.empty? }.map{|e| e.to_i}.max
+					end
+
+					# JV_C0061: Chromosome position larger than chromosome size + 1
+					if chr_length != 0 
+						if (start_pos != -1 && (start_pos > chr_length + 1)) || (stop_pos != -1 && (stop_pos > chr_length + 1))
+							pos_outside_chr_call_a.push(variant_call_id)
+							variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_C0061 Error: Chromosome position is larger than chromosome size + 1. Check if the position is correct.")
+						end
+					end
+
 					## parent region の placement との整合性チェック
 					variant_call_placement_h.store(variant_call_id, {"Assembly" => assembly, "Chr" => chr_name, "Contig" => contig_accession, "Outer Start" => variant_call["Outer Start"], "Start" => variant_call["Start"], "Inner Start" => variant_call["Inner Start"], "Stop" => variant_call["Stop"], "Inner Stop" => variant_call["Inner Stop"], "Outer Stop" => variant_call["Outer Stop"]})
 
@@ -2592,6 +2640,8 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 	chr_length = 0
 	contig_accession = ""
 	assembly = ""
+	start_pos = -1
+	stop_pos = -1
 
 	# error and warning counts
 	duplicated_variant_region_id_a = [] # JV_SV0064
@@ -2907,7 +2957,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 					elsif !variant_region["Contig"].empty? && variant_region["Chr"].empty? && $ref_download_h.keys.include?(variant_region["Contig"])
 						chr_name = ""
 						chr_accession = ""
-						chr_length = $ref_download_h[variant_region["Contig"]] if $ref_download_h[variant_region["Contig"]]
+						chr_length = $ref_download_h[variant_region["Contig"]].to_i if $ref_download_h[variant_region["Contig"]].to_i
 						contig_accession = variant_region["Contig"]
 						valid_contig_f = true
 						ref_download_f = true
@@ -2919,12 +2969,6 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 						valid_chr_f = true
 					end
 
-				end
-
-				# JV_C0061: Chromosome position larger than chromosome size + 1
-				if chr_length != 0 && (pos > chr_length + 1)
-					pos_outside_chr_region_a.push(variant_region_id)
-					variant_region_tsv_log_a.push("#{variant_region["row"].join("\t")}\t# JV_C0061 Error: Chromosome position is larger than chromosome size + 1. Check if the position is correct.")
 				end
 
 				## JV_SV0077: Contig accession exists for chromosome accession
@@ -2956,11 +3000,13 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 				if ref_download_f
 					assembly = ""
-					genome_attr_h.store("assembly", assembly)
+					genome_attr_h.store("assembly", "")
 	            elsif !variant_region["Assembly"].empty?
 					assembly = variant_region["Assembly"]
 					variant_region_assembly_a.push(assembly)
 					genome_attr_h.store("assembly", assembly)
+	            else
+					genome_attr_h.store("assembly", "")
 	            end
 
 				genome_attr_h.store("chr_name", chr_name)
@@ -3086,6 +3132,24 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 	            # genome_attr_h.store("remap_diff_chr", "")
 	            # genome_attr_h.store("remap_best_within_cluster", "")
 
+				# min start
+				if [variant_region["Outer Start"], variant_region["Start"], variant_region["Inner Start"]].reject{|e| e.empty? }.map{|e| e.to_i}.min
+					start_pos = [variant_region["Outer Start"], variant_region["Start"], variant_region["Inner Start"]].reject{|e| e.empty? }.map{|e| e.to_i}.min
+				end
+				
+				# max stop
+				if [variant_region["Outer Stop"], variant_region["Stop"], variant_region["Inner Stop"]].reject{|e| e.empty? }.map{|e| e.to_i}.max
+					stop_pos = [variant_region["Outer Stop"], variant_region["Stop"], variant_region["Inner Stop"]].reject{|e| e.empty? }.map{|e| e.to_i}.max
+				end
+
+	            ## JV_C0061: Chromosome position larger than chromosome size + 1
+				if chr_length != 0 
+					if (start_pos != -1 && (start_pos > chr_length + 1)) || (stop_pos != -1 && (stop_pos > chr_length + 1))
+						pos_outside_chr_region_a.push(variant_region_id)
+						variant_region_tsv_log_a.push("#{variant_region["row"].join("\t")}\t# JV_C0061 Error: Chromosome position is larger than chromosome size + 1. Check if the position is correct.")
+					end
+				end
+
 	            # GENOME attributes
 	            placement_e.GENOME(genome_attr_h)
 
@@ -3154,7 +3218,8 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 	error_ignore_sv_a.push(["JV_C0057", "Value is not in controlled terms. Variant Region: #{invalid_value_for_cv_region_a.size} sites, #{invalid_value_for_cv_region_a.size > 4? invalid_value_for_cv_region_a[0, limit_for_etc].join(",") + " etc" : invalid_value_for_cv_region_a.join(",")}"]) unless invalid_value_for_cv_region_a.empty?
 
 	## JV_C0061: Chromosome position larger than chromosome size + 1
-
+	error_common_a.push(["JV_C0061", "Chromosome position is larger than chromosome size + 1. Check if the position is correct. Variant Call: #{pos_outside_chr_call_a.size} sites, #{pos_outside_chr_call_a.size > 4? pos_outside_chr_call_a[0, limit_for_etc].join(",") + " etc" : pos_outside_chr_call_a.join(",")}"]) unless pos_outside_chr_call_a.empty?
+	error_common_a.push(["JV_C0061", "Chromosome position is larger than chromosome size + 1. Check if the position is correct. Variant Region: #{pos_outside_chr_region_a.size} sites, #{pos_outside_chr_region_a.size > 4? pos_outside_chr_region_a[0, limit_for_etc].join(",") + " etc" : pos_outside_chr_region_a.join(",")}"]) unless pos_outside_chr_region_a.empty?
 
 	## JV_SV0068: Missing assertion_method
 	error_ignore_sv_a.push(["JV_SV0068", "Region MUST have an assertion_method. JVar will fill in this field. Variant Region: #{missing_assertion_method_region_a.size} sites, #{missing_assertion_method_region_a.size > 4? missing_assertion_method_region_a[0, limit_for_etc].join(",") + " etc" : missing_assertion_method_region_a.join(",")}"]) unless missing_assertion_method_region_a.empty?
@@ -3336,7 +3401,7 @@ end # if submission_h["Submission Type"] == "Structural variations"
 # Excel sheet tsv log
 if !variant_call_tsv_log_a.empty?
 
-	variant_call_tsv_log_f = open("#{submission_id}_variant_call_tsv.log.txt", "w")
+	variant_call_tsv_log_f = open("#{submission_id}_variant_call.tsv.log.txt", "w")
 
 	variant_call_tsv_log_f.puts variant_call_sheet_header_a.join("\t")
 
@@ -3350,7 +3415,7 @@ end
 # Variant Region TSV log
 unless variant_region_tsv_log_a.empty?
 
-	variant_region_tsv_log_f = open("#{submission_id}_variant_region_tsv.log.txt", "w")
+	variant_region_tsv_log_f = open("#{submission_id}_variant_region.tsv.log.txt", "w")
 
 	variant_region_tsv_log_f.puts variant_region_sheet_header_a.join("\t")
 

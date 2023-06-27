@@ -1,0 +1,13 @@
+##fileformat=VCFv4.2
+##fileDate=20200501
+##reference=GRCh38
+##INFO=<ID=VRT,Number=1,Type=Integer,Description="Variation type,1 - SNV: single nucleotide variation,2 - DIV: deletion/insertion variation,3 - HETEROZYGOUS: variable, but undefined at nucleotide level,4 - STR: short tandem repeat (microsatellite) variation, 5 - NAMED: insertion/deletion variation of named repetitive element,6 - NO VARIATION: sequence scanned for variation, but none observed,7 - MIXED: cluster contains submissions from 2 or more allelic classes (not used),8 - MNV: multiple nucleotide variation with alleles of common length greater than 1,9 - Exception">
+##INFO=<ID=AC,Number=A,Type=Integer,Description="Allele count in genotypes, for each ALT allele, in the same order as listed">
+##INFO=<ID=AF,Number=A,Type=Float,Description="Allele Frequency, for each ALT allele, in the same order as listed">
+##INFO=<ID=AN,Number=1,Type=Integer,Description="Total number of alleles in called genotypes">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+1	10001	1-10001	T	A	.	.	AN=20;AC=10;AF=0.5
+1	10100	1-10100	CCCT	C	.	.	AN=40;AC=10;AF=0.25
+1	10100	1-10100	CCCT	C	.	.	AN=40;AC=10;AF=0.25
+NT_187460.1	100	NT1	T	A	.	.	AN=20;AC=10;AF=0.5
+AP023461.1	100000	AP1	C	A	.	.	AN=20;AC=10;AF=0.5
