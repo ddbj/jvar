@@ -751,13 +751,13 @@ def vcf_parser(vcf_file, vcf_type)
 			if !ref_download_f
 				ref_fasta_extracted = `samtools faidx reference/#{refseq_assembly}.fna #{chr_accession}:#{pos}-#{pos+ref.size-1}`
 #sin			ref_fasta_extracted = `/usr/local/bin/samtools faidx reference/#{refseq_assembly}.fna #{chr_accession}:#{pos}-#{pos+ref.size-1}`
-			elsif ref_download_f
+			elsif ref_download_f				
 				ref_fasta_extracted = `samtools faidx reference-download/#{chr_accession}.fna #{chr_accession}:#{pos}-#{pos+ref.size-1}`
 #sin			ref_fasta_extracted = `/usr/local/bin/samtools faidx reference-download/#{chr_accession}.fna #{chr_accession}:#{pos}-#{pos+ref.size-1}`
 			end
 
-			if ref_fasta_extracted =~ /\n([ATGCN]+)$/im
-				ref_fasta = $1.upcase
+			if ref_fasta_extracted =~ /^>.*?\n(.*)$/im				
+				ref_fasta = $1.gsub("\n", "").upcase unless $1.nil?
 			end
 
 			# JV_VCF0014: REF allele mismatch with reference
