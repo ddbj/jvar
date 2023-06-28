@@ -749,10 +749,10 @@ def vcf_parser(vcf_file, vcf_type)
 			ref_fasta_extracted = ""
 			
 			if !ref_download_f
-				ref_fasta_extracted = `samtools faidx reference/#{refseq_assembly}.fna #{chr_accession}:#{pos}-#{pos+ref.size-1}`
+				ref_fasta_extracted = `singularity exec /usr/local/biotools/s/samtools\:1.10--h9402c20_2 samtools faidx reference/#{refseq_assembly}.fna #{chr_accession}:#{pos}-#{pos+ref.size-1}`
 #sin			ref_fasta_extracted = `/usr/local/bin/samtools faidx reference/#{refseq_assembly}.fna #{chr_accession}:#{pos}-#{pos+ref.size-1}`
 			elsif ref_download_f
-				ref_fasta_extracted = `samtools faidx reference-download/#{chr_accession}.fna #{chr_accession}:#{pos}-#{pos+ref.size-1}`
+				ref_fasta_extracted = `singularity exec /usr/local/biotools/s/samtools\:1.10--h9402c20_2 samtools faidx reference-download/#{chr_accession}.fna #{chr_accession}:#{pos}-#{pos+ref.size-1}`
 #sin			ref_fasta_extracted = `/usr/local/bin/samtools faidx reference-download/#{chr_accession}.fna #{chr_accession}:#{pos}-#{pos+ref.size-1}`
 			end
 
