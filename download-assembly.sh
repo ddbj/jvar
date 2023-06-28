@@ -107,9 +107,9 @@ mv GCF_000001405.40/ncbi_dataset/data/GCF_000001405.40/GCF_000001405.40*fna GCF_
 mv GCF_000001405.40/ncbi_dataset/data/GCF_000001405.40/*jsonl GCF_000001405.40
 
 # index genome fasta
-SAMTOOLS_COMMAND="singularity exec /usr/local/biotools/s/samtools\:1.10--h9402c20_2 samtools"
+SAMTOOLS_COMMAND='singularity exec /usr/local/biotools/s/samtools:1.10--h9402c20_2 samtools faidx'
 cd GCF_000001405.25
-${SAMTOOLS_COMMAND} faidx GCF_000001405.25.fna
+$SAMTOOLS_COMMAND GCF_000001405.25.fna
 cd ..
 # cd GCF_000001405.26
 # samtools faidx GCF_000001405.26_GRCh38_genomic.fna
@@ -154,7 +154,7 @@ cd ..
 # samtools faidx GCF_000001405.39_GRCh38.p13_genomic.fna
 # cd ..
 cd GCF_000001405.40
-${SAMTOOLS_COMMAND} faidx GCF_000001405.40.fna
+$SAMTOOLS_COMMAND GCF_000001405.40.fna
 cd ..
 
 # collect references
