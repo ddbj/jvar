@@ -2174,9 +2174,6 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 							# GENOME attributes
 							placement_e.GENOME(genome_attr_h)
 
-						end
-
-
 							if from_chr_length != 0 
 								if from_coord != -1 && (from_coord > from_chr_length + 1)
 									pos_outside_chr_call_a.push(variant_call_id)
