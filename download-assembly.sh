@@ -73,7 +73,7 @@ unzip GCF_000001405.25/GCF_000001405.25.zip -d GCF_000001405.25
 unzip GCF_000001405.40/GCF_000001405.40.zip -d GCF_000001405.40
 
 # move fasta and summary under dir
-mv GCF_000001405.25/ncbi_dataset/data/GCF_000001405.25/*fna GCF_000001405.25
+mv GCF_000001405.25/ncbi_dataset/data/GCF_000001405.25/GCF_000001405.25*fna GCF_000001405.25/GCF_000001405.25.fna
 mv GCF_000001405.25/ncbi_dataset/data/GCF_000001405.25/*jsonl GCF_000001405.25
 # mv GCF_000001405.26/ncbi_dataset/data/GCF_000001405.26/*fna GCF_000001405.26
 # mv GCF_000001405.26/ncbi_dataset/data/GCF_000001405.26/*jsonl GCF_000001405.26
@@ -103,12 +103,12 @@ mv GCF_000001405.25/ncbi_dataset/data/GCF_000001405.25/*jsonl GCF_000001405.25
 # mv GCF_000001405.38/ncbi_dataset/data/GCF_000001405.38/*jsonl GCF_000001405.38
 # mv GCF_000001405.39/ncbi_dataset/data/GCF_000001405.39/*fna GCF_000001405.39
 # mv GCF_000001405.39/ncbi_dataset/data/GCF_000001405.39/*jsonl GCF_000001405.39
-mv GCF_000001405.40/ncbi_dataset/data/GCF_000001405.40/*fna GCF_000001405.40
+mv GCF_000001405.40/ncbi_dataset/data/GCF_000001405.40/GCF_000001405.40*fna GCF_000001405.40/GCF_000001405.40.fna
 mv GCF_000001405.40/ncbi_dataset/data/GCF_000001405.40/*jsonl GCF_000001405.40
 
 # index genome fasta
 cd GCF_000001405.25
-samtools faidx GCF_000001405.25_GRCh37.p13_genomic.fna
+samtools faidx GCF_000001405.25.fna
 cd ..
 # cd GCF_000001405.26
 # samtools faidx GCF_000001405.26_GRCh38_genomic.fna
@@ -153,7 +153,7 @@ cd ..
 # samtools faidx GCF_000001405.39_GRCh38.p13_genomic.fna
 # cd ..
 cd GCF_000001405.40
-samtools faidx GCF_000001405.40_GRCh38.p14_genomic.fna
+samtools faidx GCF_000001405.40.fna
 cd ..
 
 # collect references
@@ -161,3 +161,5 @@ mkdir reference
 cp GCF_000001405*/*fna reference/
 cp GCF_000001405*/*fai reference/
 cat GCF_000001405*/*jsonl > reference/ref_sequence_report.jsonl 
+
+
