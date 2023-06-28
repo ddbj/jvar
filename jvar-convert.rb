@@ -77,6 +77,8 @@ Dir.glob("#{ref_download_path}/*fna").each{|dl_fna|
 # SV is provided by VCF
 vcf_sv_f = ""
 
+vcf_file_a = []
+
 submission_type = ""
 bioproject_accession = ""
 biosample_accession_a = []
@@ -102,11 +104,28 @@ error_common_a = []
 error_ignore_common_a = []
 error_exchange_common_a = []
 
-invalid_sample_ref_vcf_a = []
+# vcf header & content, error and warning
+error_vcf_header_h = {}
+error_ignore_vcf_header_h = {}
+error_exchange_vcf_header_h = {}
+warning_vcf_header_h = {}
+error_vcf_content_h = {}
+error_ignore_vcf_content_h = {}
+error_exchange_vcf_content_h = {}
+warning_vcf_content_h = {}
+
+# variant call, error and warning
+error_sv_vc_h = {}
+error_ignore_sv_vc_h = {}
+warning_sv_vc_h = {}
+
 snp_genotype_f = false
 sv_genotype_f = false
 
 limit_for_etc = 5
+
+# variant call 格納
+total_variant_call_h = {}
 
 ### Function
 def clean_number(num)
@@ -1049,7 +1068,7 @@ EOS
 
 	end # for assay in assay_a
 
-	# dbSNP metadata TSV を作成
+	## dbSNP metadata TSV を作成
 	snp_tsv_f = open("#{submission_id}_dbsnp.tsv", "w")
 	snp_tsv_f.puts cont_s
 	snp_tsv_f.puts method_s
@@ -1057,27 +1076,45 @@ EOS
 	snp_tsv_f.puts assay_s
 	snp_tsv_f.close
 
-	invalid_sample_ref_vcf_a = []
-
-	# dbSNP VCF を作成
+	## dbSNP VCF を作成
 	# VCF validation を実施のうえで target tags に限定せずに出力
+	
+	# VCF を跨った設定
+	id_a = []
+
 	error_vcf_header_a, error_ignore_vcf_header_a, error_exchange_vcf_header_a, warning_vcf_header_a, error_vcf_content_a, error_ignore_vcf_content_a, error_exchange_vcf_content_a, warning_vcf_content_a, vcf_variant_a = [], [], [], [], [], [], [], [], []
 	for assay in assay_a
 
+		# VCF ファイル毎の初期化
+		invalid_sample_ref_vcf_a = []
+		tmp_error_vcf_header_a = []
+		tmp_error_ignore_vcf_header_a = []
+		tmp_error_exchange_vcf_header_a = []
+		tmp_warning_vcf_header_a = []
+		tmp_error_vcf_content_a = []
+		tmp_error_ignore_vcf_content_a = []
+		tmp_error_exchange_vcf_content_a = []
+		tmp_warning_vcf_content_a = []
+		tmp_vcf_variant_call_a = []
+		tmp_vcf_variant_region_a = []
+		tmp_vcf_content_log_a = []
+
 		if !assay["Experiment ID"].empty? && !assay["VCF Filename"].empty?
+
+			vcf_file_a.push(assay["VCF Filename"])
 
 			tmp_error_vcf_header_a, tmp_error_ignore_vcf_header_a, tmp_error_exchange_vcf_header_a, tmp_warning_vcf_header_a, tmp_error_vcf_content_a, tmp_error_ignore_vcf_content_a, tmp_error_exchange_vcf_content_a, tmp_warning_vcf_content_a, tmp_vcf_variant_a, tmp_vcf_sample_a = [], [], [], [], [], [], [], [], [], []
 			tmp_error_vcf_header_a, tmp_error_ignore_vcf_header_a, tmp_error_exchange_vcf_header_a, tmp_warning_vcf_header_a, tmp_error_vcf_content_a, tmp_error_ignore_vcf_content_a, tmp_error_exchange_vcf_content_a, tmp_warning_vcf_content_a, tmp_vcf_variant_a, tmp_vcf_sample_a = vcf_parser(assay["VCF Filename"], "SNP")
 
-			error_vcf_header_a += tmp_error_vcf_header_a
-			error_ignore_vcf_header_a += tmp_error_ignore_vcf_header_a
-			error_exchange_vcf_header_a += tmp_error_exchange_vcf_header_a
-			warning_vcf_header_a += tmp_warning_vcf_header_a
-			error_vcf_content_a += tmp_error_vcf_content_a
-			error_ignore_vcf_content_a += tmp_error_ignore_vcf_content_a
-			error_exchange_vcf_content_a += tmp_error_exchange_vcf_content_a
-			warning_vcf_content_a += tmp_warning_vcf_content_a
-			vcf_variant_a.push(tmp_vcf_variant_a)
+			# VCF 毎に格納
+			error_vcf_header_h.store(assay["VCF Filename"], tmp_error_vcf_header_a)
+			error_ignore_vcf_header_h.store(assay["VCF Filename"], tmp_error_ignore_vcf_header_a)
+			error_exchange_vcf_header_h.store(assay["VCF Filename"], tmp_error_exchange_vcf_header_a)
+			warning_vcf_header_h.store(assay["VCF Filename"], tmp_warning_vcf_header_a)
+			error_vcf_content_h.store(assay["VCF Filename"], tmp_error_vcf_content_a)
+			error_ignore_vcf_content_h.store(assay["VCF Filename"], tmp_error_ignore_vcf_content_a)
+			error_exchange_vcf_content_h.store(assay["VCF Filename"], tmp_error_exchange_vcf_content_a)
+			warning_vcf_content_h.store(assay["VCF Filename"], tmp_warning_vcf_content_a)
 
 			# JV_VCF0042: Invalid sample reference in VCF			
 			if sample_name_per_sampleset_h[assay["SampleSet ID"]] && biosample_accession_per_sampleset_h[assay["SampleSet ID"]] && sampleset_name_per_sampleset_h[assay["SampleSet ID"]] && !tmp_vcf_sample_a.empty?
@@ -1126,13 +1163,12 @@ EOS
 
 		end
 
-	end # for assay in assay_a
+		# JV_VCF0042: Invalid sample reference in VCF
+		unless invalid_sample_ref_vcf_a.sort.uniq.empty?
+			error_vcf_header_a.push(["JV_VCF0042", "Reference a Sample Name/BioSample Accession of a Sample in the SampleSet or a SampleSet Name in the VCF sample column. #{invalid_sample_ref_vcf_a.sort.uniq.join(",")}"])
+		end
 
-	# JV_VCF0042: Invalid sample reference in VCF
-	unless invalid_sample_ref_vcf_a.sort.uniq.empty?
-		#error_vcf_header_a.push(["JV_VCF0042", "Reference a Sample Name/BioSample Accession of a Sample in the SampleSet in the VCF sample column. #{invalid_sample_ref_vcf_a.sort.uniq.join(",")}"])
-		error_vcf_header_a.push(["JV_VCF0042", "Reference a Sample Name/BioSample Accession of a Sample in the SampleSet or a SampleSet Name in the VCF sample column. #{invalid_sample_ref_vcf_a.sort.uniq.join(",")}"])
-	end
+	end # for assay in assay_a
 
 end # if submission_h["Submission Type"] == "Short genetic variations"
 
@@ -1142,6 +1178,7 @@ end # if submission_h["Submission Type"] == "Short genetic variations"
 ###
 vcf_log_f = ""
 variant_call_tsv_log_a = []
+all_variant_call_tsv_log_a = []
 variant_region_tsv_log_a = []
 variant_call_from_vcf_f = false
 variant_region_from_vcf_f = false
@@ -1630,81 +1667,10 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 	#
 	# Variant Call
 	#
-	validation_result_a = []
-	open("#{conf_path}/validation_result.json"){|f|
-		validation_result_a = JSON.load(f)
-	}
-	validation_result_regex = validation_result_a.join("|")
-
-	variant_call_id_a = []
-	variant_call_id_type_h = {}
-	variant_call_id_sampleset_h = {}
-	variant_call_translocation_h = {}
-	variant_call_mutation_h = {}
-	variant_call_placement_h = {}
-
-	variant_call_log_a = []
-
-	object = "Variant Call"
-
-	variant_call_tsv_s = ""
-
-	# assembly チェック用に格納
-	translocation_assembly_a = []
-	variant_call_assembly_a = []
-	variant_region_assembly_a = []
-
-	# assembly and sequences
-	refseq_assembly = ""
-	chromosome_per_assembly_a = []
-	chr_name = ""
-	chr_accession = ""
-	chr_length = 0
-	contig_accession = ""
-	assembly = ""
 
 	# tsv Assay ID to Experiment/SamplaSet IDs
 	assay_to_experiment_h = {}
 	assay_to_sampleset_h = {}
-
-	# error and warning counts
-	missing_variant_call_id_a = [] # JV_SV0001
-	duplicated_variant_call_id_a = [] # JV_SV0030
-
-	invalid_value_for_cv_call_a = [] # JV_C0057
-	invalid_phenotype_link_call_a = [] # JV_SV0033
-	invalid_phenotype_link_evidence_call_a = [] # JV_SV0036
-	missing_strand_call_a = [] # JV_SV0094
-	invalid_from_to_call_a = [] # JV_SV0045
-	different_chrs_for_intra_call_a = [] # JV_SV0041
-	same_chrs_for_inter_call_a = [] # JV_SV0042
-	invalid_chr_ref_call_a = [] # JV_SV0072
-	invalid_contig_acc_ref_call_a = [] # JV_SV0074
-	missing_chr_contig_acc_call_a = [] # JV_SV0076
-	strand_for_translocation_call_a = [] # JV_SV0095
-	inconsistent_outer_start_stop_call_a = [] # JV_SV0047
-	contig_acc_for_chr_acc_call_a = [] # JV_SV0077
-	chry_for_female_call_a = [] # JV_SV0059
-	missing_start_call_a = [] # JV_SV0078
-	missing_stop_call_a = [] # JV_SV0079
-	invalid_start_stop_call_a = [] # JV_SV0080
-	invalid_outer_start_outer_stop_call_a = [] # JV_SV0081
-	invalid_outer_start_inner_start_call_a = [] # JV_SV0082
-	invalid_inner_stop_outer_stop_call_a = [] # JV_SV0083
-	invalid_start_inner_stop_call_a = [] # JV_SV0084
-	invalid_inner_start_stop_call_a = [] # JV_SV0085
-	invalid_inner_start_inner_stop_call_a = [] # JV_SV0086
-	multiple_starts_call_a = [] # JV_SV0087
-	multiple_stops_call_a = [] # JV_SV0088
-	inconsistent_length_start_stop_call_a = [] # JV_SV0089
-	inconsistent_inner_start_stop_call_a = [] # JV_SV0090
-	start_outer_inner_start_coexist_call_a = [] # JV_SV0091
-	stop_outer_inner_stop_coexist_call_a = [] # JV_SV0092
-	invalid_placements_pe_seq_call_a = [] # JV_SV0054
-	invalid_seq_call_a = [] # JV_SV0060
-	invalid_assay_id_call_a = [] # JV_SV0099
-
-	pos_outside_chr_call_a = [] # JV_C0061
 
 	## Variant Call Sheet or VCF
 	error_vcf_header_a, error_ignore_vcf_header_a, error_exchange_vcf_header_a, warning_vcf_header_a, error_vcf_content_a, error_ignore_vcf_content_a, error_exchange_vcf_content_a, warning_vcf_content_a, vcf_variant_call_a, vcf_variant_region_a, vcf_content_log_a = [], [], [], [], [], [], [], [], [], []
@@ -1725,20 +1691,33 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 		## Variant Call from VCF
 		unless vcf_sv_f.empty?
 
+			vcf_file_a.push(vcf_sv_f)
+
 			# VCF file for logging
 			vcf_log_f = File.open("#{vcf_sv_f}.log.txt", "w")
 
-			tmp_error_vcf_header_a, tmp_error_ignore_vcf_header_a, tmp_error_exchange_vcf_header_a, tmp_warning_vcf_header_a, tmp_error_vcf_content_a, tmp_error_ignore_vcf_content_a, tmp_error_exchange_vcf_content_a, tmp_warning_vcf_content_a, tmp_vcf_variant_call_a, tmp_vcf_variant_region_a, tmp_vcf_content_log_a = [], [], [], [], [], [], [], [], [], []
+			# VCF ファイル毎の初期化
+			invalid_sample_ref_vcf_a = []
+			tmp_error_vcf_header_a = []
+			tmp_error_ignore_vcf_header_a = []
+			tmp_error_exchange_vcf_header_a = []
+			tmp_warning_vcf_header_a = []
+			tmp_error_vcf_content_a = []
+			tmp_error_ignore_vcf_content_a = []
+			tmp_error_exchange_vcf_content_a = []
+			tmp_warning_vcf_content_a = []
+			tmp_vcf_variant_call_a = []
+			tmp_vcf_variant_region_a = []
+			tmp_vcf_content_log_a = []
+			
 			tmp_error_vcf_header_a, tmp_error_ignore_vcf_header_a, tmp_error_exchange_vcf_header_a, tmp_warning_vcf_header_a, tmp_error_vcf_content_a, tmp_error_ignore_vcf_content_a, tmp_error_exchange_vcf_content_a, tmp_warning_vcf_content_a, tmp_vcf_variant_call_a, tmp_vcf_variant_region_a, tmp_vcf_content_log_a = vcf_parser(vcf_sv_f, "SV")
 
 			# log を VCF に出力
 			# VCF log error and warning
 			unless tmp_vcf_content_log_a.empty?
-
 				tmp_vcf_content_log_a.each{|log_line|
 					vcf_log_f.puts log_line
 				}
-
 			end
 
 			for tmp_vcf_variant_call_h in tmp_vcf_variant_call_a
@@ -1761,17 +1740,58 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 					tmp_vcf_variant_call_h.store("SampleSet ID", "")
 				end
 
+				# JV_VCF0042: Invalid sample reference in VCF
+				unless tmp_vcf_variant_call_h["FORMAT"].empty?
+					for ft_value_h in tmp_vcf_variant_call_h["FORMAT"]
+						if sample_name_per_sampleset_h[tmp_vcf_variant_call_h["SampleSet ID"]] && biosample_accession_per_sampleset_h[tmp_vcf_variant_call_h["SampleSet ID"]] && sampleset_name_per_sampleset_h[tmp_vcf_variant_call_h["SampleSet ID"]]
+							unless (ft_value_h.keys - sample_name_per_sampleset_h[tmp_vcf_variant_call_h["SampleSet ID"]]).empty? || (ft_value_h.keys - biosample_accession_per_sampleset_h[tmp_vcf_variant_call_h["SampleSet ID"]]).empty? || (ft_value_h.keys - sampleset_name_per_sampleset_h[tmp_vcf_variant_call_h["SampleSet ID"]]).empty?
+								invalid_sample_ref_vcf_a.push(vcf_sv_f)
+							end
+
+							# Genotype flag
+							ft_value_h.values.each{|ft_value|
+								ft_value.each{|key, value|
+									sv_genotype_f = true if key == "GT"	|| key == "CN"
+								}
+							}
+						
+						end
+					end
+				end # unless tmp_vcf_variant_call_h["FORMAT"].empty?
+
+				# JV_VCF0042: Invalid sample reference in VCF
+				unless invalid_sample_ref_vcf_a.sort.uniq.empty?
+					tmp_error_vcf_header_a.push(["JV_VCF0042", "Reference a Sample Name/BioSample Accession of a Sample in the SampleSet or a SampleSet Name in the VCF sample column. #{invalid_sample_ref_vcf_a.sort.uniq.join(",")}"])
+					#error_vcf_header_a.push(["JV_VCF0042", "Reference a Sample Name/BioSample Accession of a Sample in the SampleSet or a SampleSet Name in the VCF sample column. #{invalid_sample_ref_vcf_a.sort.uniq.join(",")}"])
+				end
+
+				# row に VCF を row にしたものを格納
 				unless tmp_vcf_variant_call_h["row"]
 					# VCF variant call に tsv 用の row 格納
 					row_a = []
 					for item in variant_call_sheet_header_a
-						row_a.push(tmp_vcf_variant_call_h[item] ? tmp_vcf_variant_call_h[item] : "")		
+						# sheet header 項目名が無いものは "" を格納
+						row_a.push(tmp_vcf_variant_call_h[item] ? tmp_vcf_variant_call_h[item] : "")
 					end
 
 					tmp_vcf_variant_call_h.store("row", row_a)
 				end
 
 			end # for tmp_vcf_variant_call_h in tmp_vcf_variant_call_a
+
+			# VCF 毎に variant call を格納
+			total_variant_call_h.store(vcf_sv_f, tmp_vcf_variant_call_a)
+			variant_call_from_vcf_f = true
+
+			# VCF 毎に VCF 段階でのチェック結果を格納
+			error_vcf_header_h.store(vcf_sv_f, tmp_error_vcf_header_a)
+			error_ignore_vcf_header_h.store(vcf_sv_f, tmp_error_ignore_vcf_header_a)
+			error_exchange_vcf_header_h.store(vcf_sv_f, tmp_error_exchange_vcf_header_a)
+			warning_vcf_header_h.store(vcf_sv_f, tmp_warning_vcf_header_a)
+			error_vcf_content_h.store(vcf_sv_f, tmp_error_vcf_content_a)
+			error_ignore_vcf_content_h.store(vcf_sv_f, tmp_error_ignore_vcf_content_a)
+			error_exchange_vcf_content_h.store(vcf_sv_f, tmp_error_exchange_vcf_content_a)
+			warning_vcf_content_h.store(vcf_sv_f, tmp_warning_vcf_content_a)
 
 			error_vcf_header_a += tmp_error_vcf_header_a
 			error_ignore_vcf_header_a += tmp_error_ignore_vcf_header_a
@@ -1784,223 +1804,507 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 			vcf_variant_call_a += tmp_vcf_variant_call_a
 			vcf_variant_region_a += tmp_vcf_variant_region_a
 			
-		end # unless vcf_sv_f.empty?
+		end # unless vcf_sv_f.empty? SV VCF 毎の処理
 
 	end # for assay in assay_a
 
-	for vcf_variant_call_h in vcf_variant_call_a
-
-		variant_call_from_vcf_a.push(vcf_variant_call_h)
-
-		# JV_VCF0042: Invalid sample reference in VCF
-		unless vcf_variant_call_h["FORMAT"].empty?
-			for ft_value_h in vcf_variant_call_h["FORMAT"]
-				if sample_name_per_sampleset_h[vcf_variant_call_h["SampleSet ID"]] && biosample_accession_per_sampleset_h[vcf_variant_call_h["SampleSet ID"]] && sampleset_name_per_sampleset_h[vcf_variant_call_h["SampleSet ID"]]
-					unless (ft_value_h.keys - sample_name_per_sampleset_h[vcf_variant_call_h["SampleSet ID"]]).empty? || (ft_value_h.keys - biosample_accession_per_sampleset_h[vcf_variant_call_h["SampleSet ID"]]).empty? || (ft_value_h.keys - sampleset_name_per_sampleset_h[vcf_variant_call_h["SampleSet ID"]]).empty?
-						invalid_sample_ref_vcf_a.push(vcf_sv_f)
-					end
-
-					# Genotype flag
-					ft_value_h.values.each{|ft_value|
-						ft_value.each{|key, value|
-							sv_genotype_f = true if key == "GT"	|| key == "CN"
-						}
-					}
-				
-				end
-			end
-		end # unless vcf_variant_call_h["FORMAT"].empty?
-
-	end # for variant_call_h in variant_call_a
-
-	# JV_VCF0042: Invalid sample reference in VCF
-	unless invalid_sample_ref_vcf_a.sort.uniq.empty?
-		error_vcf_header_a.push(["JV_VCF0042", "Reference a Sample Name/BioSample Accession of a Sample in the SampleSet or a SampleSet Name in the VCF sample column. #{invalid_sample_ref_vcf_a.sort.uniq.join(",")}"])
-	end
-
-	# variant call は sheet ではなく VCF を使用
-	unless vcf_sv_f.empty?
-		variant_call_a = variant_call_from_vcf_a
-		call_from_vcf_f = true
+	## Variant call in TSV or VCF
+	# variant call は sheet から
+	if vcf_sv_f.empty?
+		total_variant_call_h.store("tsv", variant_call_a)
 	end
 
 	#
 	# Generate Variant Call XML
 	#
+	
+	# vcf を跨った variant call 全体の設定
+	validation_result_a = []
+	open("#{conf_path}/validation_result.json"){|f|
+		validation_result_a = JSON.load(f)
+	}
+	validation_result_regex = validation_result_a.join("|")
 
-	vc_line = 0
-	for variant_call in variant_call_a
+	variant_call_id_a = []
+	object = "Variant Call"
+	all_variant_call_tsv_s = ""
 
-		# variant call 毎に初期化
+	vcf_count = 0
+	for vc_input, variant_call_a in total_variant_call_h
+
+		vc_line = 0
+
+		error_sv_vc_a = []
+		error_ignore_sv_vc_a = []
+		warning_sv_vc_a = []
+
+		variant_call_tsv_log_a = []
+		variant_call_tsv_s = ""
+
+		# VCF 毎に初期化
+		chromosome_per_assembly_a = []
+
+		variant_call_id_type_h = {}
+		variant_call_id_sampleset_h = {}
+		variant_call_translocation_h = {}
+		variant_call_mutation_h = {}
+		variant_call_placement_h = {}
+
+		# assembly チェック用に格納
+		translocation_assembly_a = []
+		variant_call_assembly_a = []
+		variant_region_assembly_a = []
+
+		# assembly and sequences
+		refseq_assembly = ""
+		chromosome_per_assembly_a = []
 		chr_name = ""
 		chr_accession = ""
 		chr_length = 0
 		contig_accession = ""
 		assembly = ""
 
-		# VARIANT_CALL attributes
-		variant_call_attr_h = {}
+		# error and warning counts
+		missing_variant_call_id_a = [] # JV_SV0001
+		duplicated_variant_call_id_a = [] # JV_SV0030
 
-		variant_call_id = ""
-		variant_call_type = ""
-		unless variant_call["Variant Call ID"].empty?
+		invalid_value_for_cv_call_a = [] # JV_C0057
+		invalid_phenotype_link_call_a = [] # JV_SV0033
+		invalid_phenotype_link_evidence_call_a = [] # JV_SV0036
+		missing_strand_call_a = [] # JV_SV0094
+		invalid_from_to_call_a = [] # JV_SV0045
+		different_chrs_for_intra_call_a = [] # JV_SV0041
+		same_chrs_for_inter_call_a = [] # JV_SV0042
+		invalid_chr_ref_call_a = [] # JV_SV0072
+		invalid_contig_acc_ref_call_a = [] # JV_SV0074
+		missing_chr_contig_acc_call_a = [] # JV_SV0076
+		strand_for_translocation_call_a = [] # JV_SV0095
+		inconsistent_outer_start_stop_call_a = [] # JV_SV0047
+		contig_acc_for_chr_acc_call_a = [] # JV_SV0077
+		chry_for_female_call_a = [] # JV_SV0059
+		missing_start_call_a = [] # JV_SV0078
+		missing_stop_call_a = [] # JV_SV0079
+		invalid_start_stop_call_a = [] # JV_SV0080
+		invalid_outer_start_outer_stop_call_a = [] # JV_SV0081
+		invalid_outer_start_inner_start_call_a = [] # JV_SV0082
+		invalid_inner_stop_outer_stop_call_a = [] # JV_SV0083
+		invalid_start_inner_stop_call_a = [] # JV_SV0084
+		invalid_inner_start_stop_call_a = [] # JV_SV0085
+		invalid_inner_start_inner_stop_call_a = [] # JV_SV0086
+		multiple_starts_call_a = [] # JV_SV0087
+		multiple_stops_call_a = [] # JV_SV0088
+		inconsistent_length_start_stop_call_a = [] # JV_SV0089
+		inconsistent_inner_start_stop_call_a = [] # JV_SV0090
+		start_outer_inner_start_coexist_call_a = [] # JV_SV0091
+		stop_outer_inner_stop_coexist_call_a = [] # JV_SV0092
+		invalid_placements_pe_seq_call_a = [] # JV_SV0054
+		invalid_seq_call_a = [] # JV_SV0060
+		invalid_assay_id_call_a = [] # JV_SV0099
 
-			variant_call_id = variant_call["Variant Call ID"]
-			variant_call_attr_h.store("variant_call_id", variant_call_id)
+		pos_outside_chr_call_a = [] # JV_C0061
 
-			if variant_call_id_a.include?(variant_call_id)
-				# JV_SV0030: Duplicated Variant Call ID
-				duplicated_variant_call_id_a.push(variant_call_id)
-				variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_C0030 Error: Variant Call ID must be unique.")				
-			end
+		for variant_call in variant_call_a
 
-			variant_call_id_a.push(variant_call_id)
-		end
+			# variant call 毎に初期化
+			chr_name = ""
+			chr_accession = ""
+			chr_length = 0
+			contig_accession = ""
+			assembly = ""
 
-		variant_call_attr_h.store("variant_call_accession", "")
+			# VARIANT_CALL attributes
+			variant_call_attr_h = {}
 
-		# CV
-		variant_call.each{|key, value|
-			if value && !value.empty? && cv_h[object] && cv_h[object][key] && !cv_h[object][key].include?(value)
-				## JV_C0057: Invalid value for controlled terms
-				invalid_value_for_cv_call_a.push("#{variant_call_id} #{key}:#{value}")
-				variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_C0057 Error: Invalid value for controlled terms. #{key}:#{value}")
-			end
-		}
+			variant_call_id = ""
+			variant_call_type = ""
+			unless variant_call["Variant Call ID"].empty?
 
-		unless variant_call["Variant Call Type"].empty? && vtype_h["Variant Call Type"][variant_call["Variant Call Type"]]
-			variant_call_type = variant_call["Variant Call Type"]
-			variant_call_attr_h.store("variant_call_type", variant_call["Variant Call Type"])
-			variant_call_id_type_h.store(variant_call_id, variant_call["Variant Call Type"])
-		end
+				variant_call_id = variant_call["Variant Call ID"]
+				variant_call_attr_h.store("variant_call_id", variant_call_id)
 
-		# JV_SV0099: Invalid assay reference
-		unless assay_to_experiment_h.keys.include?(variant_call["Assay ID"])
-			invalid_assay_id_call_a.push("#{variant_call_id}")
-			variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0099 Error: Provide a valid assay ID. #{variant_call["Assay ID"]}")			
-		end
-
-		variant_call_attr_h.store("variant_call_type_SO_id", "")
-		variant_call_attr_h.store("clinical_source", "")
-		variant_call_attr_h.store("clinical_significance", "")
-		variant_call_attr_h.store("insertion_length", variant_call["Insertion Length"]) unless !variant_call["Insertion Length"] && variant_call["Insertion Length"].empty?
-		variant_call_attr_h.store("zygosity", variant_call["Zygosity"]) unless variant_call["Zygosity"].empty?
-		variant_call_attr_h.store("origin", variant_call["Origin"]) unless variant_call["Origin"].empty?
-		variant_call_attr_h.store("copy_number", variant_call["Copy Number"]) unless variant_call["Copy Number"].empty?
-		variant_call_attr_h.store("reference_copy_number", "")
-		# variant_call_attr_h.store("support_count", "")
-		# variant_call_attr_h.store("log2_value", "")
-		# variant_call_attr_h.store("is_low_quality", "")
-
-		# Experiment ID
-		# from VCF and has an experiment ID
-		if variant_call["Experiment ID"]
-			variant_call_attr_h.store("experiment_id", variant_call["Experiment ID"])
-		# from tsv
-		elsif !variant_call["Assay ID"].empty? && assay_to_experiment_h[variant_call["Assay ID"]]
-			variant_call_attr_h.store("experiment_id", assay_to_experiment_h[variant_call["Assay ID"]])
-		end
-
-		variant_call_attr_h.store("allele_count", variant_call["Allele Count"]) unless variant_call["Allele Count"].empty?
-		variant_call_attr_h.store("allele_frequency", variant_call["Allele Frequency"]) unless variant_call["Allele Frequency"].empty?
-		variant_call_attr_h.store("allele_number", variant_call["Allele Number"]) unless variant_call["Allele Number"].empty?
-		variant_call_attr_h.store("repeat_count", "")
-
-		submission.VARIANT_CALL(variant_call_attr_h){|variant_call_e|
-
-			# VALIDATION
-			if variant_call["Validation"].scan(/(\d{1,}) *: *(#{validation_result_regex})/i).size > 0
-				for eid, result in variant_call["Validation"].scan(/(\d{1,}) *: *(#{validation_result_regex})/i)
-					variant_call_e.VALIDATION("experiment_id" => eid, "result" => result.capitalize)
+				if variant_call_id_a.include?(variant_call_id)
+					# JV_SV0030: Duplicated Variant Call ID
+					duplicated_variant_call_id_a.push(variant_call_id)
+					variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_C0030 Error: Variant Call ID must be unique.")				
 				end
+
+				# VCF を跨った study (submission) 単位のチェック
+				variant_call_id_a.push(variant_call_id)
+
 			end
 
-			# DESCRIPTION
-			variant_call_e.DESCRIPTION(variant_call["Description"])
+			variant_call_attr_h.store("variant_call_accession", "")
 
-			# SAMPLESET
-			# from VCF and has an SampleSet ID
-			if variant_call["SampleSet ID"]
-				variant_call_e.SAMPLESET("sampleset_id" => variant_call["SampleSet ID"])
-				variant_call_id_sampleset_h.store(variant_call_id, variant_call["SampleSet ID"])
+			# CV
+			variant_call.each{|key, value|
+				if value && !value.empty? && cv_h[object] && cv_h[object][key] && !cv_h[object][key].include?(value)
+					## JV_C0057: Invalid value for controlled terms
+					invalid_value_for_cv_call_a.push("#{variant_call_id} #{key}:#{value}")
+					variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_C0057 Error: Invalid value for controlled terms. #{key}:#{value}")
+				end
+			}
+
+			unless variant_call["Variant Call Type"].empty? && vtype_h["Variant Call Type"][variant_call["Variant Call Type"]]
+				variant_call_type = variant_call["Variant Call Type"]
+				variant_call_attr_h.store("variant_call_type", variant_call["Variant Call Type"])
+				variant_call_id_type_h.store(variant_call_id, variant_call["Variant Call Type"])
+			end
+
+			# JV_SV0099: Invalid assay reference
+			unless assay_to_experiment_h.keys.include?(variant_call["Assay ID"])
+				invalid_assay_id_call_a.push("#{variant_call_id}")
+				variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0099 Error: Provide a valid assay ID. #{variant_call["Assay ID"]}")			
+			end
+
+			variant_call_attr_h.store("variant_call_type_SO_id", "")
+			variant_call_attr_h.store("clinical_source", "")
+			variant_call_attr_h.store("clinical_significance", "")
+			variant_call_attr_h.store("insertion_length", variant_call["Insertion Length"]) unless !variant_call["Insertion Length"] && variant_call["Insertion Length"].empty?
+			variant_call_attr_h.store("zygosity", variant_call["Zygosity"]) unless variant_call["Zygosity"].empty?
+			variant_call_attr_h.store("origin", variant_call["Origin"]) unless variant_call["Origin"].empty?
+			variant_call_attr_h.store("copy_number", variant_call["Copy Number"]) unless variant_call["Copy Number"].empty?
+			variant_call_attr_h.store("reference_copy_number", "")
+			# variant_call_attr_h.store("support_count", "")
+			# variant_call_attr_h.store("log2_value", "")
+			# variant_call_attr_h.store("is_low_quality", "")
+
+			# Experiment ID
+			# from VCF and has an experiment ID
+			if variant_call["Experiment ID"]
+				variant_call_attr_h.store("experiment_id", variant_call["Experiment ID"])
 			# from tsv
-			elsif !variant_call["Assay ID"].empty? && assay_to_sampleset_h[variant_call["Assay ID"]]
-				variant_call_e.SAMPLESET("sampleset_id" => assay_to_sampleset_h[variant_call["Assay ID"]])
-				variant_call_id_sampleset_h.store(variant_call_id, assay_to_sampleset_h[variant_call["Assay ID"]])
+			elsif !variant_call["Assay ID"].empty? && assay_to_experiment_h[variant_call["Assay ID"]]
+				variant_call_attr_h.store("experiment_id", assay_to_experiment_h[variant_call["Assay ID"]])
 			end
 
-			# LINK
-			if variant_call["External Links"].scan(/(#{xref_db_all_regex}) *: *([-A-Za-z0-9]+)/).size > 0
-				for db, id in variant_call["External Links"].scan(/(#{xref_db_all_regex}) *: *([-A-Za-z0-9]+)/)
-					variant_call_e.LINK("db" => db, "id" => id)
-				end # for db, id in variant_call["External Links"].scan(/(#{xref_db_all_regex}) *: *([-A-Za-z0-9]+)/)
-			end
+			variant_call_attr_h.store("allele_count", variant_call["Allele Count"]) unless variant_call["Allele Count"].empty?
+			variant_call_attr_h.store("allele_frequency", variant_call["Allele Frequency"]) unless variant_call["Allele Frequency"].empty?
+			variant_call_attr_h.store("allele_number", variant_call["Allele Number"]) unless variant_call["Allele Number"].empty?
+			variant_call_attr_h.store("repeat_count", "")
 
-			# PHENOTYPE
-			unless variant_call["Phenotype"].empty?
-				if variant_call["Phenotype"].scan(/(#{xref_db_phenotypes_regex}) *: *([-A-Za-z0-9]+)/).size > 0
-					variant_call_e.PHENOTYPE{|phenotype|
-						for db, id in variant_call["Phenotype"].scan(/(#{xref_db_phenotypes_regex}) *: *([-A-Za-z0-9]+)/)
-							phenotype.LINK("db" => db, "id" => id)
-						end # for db, id in variant_call["Phenotype"].scan(/(#{xref_db_phenotypes_regex}) *: *([-A-Za-z0-9]+)/)
-					}
-				else
-					variant_call_e.PHENOTYPE{|phenotype|
-						phenotype.DESCRIPTION(variant_call["Phenotype"])
-					}
+			submission.VARIANT_CALL(variant_call_attr_h){|variant_call_e|
 
-					## JV_SV0033: Invalid Variant Call Phenotype link
-					invalid_phenotype_link_call_a.push("#{variant_call_id} #{variant_call["Phenotype"]}")
-					variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0033 Warning: Invalid Variant Call Phenotype link. #{variant_call["Phenotype"]}")
-
-				end
-			end # unless sample["Subject Phenotype"].empty?
-
-			## mutation ID, order チェック用に格納
-			variant_call_mutation_h.store(variant_call_id, {"Variant Call ID" => variant_call_id, "Assembly for Translocation Breakpoint" => variant_call["Assembly for Translocation Breakpoint"], "From Chr" => variant_call["From Chr"], "From Coord" => variant_call["From Coord"], "From Strand" => variant_call["From Strand"], "To Chr" => variant_call["To Chr"], "To Coord" => variant_call["To Coord"], "To Strand" => variant_call["To Strand"], "Mutation ID" => variant_call["Mutation ID"], "Mutation Order" => variant_call["Mutation Order"], "Mutation Molecule" => variant_call["Mutation Molecule"]})
-
-			# PLACEMENT attributes
-			placement_attr_h = {}
-			placement_attr_h.store("placement_method", "Submitted genomic")
-
-			## translocation
-			if variant_call["Variant Call Type"] =~ /translocation/
-
-				## JV_SV0094: Missing strand for translocation
-				if variant_call["From Strand"].empty? || variant_call["To Strand"].empty?
-					missing_strand_call_a.push(variant_call_id)
-					variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0094 Warning: Missing strand for translocation.")
+				# VALIDATION
+				if variant_call["Validation"].scan(/(\d{1,}) *: *(#{validation_result_regex})/i).size > 0
+					for eid, result in variant_call["Validation"].scan(/(\d{1,}) *: *(#{validation_result_regex})/i)
+						variant_call_e.VALIDATION("experiment_id" => eid, "result" => result.capitalize)
+					end
 				end
 
-				## JV_SV0045: Invalid translocation from and to
-				if variant_call["Assembly for Translocation Breakpoint"] && variant_call["Assembly for Translocation Breakpoint"].empty? || variant_call["From Chr"].empty? || variant_call["From Coord"].empty? || variant_call["From Strand"].empty? || variant_call["To Chr"].empty? || variant_call["To Coord"].empty? || variant_call["To Strand"].empty?
-					invalid_from_to_call_a.push(variant_call_id)
-					variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0045 Error: Invalid translocation from and to.")
-				else
+				# DESCRIPTION
+				variant_call_e.DESCRIPTION(variant_call["Description"])
 
-					## translocation call を格納
-					variant_call_translocation_h.store(variant_call_id, {"Variant Call ID" => variant_call_id, "Assembly for Translocation Breakpoint" => variant_call["Assembly for Translocation Breakpoint"], "From Chr" => variant_call["From Chr"], "From Coord" => variant_call["From Coord"], "From Strand" => variant_call["From Strand"], "To Chr" => variant_call["To Chr"], "To Coord" => variant_call["To Coord"], "To Strand" => variant_call["To Strand"], "Mutation ID" => variant_call["Mutation ID"], "Mutation Order" => variant_call["Mutation Order"], "Mutation Molecule" => variant_call["Mutation Molecule"]})
+				# SAMPLESET
+				# from VCF and has an SampleSet ID
+				if variant_call["SampleSet ID"]
+					variant_call_e.SAMPLESET("sampleset_id" => variant_call["SampleSet ID"])
+					variant_call_id_sampleset_h.store(variant_call_id, variant_call["SampleSet ID"])
+				# from tsv
+				elsif !variant_call["Assay ID"].empty? && assay_to_sampleset_h[variant_call["Assay ID"]]
+					variant_call_e.SAMPLESET("sampleset_id" => assay_to_sampleset_h[variant_call["Assay ID"]])
+					variant_call_id_sampleset_h.store(variant_call_id, assay_to_sampleset_h[variant_call["Assay ID"]])
+				end
 
-					## JV_SV0041: Different chromosomes for intrachromosomal translocation
-					if variant_call["Variant Call Type"] == "intrachromosomal translocation" && variant_call["From Chr"] != variant_call["To Chr"]
-						different_chrs_for_intra_call_a.push(variant_call_id)
-						variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0041 Error: Different chromosomes for intrachromosomal translocation.")
+				# LINK
+				if variant_call["External Links"].scan(/(#{xref_db_all_regex}) *: *([-A-Za-z0-9]+)/).size > 0
+					for db, id in variant_call["External Links"].scan(/(#{xref_db_all_regex}) *: *([-A-Za-z0-9]+)/)
+						variant_call_e.LINK("db" => db, "id" => id)
+					end # for db, id in variant_call["External Links"].scan(/(#{xref_db_all_regex}) *: *([-A-Za-z0-9]+)/)
+				end
+
+				# PHENOTYPE
+				unless variant_call["Phenotype"].empty?
+					if variant_call["Phenotype"].scan(/(#{xref_db_phenotypes_regex}) *: *([-A-Za-z0-9]+)/).size > 0
+						variant_call_e.PHENOTYPE{|phenotype|
+							for db, id in variant_call["Phenotype"].scan(/(#{xref_db_phenotypes_regex}) *: *([-A-Za-z0-9]+)/)
+								phenotype.LINK("db" => db, "id" => id)
+							end # for db, id in variant_call["Phenotype"].scan(/(#{xref_db_phenotypes_regex}) *: *([-A-Za-z0-9]+)/)
+						}
+					else
+						variant_call_e.PHENOTYPE{|phenotype|
+							phenotype.DESCRIPTION(variant_call["Phenotype"])
+						}
+
+						## JV_SV0033: Invalid Variant Call Phenotype link
+						invalid_phenotype_link_call_a.push("#{variant_call_id} #{variant_call["Phenotype"]}")
+						variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0033 Warning: Invalid Variant Call Phenotype link. #{variant_call["Phenotype"]}")
+
+					end
+				end # unless sample["Subject Phenotype"].empty?
+
+				## mutation ID, order チェック用に格納
+				variant_call_mutation_h.store(variant_call_id, {"Variant Call ID" => variant_call_id, "Assembly for Translocation Breakpoint" => variant_call["Assembly for Translocation Breakpoint"], "From Chr" => variant_call["From Chr"], "From Coord" => variant_call["From Coord"], "From Strand" => variant_call["From Strand"], "To Chr" => variant_call["To Chr"], "To Coord" => variant_call["To Coord"], "To Strand" => variant_call["To Strand"], "Mutation ID" => variant_call["Mutation ID"], "Mutation Order" => variant_call["Mutation Order"], "Mutation Molecule" => variant_call["Mutation Molecule"]})
+
+				# PLACEMENT attributes
+				placement_attr_h = {}
+				placement_attr_h.store("placement_method", "Submitted genomic")
+
+				## translocation
+				if variant_call["Variant Call Type"] =~ /translocation/
+
+					## JV_SV0094: Missing strand for translocation
+					if variant_call["From Strand"].empty? || variant_call["To Strand"].empty?
+						missing_strand_call_a.push(variant_call_id)
+						variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0094 Warning: Missing strand for translocation.")
 					end
 
-					## JV_SV0042: Same chromosomes for interchromosomal translocation
-					if variant_call["Variant Call Type"] == "interchromosomal translocation" && variant_call["From Chr"] == variant_call["To Chr"]
-						same_chrs_for_inter_call_a.push(variant_call_id)
-						variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0042 Error: Same chromosomes for interchromosomal translocation.")
+					## JV_SV0045: Invalid translocation from and to
+					if variant_call["Assembly for Translocation Breakpoint"] && variant_call["Assembly for Translocation Breakpoint"].empty? || variant_call["From Chr"].empty? || variant_call["From Coord"].empty? || variant_call["From Strand"].empty? || variant_call["To Chr"].empty? || variant_call["To Coord"].empty? || variant_call["To Strand"].empty?
+						invalid_from_to_call_a.push(variant_call_id)
+						variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0045 Error: Invalid translocation from and to.")
+					else
+
+						## translocation call を格納
+						variant_call_translocation_h.store(variant_call_id, {"Variant Call ID" => variant_call_id, "Assembly for Translocation Breakpoint" => variant_call["Assembly for Translocation Breakpoint"], "From Chr" => variant_call["From Chr"], "From Coord" => variant_call["From Coord"], "From Strand" => variant_call["From Strand"], "To Chr" => variant_call["To Chr"], "To Coord" => variant_call["To Coord"], "To Strand" => variant_call["To Strand"], "Mutation ID" => variant_call["Mutation ID"], "Mutation Order" => variant_call["Mutation Order"], "Mutation Molecule" => variant_call["Mutation Molecule"]})
+
+						## JV_SV0041: Different chromosomes for intrachromosomal translocation
+						if variant_call["Variant Call Type"] == "intrachromosomal translocation" && variant_call["From Chr"] != variant_call["To Chr"]
+							different_chrs_for_intra_call_a.push(variant_call_id)
+							variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0041 Error: Different chromosomes for intrachromosomal translocation.")
+						end
+
+						## JV_SV0042: Same chromosomes for interchromosomal translocation
+						if variant_call["Variant Call Type"] == "interchromosomal translocation" && variant_call["From Chr"] == variant_call["To Chr"]
+							same_chrs_for_inter_call_a.push(variant_call_id)
+							variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0042 Error: Same chromosomes for interchromosomal translocation.")
+						end
+
+						translocation_assembly_a.push(variant_call["Assembly for Translocation Breakpoint"])
+
+						# 最初の assembly で以降は同じと仮定して valid な chromosome list を構築。assembly 混在は最後にチェック
+						if variant_call["Assembly for Translocation Breakpoint"] && !variant_call["Assembly for Translocation Breakpoint"].empty? && refseq_assembly == "" && chromosome_per_assembly_a.empty?
+
+							## assembly から refseq accession 取得
+							assembly_a.each{|assembly_h|
+								refseq_assembly = assembly_h["refseq_assembly"] if assembly_h.values.include?(variant_call["Assembly for Translocation Breakpoint"])
+							}
+
+							## refseq assembly から構成配列を取得
+							sequence_a.each{|sequence_h|
+								if sequence_h["assemblyAccession"] == refseq_assembly
+									chromosome_per_assembly_a.push({"chrName"=>sequence_h["chrName"], "refseqAccession"=>sequence_h["refseqAccession"], "genbankAccession"=>sequence_h["genbankAccession"], "role"=>sequence_h["role"], "length"=>sequence_h["length"]})
+								end
+							}
+
+						end
+
+						# FROM
+						placement_attr_h.store("breakpoint_order", "From")
+
+						variant_call_e.PLACEMENT(placement_attr_h){|placement_e|
+
+							# variant call 毎に初期化
+							from_chr_name = ""
+							from_chr_accession = ""
+							from_chr_length = 0
+							from_coord = -1
+							from_contig_accession = ""
+							from_assembly = ""
+
+							## JV_SV0072: Invalid chromosome reference
+							from_valid_chr_f = false
+							from_valid_contig_f = false
+							from_ref_download_f = false
+							from_found_f = false
+
+							# contig が download ref にあるかどうか. download にある = assembly には含まれていない
+							if !variant_call["From Chr"].empty? && $ref_download_h.keys.include?(variant_call["From Chr"]) && !from_found_f
+								from_assembly = ""
+								from_chr_name = ""
+								from_chr_accession = ""
+								from_chr_length = $ref_download_h[variant_call["From Chr"]].to_i if $ref_download_h[variant_call["From Chr"]].to_i
+								from_contig_accession = variant_call["From Chr"]
+								
+								from_valid_contig_f = true
+								from_ref_download_f = true
+								from_found_f = true
+							else
+								for chromosome_per_assembly_h in chromosome_per_assembly_a
+
+									## From Chr に sequence report にある RefSeq/GenBank accession が記載されているかどうか
+									if !variant_call["From Chr"].empty? && (chromosome_per_assembly_h["refseqAccession"] == variant_call["From Chr"] || chromosome_per_assembly_h["genbankAccession"] == variant_call["From Chr"]) && !from_found_f
+										from_assembly = variant_call["Assembly for Translocation Breakpoint"]
+										from_chr_name = ""
+										from_chr_accession = ""
+										from_chr_length = chromosome_per_assembly_h["length"]
+										from_contig_accession = chromosome_per_assembly_h["refseqAccession"] # fna は refseqAccession 記載
+										
+										from_valid_contig_f = true						
+										from_found_f = true
+									elsif !variant_call["From Chr"].empty? && chromosome_per_assembly_h["chrName"] == variant_call["From Chr"].sub(/chr/i, "") && chromosome_per_assembly_h["role"] == "assembled-molecule" && !from_found_f
+										from_assembly = variant_call["Assembly for Translocation Breakpoint"]
+										from_chr_name = chromosome_per_assembly_h["chrName"]
+										from_chr_accession = chromosome_per_assembly_h["refseqAccession"]
+										from_chr_length = chromosome_per_assembly_h["length"]
+										from_contig_accession = ""
+										
+										from_valid_chr_f = true
+										from_found_f = true
+									end
+								
+								end # for chromosome_per_assembly_h in chromosome_per_assembly_a						
+
+							end # if !variant_call["From Chr"].empty? && $ref_download_h.keys.include?(variant_call["From Chr"])
+
+							## JV_SV0072: Invalid chromosome reference, to/from は contig 列がなく一体
+							if !variant_call["From Chr"].empty? && !from_valid_chr_f && !from_valid_contig_f
+								invalid_chr_ref_call_a.push(variant_call_id)
+								variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0072 Error: Invalid chromosome reference.")
+							end
+
+							# GENOME
+							genome_attr_h = {}
+							genome_attr_h.store("assembly", from_assembly)
+
+							genome_attr_h.store("chr_name", from_chr_name)
+							genome_attr_h.store("chr_accession", from_chr_accession)
+							genome_attr_h.store("contig_accession", from_contig_accession)
+							genome_attr_h.store("strand", variant_call["From Strand"])
+													
+							# FROM COORD
+							if variant_call["From Coord"] && variant_call["From Coord"].to_i
+								from_coord = variant_call["From Coord"].to_i
+								genome_attr_h.store("start", variant_call["From Coord"])
+								genome_attr_h.store("stop", variant_call["From Coord"])
+							else
+								genome_attr_h.store("start", "")
+								genome_attr_h.store("stop", "")
+							end
+
+							# GENOME attributes
+							placement_e.GENOME(genome_attr_h)
+
+						end
+
+
+							if from_chr_length != 0 
+								if from_coord != -1 && (from_coord > from_chr_length + 1)
+									pos_outside_chr_call_a.push(variant_call_id)
+									variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_C0061 Error: Chromosome position is larger than chromosome size + 1. Check if the position is correct.")
+								end
+							end
+
+						} # placement_e
+
+						# TO
+						placement_attr_h.store("breakpoint_order", "To")
+
+						variant_call_e.PLACEMENT(placement_attr_h){|placement_e|
+
+							# variant call 毎に初期化
+							to_chr_name = ""
+							to_chr_accession = ""
+							to_chr_length = 0
+							to_coord = -1
+							to_contig_accession = ""
+							to_assembly = ""
+
+							## JV_SV0072: Invalid chromosome reference
+							to_valid_chr_f = false
+							to_valid_contig_f = false
+							to_ref_download_f = false
+							to_found_f = false
+
+							# contig が download ref にあるかどうか. download にある = assembly には含まれていない
+							if !variant_call["To Chr"].empty? && $ref_download_h.keys.include?(variant_call["To Chr"]) && !to_found_f
+								to_assembly = ""
+								to_chr_name = ""
+								to_chr_accession = ""
+								to_chr_length = $ref_download_h[variant_call["To Chr"]].to_i if $ref_download_h[variant_call["To Chr"]].to_i
+								to_contig_accession = variant_call["To Chr"]
+								
+								to_valid_contig_f = true
+								to_ref_download_f = true
+								to_found_f = true
+							else
+								for chromosome_per_assembly_h in chromosome_per_assembly_a
+									## From Chr に sequence report にある RefSeq/GenBank accession が記載されているかどうか
+									if !variant_call["To Chr"].empty? && (chromosome_per_assembly_h["refseqAccession"] == variant_call["To Chr"] || chromosome_per_assembly_h["genbankAccession"] == variant_call["To Chr"]) && !to_found_f
+										to_assembly = variant_call["Assembly for Translocation Breakpoint"]
+										to_chr_name = ""
+										to_chr_accession = ""
+										to_chr_length = chromosome_per_assembly_h["length"]
+										to_contig_accession = chromosome_per_assembly_h["refseqAccession"] # fna は refseqAccession 記載
+										
+										to_valid_contig_f = true						
+										to_found_f = true
+									elsif !variant_call["To Chr"].empty? && chromosome_per_assembly_h["chrName"] == variant_call["To Chr"].sub(/chr/i, "") && chromosome_per_assembly_h["role"] == "assembled-molecule" && !to_found_f
+										to_assembly = variant_call["Assembly for Translocation Breakpoint"]
+										to_chr_name = chromosome_per_assembly_h["chrName"]
+										to_chr_accession = chromosome_per_assembly_h["refseqAccession"]
+										to_chr_length = chromosome_per_assembly_h["length"]
+										to_contig_accession = ""
+
+										to_valid_chr_f = true
+										to_found_f = true
+									end
+								
+								end # for chromosome_per_assembly_h in chromosome_per_assembly_a						
+
+							end # if !variant_call["To Chr"].empty? && $ref_download_h.keys.include?(variant_call["To Chr"])
+
+							## JV_SV0072: Invalid chromosome reference, to/from は contig 列がなく一体
+							if !variant_call["To Chr"].empty? && !to_valid_chr_f && !to_valid_contig_f
+								invalid_chr_ref_call_a.push(variant_call_id)
+								variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0072 Error: Invalid chromosome reference.")
+							end
+
+							# GENOME
+							genome_attr_h = {}
+							genome_attr_h.store("assembly", to_assembly)
+
+							genome_attr_h.store("chr_name", to_chr_name)
+							genome_attr_h.store("chr_accession", to_chr_accession)
+							genome_attr_h.store("contig_accession", to_contig_accession)
+							genome_attr_h.store("strand", variant_call["To Strand"])
+
+							# TO COORD
+							if variant_call["To Coord"] && variant_call["To Coord"].to_i
+								to_coord = variant_call["To Coord"].to_i
+								genome_attr_h.store("start", variant_call["To Coord"])
+								genome_attr_h.store("stop", variant_call["To Coord"])
+							else
+								genome_attr_h.store("start", "")
+								genome_attr_h.store("stop", "")
+							end
+
+							# GENOME attributes
+							placement_e.GENOME(genome_attr_h)
+
+							## JV_C0061: Chromosome position larger than chromosome size + 1
+							if to_chr_length != 0 
+								if to_coord != -1 && (to_coord > to_chr_length + 1)
+									pos_outside_chr_call_a.push(variant_call_id)
+									variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_C0061 Error: Chromosome position is larger than chromosome size + 1. Check if the position is correct.")
+								end
+							end
+
+						} # placement_e
+
+						# if there is variant_sequence in VCF translocations
+						if variant_call["variant_sequence"] && !variant_call["variant_sequence"].empty?
+							variant_call_e.VARIANT_SEQUENCE(variant_call["variant_sequence"])
+						end
+
+					end # if there are translocation placements
+
+				else # if not =~ /translocation/
+
+					## JV_SV0095: Strand for non-translocation
+					if (variant_call["From Strand"] && !variant_call["From Strand"].empty?) || (variant_call["To Strand"] && !variant_call["To Strand"].empty?)
+						strand_for_translocation_call_a.push(variant_call_id)
+						variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0095 Warning: Strand for non-translocation.")
 					end
 
-					translocation_assembly_a.push(variant_call["Assembly for Translocation Breakpoint"])
+					# placement_attr_h.store("alt_status", "")
+					# placement_attr_h.store("breakpoint_order", "")
 
-					# 最初の assembly で以降は同じと仮定して valid な chromosome list を構築。assembly 混在は最後にチェック
-					if variant_call["Assembly for Translocation Breakpoint"] && !variant_call["Assembly for Translocation Breakpoint"].empty? && refseq_assembly == "" && chromosome_per_assembly_a.empty?
+					# 最初の assembly で VCF/variant call tsv 毎に以降は同じと仮定して valid な chromosome list を構築。assembly 混在は最後にチェック
+					if !variant_call["Assembly"].empty? && refseq_assembly == "" && chromosome_per_assembly_a.empty?
 
 						## assembly から refseq accession 取得
 						assembly_a.each{|assembly_h|
-							refseq_assembly = assembly_h["refseq_assembly"] if assembly_h.values.include?(variant_call["Assembly for Translocation Breakpoint"])
+							refseq_assembly = assembly_h["refseq_assembly"] if assembly_h.values.include?(variant_call["Assembly"])
 						}
 
 						## refseq assembly から構成配列を取得
@@ -2012,607 +2316,420 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 					end
 
-					# FROM
-					placement_attr_h.store("breakpoint_order", "From")
+					# deletion
+					if variant_call["Variant Call Type"] == "deletion"
+
+						# if outers-only
+						if !variant_call["Outer Start"].empty? && !variant_call["Outer Stop"].empty? && variant_call["Start"].empty? && variant_call["Inner Start"].empty? && variant_call["Stop"].empty? && variant_call["Inner Stop"].empty?
+							## JV_SV0047: Inconsistent outer start and outer stop
+							inconsistent_outer_start_stop_call_a.push(variant_call_id) if variant_call["Outer Start"].to_i > variant_call["Outer Stop"].to_i
+							variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0047 Error: Inconsistent outer start and outer stop.")
+						end
+
+					end
 
 					variant_call_e.PLACEMENT(placement_attr_h){|placement_e|
 
-						# variant call 毎に初期化
-						from_chr_name = ""
-						from_chr_accession = ""
-						from_chr_length = 0
-						from_coord = -1
-						from_contig_accession = ""
-						from_assembly = ""
-
-						## JV_SV0072: Invalid chromosome reference
-						from_valid_chr_f = false
-						from_valid_contig_f = false
-						from_ref_download_f = false
-						from_found_f = false
-
-						# contig が download ref にあるかどうか. download にある = assembly には含まれていない
-						if !variant_call["From Chr"].empty? && $ref_download_h.keys.include?(variant_call["From Chr"]) && !from_found_f
-							from_assembly = ""
-							from_chr_name = ""
-							from_chr_accession = ""
-							from_chr_length = $ref_download_h[variant_call["From Chr"]].to_i if $ref_download_h[variant_call["From Chr"]].to_i
-							from_contig_accession = variant_call["From Chr"]
-							
-							from_valid_contig_f = true
-							from_ref_download_f = true
-							from_found_f = true
-						else
-							for chromosome_per_assembly_h in chromosome_per_assembly_a
-								## From Chr に sequence report にある RefSeq/GenBank accession が記載されているかどうか
-								if !variant_call["From Chr"].empty? && (chromosome_per_assembly_h["refseqAccession"] == variant_call["From Chr"] || chromosome_per_assembly_h["genbankAccession"] == variant_call["From Chr"]) && !from_found_f
-									from_assembly = variant_call["Assembly for Translocation Breakpoint"]
-									from_chr_name = ""
-									from_chr_accession = ""
-									from_chr_length = chromosome_per_assembly_h["length"]
-									from_contig_accession = chromosome_per_assembly_h["refseqAccession"] # fna は refseqAccession 記載
-									
-									from_valid_contig_f = true						
-									from_found_f = true
-								elsif !variant_call["From Chr"].empty? && chromosome_per_assembly_h["chrName"] == variant_call["From Chr"].sub(/chr/i, "") && chromosome_per_assembly_h["role"] == "assembled-molecule" && !from_found_f
-									from_assembly = variant_call["Assembly for Translocation Breakpoint"]
-									from_chr_name = chromosome_per_assembly_h["chrName"]
-									from_chr_accession = chromosome_per_assembly_h["refseqAccession"]
-									from_chr_length = chromosome_per_assembly_h["length"]
-									from_contig_accession = ""
-									
-									from_valid_chr_f = true
-									from_found_f = true
-								end
-							
-							end # for chromosome_per_assembly_h in chromosome_per_assembly_a						
-
-						end # if !variant_call["From Chr"].empty? && $ref_download_h.keys.include?(variant_call["From Chr"])
-
-						## JV_SV0072: Invalid chromosome reference, to/from は contig 列がなく一体
-						if !variant_call["From Chr"].empty? && !from_valid_chr_f && !from_valid_contig_f
-							invalid_chr_ref_call_a.push(variant_call_id)
-							variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0072 Error: Invalid chromosome reference.")
-						end
-
 						# GENOME
 						genome_attr_h = {}
-						genome_attr_h.store("assembly", from_assembly)
-
-						genome_attr_h.store("chr_name", from_chr_name)
-						genome_attr_h.store("chr_accession", from_chr_accession)
-						genome_attr_h.store("contig_accession", from_contig_accession)
-						genome_attr_h.store("strand", variant_call["From Strand"])
-												
-						# FROM COORD
-						if variant_call["From Coord"] && variant_call["From Coord"].to_i
-							from_coord = variant_call["From Coord"].to_i
-							genome_attr_h.store("start", variant_call["From Coord"])
-							genome_attr_h.store("stop", variant_call["From Coord"])
-						else
-							genome_attr_h.store("start", "")
-							genome_attr_h.store("stop", "")
-						end
-
-						# GENOME attributes
-						placement_e.GENOME(genome_attr_h)
-
-						## JV_C0061: Chromosome position larger than chromosome size + 1
-						if from_chr_length != 0 
-							if from_coord != -1 && (from_coord > from_chr_length + 1)
-								pos_outside_chr_call_a.push(variant_call_id)
-								variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_C0061 Error: Chromosome position is larger than chromosome size + 1. Check if the position is correct.")
-							end
-						end
-
-					} # placement_e
-
-					# TO
-					placement_attr_h.store("breakpoint_order", "To")
-
-					variant_call_e.PLACEMENT(placement_attr_h){|placement_e|
-
-						# variant call 毎に初期化
-						to_chr_name = ""
-						to_chr_accession = ""
-						to_chr_length = 0
-						to_coord = -1
-						to_contig_accession = ""
-						to_assembly = ""
 
 						## JV_SV0072: Invalid chromosome reference
-						to_valid_chr_f = false
-						to_valid_contig_f = false
-						to_ref_download_f = false
-						to_found_f = false
-
-						# contig が download ref にあるかどうか. download にある = assembly には含まれていない
-						if !variant_call["To Chr"].empty? && $ref_download_h.keys.include?(variant_call["To Chr"]) && !to_found_f
-							to_assembly = ""
-							to_chr_name = ""
-							to_chr_accession = ""
-							to_chr_length = $ref_download_h[variant_call["To Chr"]].to_i if $ref_download_h[variant_call["To Chr"]].to_i
-							to_contig_accession = variant_call["To Chr"]
-							
-							to_valid_contig_f = true
-							to_ref_download_f = true
-							to_found_f = true
-						else
-							for chromosome_per_assembly_h in chromosome_per_assembly_a
-								## From Chr に sequence report にある RefSeq/GenBank accession が記載されているかどうか
-								if !variant_call["To Chr"].empty? && (chromosome_per_assembly_h["refseqAccession"] == variant_call["To Chr"] || chromosome_per_assembly_h["genbankAccession"] == variant_call["To Chr"]) && !to_found_f
-									to_assembly = variant_call["Assembly for Translocation Breakpoint"]
-									to_chr_name = ""
-									to_chr_accession = ""
-									to_chr_length = chromosome_per_assembly_h["length"]
-									to_contig_accession = chromosome_per_assembly_h["refseqAccession"] # fna は refseqAccession 記載
-									
-									to_valid_contig_f = true						
-									to_found_f = true
-								elsif !variant_call["To Chr"].empty? && chromosome_per_assembly_h["chrName"] == variant_call["To Chr"].sub(/chr/i, "") && chromosome_per_assembly_h["role"] == "assembled-molecule" && !to_found_f
-									to_assembly = variant_call["Assembly for Translocation Breakpoint"]
-									to_chr_name = chromosome_per_assembly_h["chrName"]
-									to_chr_accession = chromosome_per_assembly_h["refseqAccession"]
-									to_chr_length = chromosome_per_assembly_h["length"]
-									to_contig_accession = ""
-
-									to_valid_chr_f = true
-									to_found_f = true
-								end
-							
-							end # for chromosome_per_assembly_h in chromosome_per_assembly_a						
-
-						end # if !variant_call["To Chr"].empty? && $ref_download_h.keys.include?(variant_call["To Chr"])
-
-						## JV_SV0072: Invalid chromosome reference, to/from は contig 列がなく一体
-						if !variant_call["To Chr"].empty? && !to_valid_chr_f && !to_valid_contig_f
-							invalid_chr_ref_call_a.push(variant_call_id)
-							variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0072 Error: Invalid chromosome reference.")
-						end
-
-						# GENOME
-						genome_attr_h = {}
-						genome_attr_h.store("assembly", to_assembly)
-
-						genome_attr_h.store("chr_name", to_chr_name)
-						genome_attr_h.store("chr_accession", to_chr_accession)
-						genome_attr_h.store("contig_accession", to_contig_accession)
-						genome_attr_h.store("strand", variant_call["To Strand"])
-
-						# TO COORD
-						if variant_call["To Coord"] && variant_call["To Coord"].to_i
-							to_coord = variant_call["To Coord"].to_i
-							genome_attr_h.store("start", variant_call["To Coord"])
-							genome_attr_h.store("stop", variant_call["To Coord"])
-						else
-							genome_attr_h.store("start", "")
-							genome_attr_h.store("stop", "")
-						end
-
-						# GENOME attributes
-						placement_e.GENOME(genome_attr_h)
-
-						## JV_C0061: Chromosome position larger than chromosome size + 1
-						if to_chr_length != 0 
-							if to_coord != -1 && (to_coord > to_chr_length + 1)
-								pos_outside_chr_call_a.push(variant_call_id)
-								variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_C0061 Error: Chromosome position is larger than chromosome size + 1. Check if the position is correct.")
-							end
-						end
-
-					} # placement_e
-
-					# if there is variant_sequence in VCF translocations
-					if variant_call["variant_sequence"] && !variant_call["variant_sequence"].empty?
-						variant_call_e.VARIANT_SEQUENCE(variant_call["variant_sequence"])
-					end
-
-				end # if there are translocation placements
-
-			else # if not =~ /translocation/
-
-				## JV_SV0095: Strand for non-translocation
-				if (variant_call["From Strand"] && !variant_call["From Strand"].empty?) || (variant_call["To Strand"] && !variant_call["To Strand"].empty?)
-					strand_for_translocation_call_a.push(variant_call_id)
-					variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0095 Warning: Strand for non-translocation.")
-				end
-
-				# placement_attr_h.store("alt_status", "")
-				# placement_attr_h.store("breakpoint_order", "")
-
-				# 最初の assembly で以降は同じと仮定して valid な chromosome list を構築。assembly 混在は最後にチェック
-				if !variant_call["Assembly"].empty? && refseq_assembly == "" && chromosome_per_assembly_a.empty?
-
-					## assembly から refseq accession 取得
-					assembly_a.each{|assembly_h|
-						refseq_assembly = assembly_h["refseq_assembly"] if assembly_h.values.include?(variant_call["Assembly"])
-					}
-
-					## refseq assembly から構成配列を取得
-					sequence_a.each{|sequence_h|
-						if sequence_h["assemblyAccession"] == refseq_assembly
-							chromosome_per_assembly_a.push({"chrName"=>sequence_h["chrName"], "refseqAccession"=>sequence_h["refseqAccession"], "genbankAccession"=>sequence_h["genbankAccession"], "role"=>sequence_h["role"], "length"=>sequence_h["length"]})
-						end
-					}
-
-				end
-
-				# deletion
-				if variant_call["Variant Call Type"] == "deletion"
-
-					# if outers-only
-					if !variant_call["Outer Start"].empty? && !variant_call["Outer Stop"].empty? && variant_call["Start"].empty? && variant_call["Inner Start"].empty? && variant_call["Stop"].empty? && variant_call["Inner Stop"].empty?
-						## JV_SV0047: Inconsistent outer start and outer stop
-						inconsistent_outer_start_stop_call_a.push(variant_call_id) if variant_call["Outer Start"].to_i > variant_call["Outer Stop"].to_i
-						variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0047 Error: Inconsistent outer start and outer stop.")
-					end
-
-				end
-
-				variant_call_e.PLACEMENT(placement_attr_h){|placement_e|
-
-					# GENOME
-					genome_attr_h = {}
-
-					## JV_SV0072: Invalid chromosome reference
-						# variant call 毎に初期化
-						chr_name = ""
-						chr_accession = ""
-						chr_length = 0
-						contig_accession = ""
-						assembly = ""
-						start_pos = -1
-						stop_pos = -1
-
-						## JV_SV0072: Invalid chromosome reference
-						valid_chr_f = false
-						valid_contig_f = false
-						ref_download_f = false
-						found_f = false
-
-						# contig が download ref にあるかどうか. download にある = assembly には含まれていない
-						if !variant_call["Chr"].empty? && $ref_download_h.keys.include?(variant_call["Chr"]) && !found_f
-							assembly = ""
+							# variant call 毎に初期化
 							chr_name = ""
 							chr_accession = ""
-							chr_length = $ref_download_h[variant_call["Chr"]].to_i if $ref_download_h[variant_call["Chr"]].to_i
-							contig_accession = variant_call["Chr"]
-							
-							valid_contig_f = true
-							ref_download_f = true
-							found_f = true
-						else
-							for chromosome_per_assembly_h in chromosome_per_assembly_a
-								## From Chr に sequence report にある RefSeq/GenBank accession が記載されているかどうか
-								if !variant_call["Chr"].empty? && (chromosome_per_assembly_h["refseqAccession"] == variant_call["Chr"] || chromosome_per_assembly_h["genbankAccession"] == variant_call["Chr"]) && !found_f
-									assembly = variant_call["Assembly for Translocation Breakpoint"]
-									chr_name = ""
-									chr_accession = ""
-									chr_length = chromosome_per_assembly_h["length"]
-									contig_accession = chromosome_per_assembly_h["refseqAccession"] # fna は refseqAccession 記載
-									
-									valid_contig_f = true						
-									found_f = true
-								elsif !variant_call["Chr"].empty? && chromosome_per_assembly_h["chrName"] == variant_call["Chr"].sub(/chr/i, "") && chromosome_per_assembly_h["role"] == "assembled-molecule" && !found_f
-									assembly = variant_call["Assembly for Translocation Breakpoint"]
-									chr_name = chromosome_per_assembly_h["chrName"]
-									chr_accession = chromosome_per_assembly_h["refseqAccession"]
-									chr_length = chromosome_per_assembly_h["length"]
-									contig_accession = ""
+							chr_length = 0
+							contig_accession = ""
+							assembly = ""
+							start_pos = -1
+							stop_pos = -1
 
-									valid_chr_f = true
-									found_f = true
-								end
-							
-							end # for chromosome_per_assembly_h in chromosome_per_assembly_a						
+							## JV_SV0072: Invalid chromosome reference
+							valid_chr_f = false
+							valid_contig_f = false
+							ref_download_f = false
+							found_f = false
 
-						end # if !variant_call["Chr"].empty? && $ref_download_h.keys.include?(variant_call["Chr"])
+							# contig が download ref にあるかどうか. download にある = assembly には含まれていない
+							if !variant_call["Chr"].empty? && $ref_download_h.keys.include?(variant_call["Chr"]) && !found_f
+								assembly = ""
+								chr_name = ""
+								chr_accession = ""
+								chr_length = $ref_download_h[variant_call["Chr"]].to_i if $ref_download_h[variant_call["Chr"]].to_i
+								contig_accession = variant_call["Chr"]
+								
+								valid_contig_f = true
+								ref_download_f = true
+								found_f = true
+							else
+								for chromosome_per_assembly_h in chromosome_per_assembly_a
+									## From Chr に sequence report にある RefSeq/GenBank accession が記載されているかどうか
+									if !variant_call["Chr"].empty? && (chromosome_per_assembly_h["refseqAccession"] == variant_call["Chr"] || chromosome_per_assembly_h["genbankAccession"] == variant_call["Chr"]) && !found_f
+										assembly = variant_call["Assembly for Translocation Breakpoint"]
+										chr_name = ""
+										chr_accession = ""
+										chr_length = chromosome_per_assembly_h["length"]
+										contig_accession = chromosome_per_assembly_h["refseqAccession"] # fna は refseqAccession 記載
+										
+										valid_contig_f = true						
+										found_f = true
+									elsif !variant_call["Chr"].empty? && chromosome_per_assembly_h["chrName"] == variant_call["Chr"].sub(/chr/i, "") && chromosome_per_assembly_h["role"] == "assembled-molecule" && !found_f
+										assembly = variant_call["Assembly for Translocation Breakpoint"]
+										chr_name = chromosome_per_assembly_h["chrName"]
+										chr_accession = chromosome_per_assembly_h["refseqAccession"]
+										chr_length = chromosome_per_assembly_h["length"]
+										contig_accession = ""
 
-					## JV_SV0077: Contig accession exists for chromosome accession
-					if !variant_call["Contig"].empty? && !variant_call["Chr"].empty?
-						contig_acc_for_chr_acc_call_a.push(variant_call_id)
-						variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0077 Error: Contig accession exists for chromosome accession.")
-					end
+										valid_chr_f = true
+										found_f = true
+									end
+								
+								end # for chromosome_per_assembly_h in chromosome_per_assembly_a						
 
-					## JV_SV0072: Invalid chromosome reference
-					if !variant_call["Chr"].empty? && !valid_chr_f
-						invalid_chr_ref_call_a.push(variant_call_id)
-						variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0072 Error: Invalid chromosome reference.")
-					end
+							end # if !variant_call["Chr"].empty? && $ref_download_h.keys.include?(variant_call["Chr"])
 
-					## JV_SV0074: Invalid contig accession reference
-					if !variant_call["Contig"].empty? && !valid_contig_f
-						invalid_contig_acc_ref_call_a.push("#{variant_call_id} #{variant_call["Contig"]}")
-						variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0074 Error: Invalid contig accession reference.")
-
-						# download fasta
-						contig_download_a.push("wget \"http://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=nucleotide&id=#{variant_call["Contig"]}&rettype=fasta\" -O #{ref_download_path}/#{variant_call["Contig"]}.fna")
-						contig_download_a.push("samtools faidx #{variant_call["Contig"]}.fna")
-					end
-
-					## JV_SV0076: Missing chromosome/contig accession
-					if chr_name.empty? && chr_accession.empty? && contig_accession.empty?
-						missing_chr_contig_acc_call_a.push(variant_call_id)
-						variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0076 Error: Missing chromosome/contig accession.")
-					end
-
-					## JV_SV0059: Chromosome Y for female
-					if chr_name == "Y" && !variant_call["SampleSet ID"].empty? && sampleset_id_sex_h[variant_call["SampleSet ID"]] && sampleset_id_sex_h[variant_call["SampleSet ID"]] == "Female"
-						chry_for_female_call_a.push(variant_call_id)
-						variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0059 Warning: Chromosome Y for female")
-					end
-
-					## genome_attr_h
-					## download に存在　=　Assembly　には含まれていない					
-					genome_attr_h.store("assembly", assembly)
-
-					## chr/chr_accession/contig_accession
-					genome_attr_h.store("chr_name", chr_name)
-					genome_attr_h.store("chr_accession", chr_accession)
-					genome_attr_h.store("contig_accession", contig_accession)
-
-					## placement check
-					## JV_SV0078: Missing start
-					if variant_call["Outer Start"].empty? && variant_call["Start"].empty? && variant_call["Inner Start"].empty? && variant_call_type !~ /translocation/ && variant_call_type != "novel sequence insertion"
-						missing_start_call_a.push(variant_call_id)
-						variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0078 Error: Missing start.")
-					end
-
-					## JV_SV0079: Missing stop
-					if variant_call["Outer Stop"].empty? && variant_call["Stop"].empty? && variant_call["Inner Stop"].empty? && variant_call_type !~ /translocation/ && variant_call_type != "novel sequence insertion"
-						missing_stop_call_a.push(variant_call_id)
-						variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0079 Error: Missing stop.")
-					end
-
-					# JV_SV0080: When on same sequence, start must be <= stop
-					if !variant_call["Start"].empty? && !variant_call["Stop"].empty? && (variant_call["Start"].to_i > variant_call["Stop"].to_i)
-						invalid_start_stop_call_a.push(variant_call_id)
-						variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0080 Error: When on same sequence, start must be <= stop.")
-					end
-
-					# JV_SV0081: When on same sequence, outer_start must be <= outer_stop
-					if !variant_call["Outer Start"].empty? && !variant_call["Outer Stop"].empty? && (variant_call["Outer Start"].to_i > variant_call["Outer Stop"].to_i)
-						invalid_outer_start_outer_stop_call_a.push(variant_call_id)
-						variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0081 Error: When on same sequence, outer_start must be <= outer_stop.")
-					end
-
-					# JV_SV0082: When on same sequence, outer_start must be <= inner_start
-					if !variant_call["Outer Start"].empty? && !variant_call["Inner Start"].empty? && (variant_call["Outer Start"].to_i > variant_call["Inner Start"].to_i)
-						invalid_outer_start_inner_start_call_a.push(variant_call_id)
-						variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0082 Error: When on same sequence, outer_start must be <= inner_start.")
-					end
-
-					# JV_SV0083: When on same sequence, inner_stop must be <= outer_stop
-					if !variant_call["Inner Stop"].empty? && !variant_call["Outer Stop"].empty? && (variant_call["Inner Stop"].to_i > variant_call["Outer Stop"].to_i)
-						invalid_inner_stop_outer_stop_call_a.push(variant_call_id)
-						variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0083 Error: When on same sequence, inner_stop must be <= outer_stop.")
-					end
-
-					# JV_SV0084: Invalid start and inner stop
-					if !variant_call["Start"].empty? && !variant_call["Inner Stop"].empty? && (variant_call["Start"].to_i >= variant_call["Inner Stop"].to_i) && !(!variant_call["Start"].empty? && !variant_call["Stop"].empty? && !variant_call["Outer Start"].empty? && !variant_call["Outer Stop"].empty? && !variant_call["Inner Start"].empty? && !variant_call["Inner Stop"].empty?)
-						invalid_start_inner_stop_call_a.push(variant_call_id)
-						variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0084 Error: Invalid start and inner stop.")
-					end
-
-					# JV_SV0085: Invalid inner start and stop
-					if !variant_call["Inner Start"].empty? && !variant_call["Stop"].empty? && (variant_call["Inner Start"].to_i >= variant_call["Stop"].to_i) && !(!variant_call["Start"].empty? && !variant_call["Stop"].empty? && !variant_call["Outer Start"].empty? && !variant_call["Outer Stop"].empty? && !variant_call["Inner Start"].empty? && !variant_call["Inner Stop"].empty?)
-						invalid_inner_start_stop_call_a.push(variant_call_id)
-						variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0085 Error: Invalid inner start and stop")
-					end
-
-					# JV_SV0086: When on same sequence, inner_start must be <= inner_stop if there are only inner placements
-					if !variant_call["Inner Start"].empty? && !variant_call["Inner Stop"].empty? && (variant_call["Inner Start"].to_i > variant_call["Inner Stop"].to_i) && !(variant_call["Start"].empty? && variant_call["Stop"].empty? && variant_call["Outer Start"].empty? && variant_call["Outer Stop"].empty? && !variant_call["Inner Start"].empty? && !variant_call["Inner Stop"].empty?)
-						invalid_inner_start_inner_stop_call_a.push(variant_call_id)
-						variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0086 Error: When on same sequence, inner_start must be <= inner_stop if there are only inner placements.")
-					end
-
-					# JV_SV0087: Multiple starts
-					if !variant_call["Start"].empty? && (!variant_call["Inner Start"].empty? || !variant_call["Outer Start"].empty?) || (!variant_call["Inner Start"].empty? && !variant_call["Outer Start"].empty?) && !variant_call["Start"].empty?
-						if (!variant_call["Start"].empty? && !variant_call["Outer Start"].empty? && variant_call["Start"] != variant_call["Outer Start"]) && (!variant_call["Start"].empty? && !variant_call["Inner Start"].empty? && variant_call["Start"] != variant_call["Inner Start"])
-							multiple_starts_call_a.push(variant_call_id)
-							variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0087 Error: Multiple starts.")
+						## JV_SV0077: Contig accession exists for chromosome accession
+						if !variant_call["Contig"].empty? && !variant_call["Chr"].empty?
+							contig_acc_for_chr_acc_call_a.push(variant_call_id)
+							variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0077 Error: Contig accession exists for chromosome accession.")
 						end
-					end
 
-					# JV_SV0088: Multiple stops
-					if !variant_call["Stop"].empty? && (!variant_call["Inner Stop"].empty? || !variant_call["Outer Stop"].empty?) || (!variant_call["Inner Stop"].empty? && !variant_call["Outer Stop"].empty?) && !variant_call["Stop"].empty?
-						if (!variant_call["Stop"].empty? && !variant_call["Outer Stop"].empty? && variant_call["Stop"] != variant_call["Outer Stop"]) && (!variant_call["Stop"].empty? && !variant_call["Inner Stop"].empty? && variant_call["Stop"] != variant_call["Inner Stop"])
-							multiple_stops_call_a.push(variant_call_id)
-							variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0088 Error: Multiple stops.")
+						## JV_SV0072: Invalid chromosome reference
+						if !variant_call["Chr"].empty? && !valid_chr_f
+							invalid_chr_ref_call_a.push(variant_call_id)
+							variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0072 Error: Invalid chromosome reference.")
 						end
+
+						## JV_SV0074: Invalid contig accession reference
+						if !variant_call["Contig"].empty? && !valid_contig_f
+							invalid_contig_acc_ref_call_a.push("#{variant_call_id} #{variant_call["Contig"]}")
+							variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0074 Error: Invalid contig accession reference.")
+
+							# download fasta
+							contig_download_a.push("wget \"http://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=nucleotide&id=#{variant_call["Contig"]}&rettype=fasta\" -O #{ref_download_path}/#{variant_call["Contig"]}.fna")
+							contig_download_a.push("samtools faidx #{variant_call["Contig"]}.fna")
+						end
+
+						## JV_SV0076: Missing chromosome/contig accession
+						if chr_name.empty? && chr_accession.empty? && contig_accession.empty?
+							missing_chr_contig_acc_call_a.push(variant_call_id)
+							variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0076 Error: Missing chromosome/contig accession.")
+						end
+
+						## JV_SV0059: Chromosome Y for female
+						if chr_name == "Y" && !variant_call["SampleSet ID"].empty? && sampleset_id_sex_h[variant_call["SampleSet ID"]] && sampleset_id_sex_h[variant_call["SampleSet ID"]] == "Female"
+							chry_for_female_call_a.push(variant_call_id)
+							variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0059 Warning: Chromosome Y for female")
+						end
+
+						## genome_attr_h
+						## download に存在　=　Assembly　には含まれていない					
+						genome_attr_h.store("assembly", assembly)
+
+						## chr/chr_accession/contig_accession
+						genome_attr_h.store("chr_name", chr_name)
+						genome_attr_h.store("chr_accession", chr_accession)
+						genome_attr_h.store("contig_accession", contig_accession)
+
+						## placement check
+						## JV_SV0078: Missing start
+						if variant_call["Outer Start"].empty? && variant_call["Start"].empty? && variant_call["Inner Start"].empty? && variant_call_type !~ /translocation/ && variant_call_type != "novel sequence insertion"
+							missing_start_call_a.push(variant_call_id)
+							variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0078 Error: Missing start.")
+						end
+
+						## JV_SV0079: Missing stop
+						if variant_call["Outer Stop"].empty? && variant_call["Stop"].empty? && variant_call["Inner Stop"].empty? && variant_call_type !~ /translocation/ && variant_call_type != "novel sequence insertion"
+							missing_stop_call_a.push(variant_call_id)
+							variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0079 Error: Missing stop.")
+						end
+
+						# JV_SV0080: When on same sequence, start must be <= stop
+						if !variant_call["Start"].empty? && !variant_call["Stop"].empty? && (variant_call["Start"].to_i > variant_call["Stop"].to_i)
+							invalid_start_stop_call_a.push(variant_call_id)
+							variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0080 Error: When on same sequence, start must be <= stop.")
+						end
+
+						# JV_SV0081: When on same sequence, outer_start must be <= outer_stop
+						if !variant_call["Outer Start"].empty? && !variant_call["Outer Stop"].empty? && (variant_call["Outer Start"].to_i > variant_call["Outer Stop"].to_i)
+							invalid_outer_start_outer_stop_call_a.push(variant_call_id)
+							variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0081 Error: When on same sequence, outer_start must be <= outer_stop.")
+						end
+
+						# JV_SV0082: When on same sequence, outer_start must be <= inner_start
+						if !variant_call["Outer Start"].empty? && !variant_call["Inner Start"].empty? && (variant_call["Outer Start"].to_i > variant_call["Inner Start"].to_i)
+							invalid_outer_start_inner_start_call_a.push(variant_call_id)
+							variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0082 Error: When on same sequence, outer_start must be <= inner_start.")
+						end
+
+						# JV_SV0083: When on same sequence, inner_stop must be <= outer_stop
+						if !variant_call["Inner Stop"].empty? && !variant_call["Outer Stop"].empty? && (variant_call["Inner Stop"].to_i > variant_call["Outer Stop"].to_i)
+							invalid_inner_stop_outer_stop_call_a.push(variant_call_id)
+							variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0083 Error: When on same sequence, inner_stop must be <= outer_stop.")
+						end
+
+						# JV_SV0084: Invalid start and inner stop
+						if !variant_call["Start"].empty? && !variant_call["Inner Stop"].empty? && (variant_call["Start"].to_i >= variant_call["Inner Stop"].to_i) && !(!variant_call["Start"].empty? && !variant_call["Stop"].empty? && !variant_call["Outer Start"].empty? && !variant_call["Outer Stop"].empty? && !variant_call["Inner Start"].empty? && !variant_call["Inner Stop"].empty?)
+							invalid_start_inner_stop_call_a.push(variant_call_id)
+							variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0084 Error: Invalid start and inner stop.")
+						end
+
+						# JV_SV0085: Invalid inner start and stop
+						if !variant_call["Inner Start"].empty? && !variant_call["Stop"].empty? && (variant_call["Inner Start"].to_i >= variant_call["Stop"].to_i) && !(!variant_call["Start"].empty? && !variant_call["Stop"].empty? && !variant_call["Outer Start"].empty? && !variant_call["Outer Stop"].empty? && !variant_call["Inner Start"].empty? && !variant_call["Inner Stop"].empty?)
+							invalid_inner_start_stop_call_a.push(variant_call_id)
+							variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0085 Error: Invalid inner start and stop")
+						end
+
+						# JV_SV0086: When on same sequence, inner_start must be <= inner_stop if there are only inner placements
+						if !variant_call["Inner Start"].empty? && !variant_call["Inner Stop"].empty? && (variant_call["Inner Start"].to_i > variant_call["Inner Stop"].to_i) && !(variant_call["Start"].empty? && variant_call["Stop"].empty? && variant_call["Outer Start"].empty? && variant_call["Outer Stop"].empty? && !variant_call["Inner Start"].empty? && !variant_call["Inner Stop"].empty?)
+							invalid_inner_start_inner_stop_call_a.push(variant_call_id)
+							variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0086 Error: When on same sequence, inner_start must be <= inner_stop if there are only inner placements.")
+						end
+
+						# JV_SV0087: Multiple starts
+						if !variant_call["Start"].empty? && (!variant_call["Inner Start"].empty? || !variant_call["Outer Start"].empty?) || (!variant_call["Inner Start"].empty? && !variant_call["Outer Start"].empty?) && !variant_call["Start"].empty?
+							if (!variant_call["Start"].empty? && !variant_call["Outer Start"].empty? && variant_call["Start"] != variant_call["Outer Start"]) && (!variant_call["Start"].empty? && !variant_call["Inner Start"].empty? && variant_call["Start"] != variant_call["Inner Start"])
+								multiple_starts_call_a.push(variant_call_id)
+								variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0087 Error: Multiple starts.")
+							end
+						end
+
+						# JV_SV0088: Multiple stops
+						if !variant_call["Stop"].empty? && (!variant_call["Inner Stop"].empty? || !variant_call["Outer Stop"].empty?) || (!variant_call["Inner Stop"].empty? && !variant_call["Outer Stop"].empty?) && !variant_call["Stop"].empty?
+							if (!variant_call["Stop"].empty? && !variant_call["Outer Stop"].empty? && variant_call["Stop"] != variant_call["Outer Stop"]) && (!variant_call["Stop"].empty? && !variant_call["Inner Stop"].empty? && variant_call["Stop"] != variant_call["Inner Stop"])
+								multiple_stops_call_a.push(variant_call_id)
+								variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0088 Error: Multiple stops.")
+							end
+						end
+
+						# JV_SV0089: Inconsistent sequence length and start/stop
+						if (!variant_call["Stop"].empty? && variant_call["Stop"].to_i > chr_length.to_i) || (!variant_call["Inner Stop"].empty? && variant_call["Inner Stop"].to_i > chr_length.to_i) || (!variant_call["Outer Stop"].empty? && variant_call["Outer Stop"].to_i > chr_length.to_i)
+							inconsistent_length_start_stop_call_a.push(variant_call_id)
+							variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0089 Error: Inconsistent sequence length and start/stop.")
+						end
+
+						# JV_SV0090: Inconsistent inner start and stop
+						if !variant_call["Inner Start"].empty? && !variant_call["Inner Stop"].empty? && (variant_call["Inner Start"].to_i > variant_call["Inner Stop"].to_i) && (!variant_call["Outer Start"].empty? || !variant_call["Outer Stop"].empty?)
+							inconsistent_inner_start_stop_call_a.push(variant_call_id)
+							variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0090 Warning: Inconsistent inner start and stop.")
+						end
+
+						# JV_SV0091: Start and outer/inner starts co-exist
+						start_outer_inner_start_coexist_call_a.push(variant_call_id) if !variant_call["Inner Start"].empty? && !variant_call["Start"].empty? && !variant_call["Outer Start"].empty?
+
+						# JV_SV0092: Stop and outer/inner stops co-exist
+						stop_outer_inner_stop_coexist_call_a.push(variant_call_id) if !variant_call["Inner Stop"].empty? && !variant_call["Stop"].empty? && !variant_call["Outer Stop"].empty?
+
+						# start
+						genome_attr_h.store("outer_start", variant_call["Outer Start"]) unless variant_call["Outer Start"].empty?
+						genome_attr_h.store("start", variant_call["Start"]) unless variant_call["Start"].empty?
+						genome_attr_h.store("inner_start", variant_call["Inner Start"]) unless variant_call["Inner Start"].empty?
+
+						# stop
+						genome_attr_h.store("stop", variant_call["Stop"]) unless variant_call["Stop"].empty?
+						genome_attr_h.store("inner_stop", variant_call["Inner Stop"]) unless variant_call["Inner Stop"].empty?
+						genome_attr_h.store("outer_stop", variant_call["Outer Stop"]) unless variant_call["Outer Stop"].empty?
+						genome_attr_h.store("ciposleft", variant_call["ciposleft"]) if variant_call["ciposleft"] && !variant_call["ciposleft"].empty?
+						genome_attr_h.store("ciposright", variant_call["ciposright"]) if variant_call["ciposright"] && !variant_call["ciposright"].empty?
+						genome_attr_h.store("ciendleft", variant_call["ciendleft"]) if variant_call["ciendleft"] && !variant_call["ciendleft"].empty?
+						genome_attr_h.store("ciendright", variant_call["ciendright"]) if variant_call["ciendright"] && !variant_call["ciendright"].empty?
+						# genome_attr_h.store("remap_score", "")
+						# genome_attr_h.store("strand", "")
+						# genome_attr_h.store("assembly_unit", "")
+						# genome_attr_h.store("alignment", "")
+						# genome_attr_h.store("remap_failure_code", "")
+						# genome_attr_h.store("placement_rank", "")
+						# genome_attr_h.store("placements_per_assembly", "")
+						# genome_attr_h.store("remap_diff_chr", "")
+						# genome_attr_h.store("remap_best_within_cluster", "")
+
+						# GENOME attributes
+						placement_e.GENOME(genome_attr_h)
+
+						# min start
+						if [variant_call["Outer Start"], variant_call["Start"], variant_call["Inner Start"]].reject{|e| e.empty? }.map{|e| e.to_i}.min
+							start_pos = [variant_call["Outer Start"], variant_call["Start"], variant_call["Inner Start"]].reject{|e| e.empty? }.map{|e| e.to_i}.min
+						end
+						
+						# max stop
+						if [variant_call["Outer Stop"], variant_call["Stop"], variant_call["Inner Stop"]].reject{|e| e.empty? }.map{|e| e.to_i}.max
+							stop_pos = [variant_call["Outer Stop"], variant_call["Stop"], variant_call["Inner Stop"]].reject{|e| e.empty? }.map{|e| e.to_i}.max
+						end
+
+						# JV_C0061: Chromosome position larger than chromosome size + 1
+						if chr_length != 0 
+							if (start_pos != -1 && (start_pos > chr_length + 1)) || (stop_pos != -1 && (stop_pos > chr_length + 1))
+								pos_outside_chr_call_a.push(variant_call_id)
+								variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_C0061 Error: Chromosome position is larger than chromosome size + 1. Check if the position is correct.")
+							end
+						end
+
+						## parent region の placement との整合性チェック
+						variant_call_placement_h.store(variant_call_id, {"Assembly" => assembly, "Chr" => chr_name, "Contig" => contig_accession, "Outer Start" => variant_call["Outer Start"], "Start" => variant_call["Start"], "Inner Start" => variant_call["Inner Start"], "Stop" => variant_call["Stop"], "Inner Stop" => variant_call["Inner Stop"], "Outer Stop" => variant_call["Outer Stop"]})
+
+					} # placement_e
+
+				end # if translocation
+
+				## JV_SV0054: Invalid placements for paired-end sequencing
+				if experiment_type_h[variant_call["Experiment ID"]] && experiment_type_h[variant_call["Experiment ID"]]["Method Type"] == "Sequencing" && experiment_type_h[variant_call["Experiment ID"]]["Analysis Type"] == "Paired-end mapping" && (!variant_call["Start"].empty? || !variant_call["Inner Start"].empty? || !variant_call["Stop"].empty? || !variant_call["Inner Stop"].empty?)
+					invalid_placements_pe_seq_call_a.push(variant_call_id)
+				end
+
+				# VARIANT_SEQUENCE
+				unless variant_call["Sequence"].empty?
+					variant_call_e.VARIANT_SEQUENCE(variant_call["Sequence"])
+
+					## JV_SV0060: Invalid sequence
+					unless variant_call["Sequence"] =~ /^[- .ABCDGHKMNRSTUVWY]+$/i
+						invalid_seq_call_a.push(variant_call_id) # JV_SV0060
 					end
 
-					# JV_SV0089: Inconsistent sequence length and start/stop
-					if (!variant_call["Stop"].empty? && variant_call["Stop"].to_i > chr_length.to_i) || (!variant_call["Inner Stop"].empty? && variant_call["Inner Stop"].to_i > chr_length.to_i) || (!variant_call["Outer Stop"].empty? && variant_call["Outer Stop"].to_i > chr_length.to_i)
-						inconsistent_length_start_stop_call_a.push(variant_call_id)
-						variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0089 Error: Inconsistent sequence length and start/stop.")
+				end
+
+				# SUPPORT db id
+				unless variant_call["Evidence"].empty?
+					if variant_call["Evidence"].scan(/(#{xref_db_all_regex}) *: *([-A-Za-z0-9]+)/).size > 0
+						for db, id in variant_call["Evidence"].scan(/(#{xref_db_all_regex}) *: *([-A-Za-z0-9]+)/)
+							variant_call_e.SUPPORT("db" => db, "id" => id, "sequence_type" => "evidence_seq")
+						end # for db, id in variant_call["Evidence"].scan(/(#{xref_db_all_regex}) *: *([-A-Za-z0-9]+)/)
+					else
+						## JV_SV0036: Invalid Variant Call Phenotype link
+						invalid_phenotype_link_evidence_call_a.push(variant_call_id)
 					end
+				end
 
-					# JV_SV0090: Inconsistent inner start and stop
-					if !variant_call["Inner Start"].empty? && !variant_call["Inner Stop"].empty? && (variant_call["Inner Start"].to_i > variant_call["Inner Stop"].to_i) && (!variant_call["Outer Start"].empty? || !variant_call["Outer Stop"].empty?)
-						inconsistent_inner_start_stop_call_a.push(variant_call_id)
-						variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0090 Warning: Inconsistent inner start and stop.")
-					end
+			} # variant_call_e
 
-					# JV_SV0091: Start and outer/inner starts co-exist
-					start_outer_inner_start_coexist_call_a.push(variant_call_id) if !variant_call["Inner Start"].empty? && !variant_call["Start"].empty? && !variant_call["Outer Start"].empty?
+			# VCF で提供された場合、variant call tsv を出力
+			if !vcf_sv_f.empty?
+				variant_call_field_a = []
+				open("#{conf_path}/variant_call_tsv.json"){|f|
+					variant_call_field_a = JSON.load(f)
+				}
 
-					# JV_SV0092: Stop and outer/inner stops co-exist
-					stop_outer_inner_stop_coexist_call_a.push(variant_call_id) if !variant_call["Inner Stop"].empty? && !variant_call["Stop"].empty? && !variant_call["Outer Stop"].empty?
+				variant_call_tsv_s += "#{variant_call_field_a.join("\t")}\n" if vc_line == 0
+				all_variant_call_tsv_s += "#{variant_call_field_a.join("\t")}\n" if vc_line == 0 && vcf_count == 0
 
-					# start
-					genome_attr_h.store("outer_start", variant_call["Outer Start"]) unless variant_call["Outer Start"].empty?
-					genome_attr_h.store("start", variant_call["Start"]) unless variant_call["Start"].empty?
-					genome_attr_h.store("inner_start", variant_call["Inner Start"]) unless variant_call["Inner Start"].empty?
 
-					# stop
-					genome_attr_h.store("stop", variant_call["Stop"]) unless variant_call["Stop"].empty?
-					genome_attr_h.store("inner_stop", variant_call["Inner Stop"]) unless variant_call["Inner Stop"].empty?
-					genome_attr_h.store("outer_stop", variant_call["Outer Stop"]) unless variant_call["Outer Stop"].empty?
-					genome_attr_h.store("ciposleft", variant_call["ciposleft"]) if variant_call["ciposleft"] && !variant_call["ciposleft"].empty?
-					genome_attr_h.store("ciposright", variant_call["ciposright"]) if variant_call["ciposright"] && !variant_call["ciposright"].empty?
-					genome_attr_h.store("ciendleft", variant_call["ciendleft"]) if variant_call["ciendleft"] && !variant_call["ciendleft"].empty?
-					genome_attr_h.store("ciendright", variant_call["ciendright"]) if variant_call["ciendright"] && !variant_call["ciendright"].empty?
-					# genome_attr_h.store("remap_score", "")
-					# genome_attr_h.store("strand", "")
-					# genome_attr_h.store("assembly_unit", "")
-					# genome_attr_h.store("alignment", "")
-					# genome_attr_h.store("remap_failure_code", "")
-					# genome_attr_h.store("placement_rank", "")
-					# genome_attr_h.store("placements_per_assembly", "")
-					# genome_attr_h.store("remap_diff_chr", "")
-					# genome_attr_h.store("remap_best_within_cluster", "")
-
-					# GENOME attributes
-					placement_e.GENOME(genome_attr_h)
-
-					# min start
-					if [variant_call["Outer Start"], variant_call["Start"], variant_call["Inner Start"]].reject{|e| e.empty? }.map{|e| e.to_i}.min
-						start_pos = [variant_call["Outer Start"], variant_call["Start"], variant_call["Inner Start"]].reject{|e| e.empty? }.map{|e| e.to_i}.min
-					end
+				variant_call_tsv_line_a = []
+				for field in variant_call_field_a
 					
-					# max stop
-					if [variant_call["Outer Stop"], variant_call["Stop"], variant_call["Inner Stop"]].reject{|e| e.empty? }.map{|e| e.to_i}.max
-						stop_pos = [variant_call["Outer Stop"], variant_call["Stop"], variant_call["Inner Stop"]].reject{|e| e.empty? }.map{|e| e.to_i}.max
-					end
+					if field == "FORMAT"
+						if !variant_call[field].nil? && !variant_call[field].empty?
+							format_for_tsv_a = []
+							variant_call[field].each{|sample_value_h|
+								sample_value_h.each{|ft_sample,ft_sample_value_h|
+									ft_sample_value_s = ""
+									ft_sample_value_s = ft_sample_value_h.map{|k,v| "#{k}:#{v}"}.join(";") if ft_sample_value_h
+									format_for_tsv_a.push("#{ft_sample}=#{ft_sample_value_s}") unless ft_sample_value_s.empty?
+								}
+							}
 
-					# JV_C0061: Chromosome position larger than chromosome size + 1
-					if chr_length != 0 
-						if (start_pos != -1 && (start_pos > chr_length + 1)) || (stop_pos != -1 && (stop_pos > chr_length + 1))
-							pos_outside_chr_call_a.push(variant_call_id)
-							variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_C0061 Error: Chromosome position is larger than chromosome size + 1. Check if the position is correct.")
+							variant_call_tsv_line_a.push(format_for_tsv_a.join(";"))
+						else
+							variant_call_tsv_line_a.push("")
+						end					
+					else
+						if !variant_call[field].nil? && !variant_call[field].empty?
+							variant_call_tsv_line_a.push(variant_call[field])
+						else
+							variant_call_tsv_line_a.push("")
 						end
 					end
 
-					## parent region の placement との整合性チェック
-					variant_call_placement_h.store(variant_call_id, {"Assembly" => assembly, "Chr" => chr_name, "Contig" => contig_accession, "Outer Start" => variant_call["Outer Start"], "Start" => variant_call["Start"], "Inner Start" => variant_call["Inner Start"], "Stop" => variant_call["Stop"], "Inner Stop" => variant_call["Inner Stop"], "Outer Stop" => variant_call["Outer Stop"]})
-
-				} # placement_e
-
-			end # if translocation
-
-			## JV_SV0054: Invalid placements for paired-end sequencing
-			if experiment_type_h[variant_call["Experiment ID"]] && experiment_type_h[variant_call["Experiment ID"]]["Method Type"] == "Sequencing" && experiment_type_h[variant_call["Experiment ID"]]["Analysis Type"] == "Paired-end mapping" && (!variant_call["Start"].empty? || !variant_call["Inner Start"].empty? || !variant_call["Stop"].empty? || !variant_call["Inner Stop"].empty?)
-				invalid_placements_pe_seq_call_a.push(variant_call_id)
-			end
-
-			# VARIANT_SEQUENCE
-			unless variant_call["Sequence"].empty?
-				variant_call_e.VARIANT_SEQUENCE(variant_call["Sequence"])
-
-				## JV_SV0060: Invalid sequence
-				unless variant_call["Sequence"] =~ /^[- .ABCDGHKMNRSTUVWY]+$/i
-					invalid_seq_call_a.push(variant_call_id) # JV_SV0060
 				end
 
-			end
-
-			# SUPPORT db id
-			unless variant_call["Evidence"].empty?
-				if variant_call["Evidence"].scan(/(#{xref_db_all_regex}) *: *([-A-Za-z0-9]+)/).size > 0
-					for db, id in variant_call["Evidence"].scan(/(#{xref_db_all_regex}) *: *([-A-Za-z0-9]+)/)
-						variant_call_e.SUPPORT("db" => db, "id" => id, "sequence_type" => "evidence_seq")
-					end # for db, id in variant_call["Evidence"].scan(/(#{xref_db_all_regex}) *: *([-A-Za-z0-9]+)/)
-				else
-					## JV_SV0036: Invalid Variant Call Phenotype link
-					invalid_phenotype_link_evidence_call_a.push(variant_call_id)
-				end
-			end
-
-		} # variant_call_e
-
-		# VCF で提供された場合、variant call tsv を出力
-		if !vcf_sv_f.empty?
-			variant_call_field_a = []
-			open("#{conf_path}/variant_call_tsv.json"){|f|
-				variant_call_field_a = JSON.load(f)
-			}
-
-			variant_call_tsv_s += "#{variant_call_field_a.join("\t")}\n" if vc_line == 0
-
-			variant_call_tsv_line_a = []
-			for field in variant_call_field_a
-				
-				if field == "FORMAT"
-					if !variant_call[field].nil? && !variant_call[field].empty?
-						format_for_tsv_a = []
-						variant_call[field].each{|sample_value_h|
-							sample_value_h.each{|ft_sample,ft_sample_value_h|
-								ft_sample_value_s = ""
-								ft_sample_value_s = ft_sample_value_h.map{|k,v| "#{k}:#{v}"}.join(";") if ft_sample_value_h
-								format_for_tsv_a.push("#{ft_sample}=#{ft_sample_value_s}") unless ft_sample_value_s.empty?
-							}
-						}
-
-						variant_call_tsv_line_a.push(format_for_tsv_a.join(";"))
-					else
-						variant_call_tsv_line_a.push("")
-					end					
-				else
-					if !variant_call[field].nil? && !variant_call[field].empty?
-						variant_call_tsv_line_a.push(variant_call[field])
-					else
-						variant_call_tsv_line_a.push("")
-					end
-				end
+				variant_call_tsv_s += "#{variant_call_tsv_line_a.join("\t")}\n"
+				all_variant_call_tsv_s += "#{variant_call_tsv_line_a.join("\t")}\n"
 
 			end
 
-			variant_call_tsv_s += "#{variant_call_tsv_line_a.join("\t")}\n"
+			vc_line += 1
+			
+		end # for variant_call in variant_call_a
 
+		all_variant_call_tsv_log_a.push(variant_call_tsv_log_a)
+
+		# VCF 毎の tsv 出力
+		vc_input_filename = ""
+		vc_input_filename = File.basename(vc_input)
+		if !variant_call_tsv_s.empty?
+			variant_call_tsv_f = open("#{submission_id}_#{vc_input_filename}.variant_call.tsv", "w")
+			variant_call_tsv_f.puts variant_call_tsv_s
+			variant_call_tsv_f.close
 		end
 
-		vc_line += 1
+		# VCF 毎の tsv log 出力
+		if !variant_call_tsv_log_a.empty?
 
-	end # for variant_call_a
+			variant_call_tsv_log_f = open("#{submission_id}_#{vc_input_filename}.variant_call.tsv.log.txt", "w")
+
+			variant_call_tsv_log_f.puts variant_call_sheet_header_a.join("\t")
+
+			variant_call_tsv_log_a.each{|line|
+				variant_call_tsv_log_f.puts line
+			}
+
+			variant_call_tsv_log_f.close
+		end
+
+		vcf_count += 1
+
+		## Variant Call, Error
+		error_sv_vc_a.push(["JV_SV0072", "chr_name or chr_accession must refer to a valid chromosome for the specified assembly, and chr_name can contain 'chr'. Variant Call: #{invalid_chr_ref_call_a.size} sites, #{invalid_chr_ref_call_a.size > 4? invalid_chr_ref_call_a[0, limit_for_etc].join(",") + " etc" : invalid_chr_ref_call_a.join(",")}"]) unless invalid_chr_ref_call_a.empty?
+		error_sv_vc_a.push(["JV_SV0074", "Contig accession must refer to a valid INSDC accession and version. Variant Call: #{invalid_contig_acc_ref_call_a.size} sites, #{invalid_contig_acc_ref_call_a.size > 4? invalid_contig_acc_ref_call_a[0, limit_for_etc].join(",") + " etc" : invalid_contig_acc_ref_call_a.join(",")}"]) unless invalid_contig_acc_ref_call_a.empty?
+		error_sv_vc_a.push(["JV_SV0076", "Genomic placement must contain either a chr_name, chr_accession, or contig_accession unless it is on a novel sequence insertion or translocation. Variant Call: #{missing_chr_contig_acc_call_a.size} sites, #{missing_chr_contig_acc_call_a.size > 4? missing_chr_contig_acc_call_a[0, limit_for_etc].join(",") + " etc" : missing_chr_contig_acc_call_a.join(",")}"]) unless missing_chr_contig_acc_call_a.empty?
+		error_sv_vc_a.push(["JV_SV0077", "Genomic placement should not have a contig_accession if there is also a chr_name or chr_accession. Variant Call: #{contig_acc_for_chr_acc_call_a.size} sites, #{contig_acc_for_chr_acc_call_a.size > 4? contig_acc_for_chr_acc_call_a[0, limit_for_etc].join(",") + " etc" : contig_acc_for_chr_acc_call_a.join(",")}"]) unless contig_acc_for_chr_acc_call_a.empty?
+		error_sv_vc_a.push(["JV_SV0099", "Provide a valid assay ID. Variant Call: #{invalid_assay_id_call_a.size} sites, #{invalid_assay_id_call_a.size > 4? invalid_assay_id_call_a[0, limit_for_etc].join(",") + " etc" : invalid_assay_id_call_a.join(",")}"]) unless invalid_assay_id_call_a.empty?
+
+		## Variant Call, Error ignore
+		error_ignore_sv_vc_a.push(["JV_SV0045", "Missing From/To in translocation. Variant Call: #{invalid_from_to_call_a.size} sites, #{invalid_from_to_call_a.size > 4? invalid_from_to_call_a[0, limit_for_etc].join(",") + " etc" : invalid_from_to_call_a.join(",")}"]) unless invalid_from_to_call_a.empty?
+		error_ignore_sv_vc_a.push(["JV_SV0041", "Placements that are part of a variant call with Variant Call Type = 'intrachromosomal translocation' must have same chromosome. Variant Call: #{different_chrs_for_intra_call_a.size} sites, #{different_chrs_for_intra_call_a.size > 4? different_chrs_for_intra_call_a[0, limit_for_etc].join(",") + " etc" : different_chrs_for_intra_call_a.join(",")}"]) unless different_chrs_for_intra_call_a.empty?
+		error_ignore_sv_vc_a.push(["JV_SV0042", "Placements that are part of a variant call with Variant Call Type = 'interchromosomal translocation' must have a different chromosome. Variant Call: #{same_chrs_for_inter_call_a.size} sites, #{same_chrs_for_inter_call_a.size > 4? same_chrs_for_inter_call_a[0, limit_for_etc].join(",") + " etc" : same_chrs_for_inter_call_a.join(",")}"]) unless same_chrs_for_inter_call_a.empty?
+		error_ignore_sv_vc_a.push(["JV_SV0047", "Deletion calls with outers-only should have Outer Stop > Outer Start. Variant Call: #{inconsistent_outer_start_stop_call_a.size} sites, #{inconsistent_outer_start_stop_call_a.size > 4? inconsistent_outer_start_stop_call_a[0, limit_for_etc].join(",") + " etc" : inconsistent_outer_start_stop_call_a.join(",")}"]) unless inconsistent_outer_start_stop_call_a.empty?
+		error_ignore_sv_vc_a.push(["JV_SV0078", "Genomic placement must contain either a start, outer_start, or inner_start unless it is a novel sequence insertion or translocation. Variant Call: #{missing_start_call_a.size} sites, #{missing_start_call_a.size > 4? missing_start_call_a[0, limit_for_etc].join(",") + " etc" : missing_start_call_a.join(",")}"]) unless missing_start_call_a.empty?
+		error_ignore_sv_vc_a.push(["JV_SV0079", "Genomic placement must contain either a stop, outer_stop, or inner_stop unless it is a novel sequence insertion or translocation. Variant Call: #{missing_stop_call_a.size} sites, #{missing_stop_call_a.size > 4? missing_stop_call_a[0, limit_for_etc].join(",") + " etc" : missing_stop_call_a.join(",")}"]) unless missing_stop_call_a.empty?
+		error_ignore_sv_vc_a.push(["JV_SV0080", "When on same sequence, start must be <= stop. Variant Call: #{invalid_start_stop_call_a.size} sites, #{invalid_start_stop_call_a.size > 4? invalid_start_stop_call_a[0, limit_for_etc].join(",") + " etc" : invalid_start_stop_call_a.join(",")}"]) unless invalid_start_stop_call_a.empty?
+		error_ignore_sv_vc_a.push(["JV_SV0081", "When on same sequence, outer_start must be <= outer_stop. Variant Call: #{invalid_outer_start_outer_stop_call_a.size} sites, #{invalid_outer_start_outer_stop_call_a.size > 4? invalid_outer_start_outer_stop_call_a[0, limit_for_etc].join(",") + " etc" : invalid_outer_start_outer_stop_call_a.join(",")}"]) unless invalid_outer_start_outer_stop_call_a.empty?
+		error_ignore_sv_vc_a.push(["JV_SV0082", "When on same sequence, outer_start must be <= inner_start. Variant Call: #{invalid_outer_start_inner_start_call_a.size} sites, #{invalid_outer_start_inner_start_call_a.size > 4? invalid_outer_start_inner_start_call_a[0, limit_for_etc].join(",") + " etc" : invalid_outer_start_inner_start_call_a.join(",")}"]) unless invalid_outer_start_inner_start_call_a.empty?
+		error_ignore_sv_vc_a.push(["JV_SV0083", "When on same sequence, inner_stop must be <= outer_stop. Variant Call: #{invalid_inner_stop_outer_stop_call_a.size} sites, #{invalid_inner_stop_outer_stop_call_a.size > 4? invalid_inner_stop_outer_stop_call_a[0, limit_for_etc].join(",") + " etc" : invalid_inner_stop_outer_stop_call_a.join(",")}"]) unless invalid_inner_stop_outer_stop_call_a.empty?
+		error_ignore_sv_vc_a.push(["JV_SV0084", "When on same sequence, start must be < inner_stop, unless placement contains all of the following: start, stop, outer_start, outer_stop, inner_start and inner_stop. Also, if using confidence intervals, start must be < (stop - ciendleft). Variant Call: #{invalid_start_inner_stop_call_a.size} sites, #{invalid_start_inner_stop_call_a.size > 4? invalid_start_inner_stop_call_a[0, limit_for_etc].join(",") + " etc" : invalid_start_inner_stop_call_a.join(",")}"]) unless invalid_start_inner_stop_call_a.empty?
+		error_ignore_sv_vc_a.push(["JV_SV0085", "When on same sequence, inner_start must be < stop, unless placement contains all of the following: start, stop, outer_start, outer_stop, inner_start and inner_stop. Also, if using confidence intervals, (start + ciposright) must be < stop. Variant Call: #{invalid_inner_start_stop_call_a.size} sites, #{invalid_inner_start_stop_call_a.size > 4? invalid_inner_start_stop_call_a[0, limit_for_etc].join(",") + " etc" : invalid_inner_start_stop_call_a.join(",")}"]) unless invalid_inner_start_stop_call_a.empty?
+		error_ignore_sv_vc_a.push(["JV_SV0086", "When on same sequence, inner_start must be <= inner_stop if there are only inner placements. Variant Call: #{invalid_inner_start_inner_stop_call_a.size} sites, #{invalid_inner_start_inner_stop_call_a.size > 4? invalid_inner_start_inner_stop_call_a[0, limit_for_etc].join(",") + " etc" : invalid_inner_start_inner_stop_call_a.join(",")}"]) unless invalid_inner_start_inner_stop_call_a.empty?
+		error_ignore_sv_vc_a.push(["JV_SV0087", "Genomic placement with start must only contain start, or must also contain both outer_start and inner_start. Variant Call: #{multiple_starts_call_a.size} sites, #{multiple_starts_call_a.size > 4? multiple_starts_call_a[0, limit_for_etc].join(",") + " etc" : multiple_starts_call_a.join(",")}"]) unless multiple_starts_call_a.empty?
+		error_ignore_sv_vc_a.push(["JV_SV0088", "Genomic placement with stop must only contain stop, or must also contain both outer_stop and inner_stop. Variant Call: #{multiple_stops_call_a.size} sites, #{multiple_stops_call_a.size > 4? multiple_stops_call_a[0, limit_for_etc].join(",") + " etc" : multiple_stops_call_a.join(",")}"]) unless multiple_stops_call_a.empty?
+		error_ignore_sv_vc_a.push(["JV_SV0089", "Error if inner_stop, stop, or outer_stop are beyond the length of the sequence (chromosome or scaffold). Variant Call: #{inconsistent_length_start_stop_call_a.size} sites, #{inconsistent_length_start_stop_call_a.size > 4? inconsistent_length_start_stop_call_a[0, limit_for_etc].join(",") + " etc" : inconsistent_length_start_stop_call_a.join(",")}"]) unless inconsistent_length_start_stop_call_a.empty?
+
+		## Variant Call, Warning
+		warning_sv_vc_a.push(["JV_SV0033", "Variant Call Phenotype/Link must reference a valid medical vocabulary db:id. Variant Call: #{invalid_phenotype_link_call_a.size} sites, #{invalid_phenotype_link_call_a.size > 4? invalid_phenotype_link_call_a[0, limit_for_etc].join(",") + " etc" : invalid_phenotype_link_call_a.join(",")}"]) unless invalid_phenotype_link_call_a.empty?
+		warning_sv_vc_a.push(["JV_SV0036", "Variant Call Evidence should reference a valid db:id. Variant Call: #{invalid_phenotype_link_evidence_call_a.size} sites, #{invalid_phenotype_link_evidence_call_a.size > 4? invalid_phenotype_link_evidence_call_a[0, limit_for_etc].join(",") + " etc" : invalid_phenotype_link_evidence_call_a.join(",")}"]) unless invalid_phenotype_link_evidence_call_a.empty?
+		warning_sv_vc_a.push(["JV_SV0094", "Warning if call type=interchromosomal translocation or intrachromosomal translocation and placement does not contain strand. Variant Call: #{missing_strand_call_a.size} sites, #{missing_strand_call_a.size > 4? missing_strand_call_a[0, limit_for_etc].join(",") + " etc" : missing_strand_call_a.join(",")}"]) unless missing_strand_call_a.empty?
+		warning_sv_vc_a.push(["JV_SV0095", "Warning if call placement contains a strand and type is NOT interchromosomal translocation or intrachromosomal translocation, or if region placement contains a strand and type is NOT translocation or complex chromosomal rearrangement. Variant Call: #{strand_for_translocation_call_a.size} sites, #{strand_for_translocation_call_a.size > 4? strand_for_translocation_call_a[0, limit_for_etc].join(",") + " etc" : strand_for_translocation_call_a.join(",")}"]) unless strand_for_translocation_call_a.empty?
+		warning_sv_vc_a.push(["JV_SV0090", "Warning if when on same sequence, inner_start > inner_stop and there are also valid outer placements. Variant Call: #{inconsistent_inner_start_stop_call_a.size} sites, #{inconsistent_inner_start_stop_call_a.size > 4? inconsistent_inner_start_stop_call_a[0, limit_for_etc].join(",") + " etc" : inconsistent_inner_start_stop_call_a.join(",")}"]) unless inconsistent_inner_start_stop_call_a.empty?
+		warning_sv_vc_a.push(["JV_SV0091", "Warning if genomic placement with start also contains outer_start and inner_start. Variant Call: #{start_outer_inner_start_coexist_call_a.size} sites, #{start_outer_inner_start_coexist_call_a.size > 4? start_outer_inner_start_coexist_call_a[0, limit_for_etc].join(",") + " etc" : start_outer_inner_start_coexist_call_a.join(",")}"]) unless start_outer_inner_start_coexist_call_a.empty?
+		warning_sv_vc_a.push(["JV_SV0092", "Warning if genomic placement with stop also contains outer_stop and inner_stop. Variant Call: #{stop_outer_inner_stop_coexist_call_a.size} sites, #{stop_outer_inner_stop_coexist_call_a.size > 4? stop_outer_inner_stop_coexist_call_a[0, limit_for_etc].join(",") + " etc" : stop_outer_inner_stop_coexist_call_a.join(",")}"]) unless stop_outer_inner_stop_coexist_call_a.empty?
+		warning_sv_vc_a.push(["JV_SV0054", "Warning if method_type=Sequencing and analysis_type=Paired-end mapping, and there are placements other than outer_start, outer_stop. Variant Call: #{invalid_placements_pe_seq_call_a.size} sites, #{invalid_placements_pe_seq_call_a.size > 4? invalid_placements_pe_seq_call_a[0, limit_for_etc].join(",") + " etc" : invalid_placements_pe_seq_call_a.join(",")}"]) unless invalid_placements_pe_seq_call_a.empty?
+		warning_sv_vc_a.push(["JV_SV0060", "Warning if Variant/Sequence contains other than valid iupac codes (ABCDGHKMNRSTUVWY) or space, period '.' or dash '-' Variant Call: #{invalid_seq_call_a.size} sites, #{invalid_seq_call_a.size > 4? invalid_seq_call_a[0, limit_for_etc].join(",") + " etc" : invalid_seq_call_a.join(",")}"]) unless invalid_seq_call_a.empty?
+		warning_sv_vc_a.push(["JV_SV0059", "Warning if variant call has a placement on Chr Y for a female subject. Variant Call: #{chry_for_female_call_a.size} sites, #{chry_for_female_call_a.size > 4? chry_for_female_call_a[0, limit_for_etc].join(",") + " etc" : chry_for_female_call_a.join(",")}"]) unless chry_for_female_call_a.empty?
+
+		# VCF 毎に格納
+		error_sv_vc_h.store(vc_input, error_sv_vc_a)
+		error_ignore_sv_vc_h.store(vc_input, error_ignore_sv_vc_a)
+		warning_sv_vc_h.store(vc_input, warning_sv_vc_a)
+
+	end # for vc_input, variant_call_a in total_variant_call_h
 
 	## JV_SV0030: Duplicated Variant Call ID
 	error_sv_a.push(["JV_SV0030", "Variant Call ID must be unique. Duplicated Variant Call ID(s): #{duplicated_variant_call_id_a.sort.uniq.size > 4? duplicated_variant_call_id_a.sort.uniq[0, limit_for_etc].join(",") + " etc" : duplicated_variant_call_id_a.sort.uniq.join(",")}"]) unless duplicated_variant_call_id_a.empty?
-
-	## Variant Call, Error
-	error_sv_a.push(["JV_SV0072", "chr_name or chr_accession must refer to a valid chromosome for the specified assembly, and chr_name can contain 'chr'. Variant Call: #{invalid_chr_ref_call_a.size} sites, #{invalid_chr_ref_call_a.size > 4? invalid_chr_ref_call_a[0, limit_for_etc].join(",") + " etc" : invalid_chr_ref_call_a.join(",")}"]) unless invalid_chr_ref_call_a.empty?
-	error_sv_a.push(["JV_SV0074", "Contig accession must refer to a valid INSDC accession and version. Variant Call: #{invalid_contig_acc_ref_call_a.size} sites, #{invalid_contig_acc_ref_call_a.size > 4? invalid_contig_acc_ref_call_a[0, limit_for_etc].join(",") + " etc" : invalid_contig_acc_ref_call_a.join(",")}"]) unless invalid_contig_acc_ref_call_a.empty?
-	error_sv_a.push(["JV_SV0076", "Genomic placement must contain either a chr_name, chr_accession, or contig_accession unless it is on a novel sequence insertion or translocation. Variant Call: #{missing_chr_contig_acc_call_a.size} sites, #{missing_chr_contig_acc_call_a.size > 4? missing_chr_contig_acc_call_a[0, limit_for_etc].join(",") + " etc" : missing_chr_contig_acc_call_a.join(",")}"]) unless missing_chr_contig_acc_call_a.empty?
-	error_sv_a.push(["JV_SV0077", "Genomic placement should not have a contig_accession if there is also a chr_name or chr_accession. Variant Call: #{contig_acc_for_chr_acc_call_a.size} sites, #{contig_acc_for_chr_acc_call_a.size > 4? contig_acc_for_chr_acc_call_a[0, limit_for_etc].join(",") + " etc" : contig_acc_for_chr_acc_call_a.join(",")}"]) unless contig_acc_for_chr_acc_call_a.empty?
-	error_sv_a.push(["JV_SV0099", "Provide a valid assay ID. Variant Call: #{invalid_assay_id_call_a.size} sites, #{invalid_assay_id_call_a.size > 4? invalid_assay_id_call_a[0, limit_for_etc].join(",") + " etc" : invalid_assay_id_call_a.join(",")}"]) unless invalid_assay_id_call_a.empty?
-
-	## Variant Call, Error ignore
+	
+	## JV_C0057: Invalid value for controlled terms
 	error_ignore_common_a.push(["JV_C0057", "Value is not in controlled terms. Variant Call: #{invalid_value_for_cv_call_a.size} sites, #{invalid_value_for_cv_call_a.size > 4? invalid_value_for_cv_call_a[0, limit_for_etc].join(",") + " etc" : invalid_value_for_cv_call_a.join(",")}"]) unless invalid_value_for_cv_call_a.empty?
-	error_ignore_sv_a.push(["JV_SV0045", "Missing From/To in translocation. Variant Call: #{invalid_from_to_call_a.size} sites, #{invalid_from_to_call_a.size > 4? invalid_from_to_call_a[0, limit_for_etc].join(",") + " etc" : invalid_from_to_call_a.join(",")}"]) unless invalid_from_to_call_a.empty?
-	error_ignore_sv_a.push(["JV_SV0041", "Placements that are part of a variant call with Variant Call Type = 'intrachromosomal translocation' must have same chromosome. Variant Call: #{different_chrs_for_intra_call_a.size} sites, #{different_chrs_for_intra_call_a.size > 4? different_chrs_for_intra_call_a[0, limit_for_etc].join(",") + " etc" : different_chrs_for_intra_call_a.join(",")}"]) unless different_chrs_for_intra_call_a.empty?
-	error_ignore_sv_a.push(["JV_SV0042", "Placements that are part of a variant call with Variant Call Type = 'interchromosomal translocation' must have a different chromosome. Variant Call: #{same_chrs_for_inter_call_a.size} sites, #{same_chrs_for_inter_call_a.size > 4? same_chrs_for_inter_call_a[0, limit_for_etc].join(",") + " etc" : same_chrs_for_inter_call_a.join(",")}"]) unless same_chrs_for_inter_call_a.empty?
-	error_ignore_sv_a.push(["JV_SV0047", "Deletion calls with outers-only should have Outer Stop > Outer Start. Variant Call: #{inconsistent_outer_start_stop_call_a.size} sites, #{inconsistent_outer_start_stop_call_a.size > 4? inconsistent_outer_start_stop_call_a[0, limit_for_etc].join(",") + " etc" : inconsistent_outer_start_stop_call_a.join(",")}"]) unless inconsistent_outer_start_stop_call_a.empty?
-	error_ignore_sv_a.push(["JV_SV0078", "Genomic placement must contain either a start, outer_start, or inner_start unless it is a novel sequence insertion or translocation. Variant Call: #{missing_start_call_a.size} sites, #{missing_start_call_a.size > 4? missing_start_call_a[0, limit_for_etc].join(",") + " etc" : missing_start_call_a.join(",")}"]) unless missing_start_call_a.empty?
-	error_ignore_sv_a.push(["JV_SV0079", "Genomic placement must contain either a stop, outer_stop, or inner_stop unless it is a novel sequence insertion or translocation. Variant Call: #{missing_stop_call_a.size} sites, #{missing_stop_call_a.size > 4? missing_stop_call_a[0, limit_for_etc].join(",") + " etc" : missing_stop_call_a.join(",")}"]) unless missing_stop_call_a.empty?
-	error_ignore_sv_a.push(["JV_SV0080", "When on same sequence, start must be <= stop. Variant Call: #{invalid_start_stop_call_a.size} sites, #{invalid_start_stop_call_a.size > 4? invalid_start_stop_call_a[0, limit_for_etc].join(",") + " etc" : invalid_start_stop_call_a.join(",")}"]) unless invalid_start_stop_call_a.empty?
-	error_ignore_sv_a.push(["JV_SV0081", "When on same sequence, outer_start must be <= outer_stop. Variant Call: #{invalid_outer_start_outer_stop_call_a.size} sites, #{invalid_outer_start_outer_stop_call_a.size > 4? invalid_outer_start_outer_stop_call_a[0, limit_for_etc].join(",") + " etc" : invalid_outer_start_outer_stop_call_a.join(",")}"]) unless invalid_outer_start_outer_stop_call_a.empty?
-	error_ignore_sv_a.push(["JV_SV0082", "When on same sequence, outer_start must be <= inner_start. Variant Call: #{invalid_outer_start_inner_start_call_a.size} sites, #{invalid_outer_start_inner_start_call_a.size > 4? invalid_outer_start_inner_start_call_a[0, limit_for_etc].join(",") + " etc" : invalid_outer_start_inner_start_call_a.join(",")}"]) unless invalid_outer_start_inner_start_call_a.empty?
-	error_ignore_sv_a.push(["JV_SV0083", "When on same sequence, inner_stop must be <= outer_stop. Variant Call: #{invalid_inner_stop_outer_stop_call_a.size} sites, #{invalid_inner_stop_outer_stop_call_a.size > 4? invalid_inner_stop_outer_stop_call_a[0, limit_for_etc].join(",") + " etc" : invalid_inner_stop_outer_stop_call_a.join(",")}"]) unless invalid_inner_stop_outer_stop_call_a.empty?
-	error_ignore_sv_a.push(["JV_SV0084", "When on same sequence, start must be < inner_stop, unless placement contains all of the following: start, stop, outer_start, outer_stop, inner_start and inner_stop. Also, if using confidence intervals, start must be < (stop - ciendleft). Variant Call: #{invalid_start_inner_stop_call_a.size} sites, #{invalid_start_inner_stop_call_a.size > 4? invalid_start_inner_stop_call_a[0, limit_for_etc].join(",") + " etc" : invalid_start_inner_stop_call_a.join(",")}"]) unless invalid_start_inner_stop_call_a.empty?
-	error_ignore_sv_a.push(["JV_SV0085", "When on same sequence, inner_start must be < stop, unless placement contains all of the following: start, stop, outer_start, outer_stop, inner_start and inner_stop. Also, if using confidence intervals, (start + ciposright) must be < stop. Variant Call: #{invalid_inner_start_stop_call_a.size} sites, #{invalid_inner_start_stop_call_a.size > 4? invalid_inner_start_stop_call_a[0, limit_for_etc].join(",") + " etc" : invalid_inner_start_stop_call_a.join(",")}"]) unless invalid_inner_start_stop_call_a.empty?
-	error_ignore_sv_a.push(["JV_SV0086", "When on same sequence, inner_start must be <= inner_stop if there are only inner placements. Variant Call: #{invalid_inner_start_inner_stop_call_a.size} sites, #{invalid_inner_start_inner_stop_call_a.size > 4? invalid_inner_start_inner_stop_call_a[0, limit_for_etc].join(",") + " etc" : invalid_inner_start_inner_stop_call_a.join(",")}"]) unless invalid_inner_start_inner_stop_call_a.empty?
-	error_ignore_sv_a.push(["JV_SV0087", "Genomic placement with start must only contain start, or must also contain both outer_start and inner_start. Variant Call: #{multiple_starts_call_a.size} sites, #{multiple_starts_call_a.size > 4? multiple_starts_call_a[0, limit_for_etc].join(",") + " etc" : multiple_starts_call_a.join(",")}"]) unless multiple_starts_call_a.empty?
-	error_ignore_sv_a.push(["JV_SV0088", "Genomic placement with stop must only contain stop, or must also contain both outer_stop and inner_stop. Variant Call: #{multiple_stops_call_a.size} sites, #{multiple_stops_call_a.size > 4? multiple_stops_call_a[0, limit_for_etc].join(",") + " etc" : multiple_stops_call_a.join(",")}"]) unless multiple_stops_call_a.empty?
-	error_ignore_sv_a.push(["JV_SV0089", "Error if inner_stop, stop, or outer_stop are beyond the length of the sequence (chromosome or scaffold). Variant Call: #{inconsistent_length_start_stop_call_a.size} sites, #{inconsistent_length_start_stop_call_a.size > 4? inconsistent_length_start_stop_call_a[0, limit_for_etc].join(",") + " etc" : inconsistent_length_start_stop_call_a.join(",")}"]) unless inconsistent_length_start_stop_call_a.empty?
-
-	## Variant Call, Warning
-	warning_sv_a.push(["JV_SV0033", "Variant Call Phenotype/Link must reference a valid medical vocabulary db:id. Variant Call: #{invalid_phenotype_link_call_a.size} sites, #{invalid_phenotype_link_call_a.size > 4? invalid_phenotype_link_call_a[0, limit_for_etc].join(",") + " etc" : invalid_phenotype_link_call_a.join(",")}"]) unless invalid_phenotype_link_call_a.empty?
-	warning_sv_a.push(["JV_SV0036", "Variant Call Evidence should reference a valid db:id. Variant Call: #{invalid_phenotype_link_evidence_call_a.size} sites, #{invalid_phenotype_link_evidence_call_a.size > 4? invalid_phenotype_link_evidence_call_a[0, limit_for_etc].join(",") + " etc" : invalid_phenotype_link_evidence_call_a.join(",")}"]) unless invalid_phenotype_link_evidence_call_a.empty?
-	warning_sv_a.push(["JV_SV0094", "Warning if call type=interchromosomal translocation or intrachromosomal translocation and placement does not contain strand. Variant Call: #{missing_strand_call_a.size} sites, #{missing_strand_call_a.size > 4? missing_strand_call_a[0, limit_for_etc].join(",") + " etc" : missing_strand_call_a.join(",")}"]) unless missing_strand_call_a.empty?
-	warning_sv_a.push(["JV_SV0095", "Warning if call placement contains a strand and type is NOT interchromosomal translocation or intrachromosomal translocation, or if region placement contains a strand and type is NOT translocation or complex chromosomal rearrangement. Variant Call: #{strand_for_translocation_call_a.size} sites, #{strand_for_translocation_call_a.size > 4? strand_for_translocation_call_a[0, limit_for_etc].join(",") + " etc" : strand_for_translocation_call_a.join(",")}"]) unless strand_for_translocation_call_a.empty?
-	warning_sv_a.push(["JV_SV0090", "Warning if when on same sequence, inner_start > inner_stop and there are also valid outer placements. Variant Call: #{inconsistent_inner_start_stop_call_a.size} sites, #{inconsistent_inner_start_stop_call_a.size > 4? inconsistent_inner_start_stop_call_a[0, limit_for_etc].join(",") + " etc" : inconsistent_inner_start_stop_call_a.join(",")}"]) unless inconsistent_inner_start_stop_call_a.empty?
-	warning_sv_a.push(["JV_SV0091", "Warning if genomic placement with start also contains outer_start and inner_start. Variant Call: #{start_outer_inner_start_coexist_call_a.size} sites, #{start_outer_inner_start_coexist_call_a.size > 4? start_outer_inner_start_coexist_call_a[0, limit_for_etc].join(",") + " etc" : start_outer_inner_start_coexist_call_a.join(",")}"]) unless start_outer_inner_start_coexist_call_a.empty?
-	warning_sv_a.push(["JV_SV0092", "Warning if genomic placement with stop also contains outer_stop and inner_stop. Variant Call: #{stop_outer_inner_stop_coexist_call_a.size} sites, #{stop_outer_inner_stop_coexist_call_a.size > 4? stop_outer_inner_stop_coexist_call_a[0, limit_for_etc].join(",") + " etc" : stop_outer_inner_stop_coexist_call_a.join(",")}"]) unless stop_outer_inner_stop_coexist_call_a.empty?
-	warning_sv_a.push(["JV_SV0054", "Warning if method_type=Sequencing and analysis_type=Paired-end mapping, and there are placements other than outer_start, outer_stop. Variant Call: #{invalid_placements_pe_seq_call_a.size} sites, #{invalid_placements_pe_seq_call_a.size > 4? invalid_placements_pe_seq_call_a[0, limit_for_etc].join(",") + " etc" : invalid_placements_pe_seq_call_a.join(",")}"]) unless invalid_placements_pe_seq_call_a.empty?
-	warning_sv_a.push(["JV_SV0060", "Warning if Variant/Sequence contains other than valid iupac codes (ABCDGHKMNRSTUVWY) or space, period '.' or dash '-' Variant Call: #{invalid_seq_call_a.size} sites, #{invalid_seq_call_a.size > 4? invalid_seq_call_a[0, limit_for_etc].join(",") + " etc" : invalid_seq_call_a.join(",")}"]) unless invalid_seq_call_a.empty?
-	warning_sv_a.push(["JV_SV0059", "Warning if variant call has a placement on Chr Y for a female subject. Variant Call: #{chry_for_female_call_a.size} sites, #{chry_for_female_call_a.size > 4? chry_for_female_call_a[0, limit_for_etc].join(",") + " etc" : chry_for_female_call_a.join(",")}"]) unless chry_for_female_call_a.empty?
 
 	# VCF を Variant Call TSV として出力
 	if !vcf_sv_f.empty?
 		variant_call_tsv_f = open("#{submission_id}_variant_call.tsv", "w")
-		variant_call_tsv_f.puts variant_call_tsv_s
+		variant_call_tsv_f.puts all_variant_call_tsv_s
 		variant_call_tsv_f.close
-
 	end
 
 	if variant_region_a.empty?
@@ -3399,17 +3516,17 @@ end # if submission_h["Submission Type"] == "Structural variations"
 
 # Variant Call TSV log
 # Excel sheet tsv log
-if !variant_call_tsv_log_a.empty?
+if !all_variant_call_tsv_log_a.empty?
 
-	variant_call_tsv_log_f = open("#{submission_id}_variant_call.tsv.log.txt", "w")
+	all_variant_call_tsv_log_f = open("#{submission_id}_variant_call.tsv.log.txt", "w")
 
-	variant_call_tsv_log_f.puts variant_call_sheet_header_a.join("\t")
+	all_variant_call_tsv_log_f.puts variant_call_sheet_header_a.join("\t")
 
-	variant_call_tsv_log_a.each{|line|
-		variant_call_tsv_log_f.puts line
+	all_variant_call_tsv_log_a.each{|line|
+		all_variant_call_tsv_log_f.puts line
 	}
 
-	variant_call_tsv_log_f.close
+	all_variant_call_tsv_log_f.close
 end
 
 # Variant Region TSV log
@@ -3441,7 +3558,7 @@ sv_validation_result_s = ""
 
 ## SNP/SV Common
 validation_result_s = <<EOS
-JVar-SNP/SV validation results
+JVar-SNP/SV common validation results
 ---------------------------------------------
 Error
 EOS
@@ -3522,63 +3639,175 @@ warning_sv_a.sort{|a,b| a[0] <=> b[0]}.each{|m| sv_validation_result_s += m.join
 sv_validation_result_s += <<EOS
 ---------------------------------------------
 EOS
+
+## Variant Call
+# tsv
+if vcf_file_a.empty? # TSV
+
+sv_vc_validation_result_s = <<EOS
+
+JVar-SV Variant Call validation results (TSV)
+---------------------------------------------
+Error
+EOS
+	
+	error_sv_vc_h["tsv"].sort{|a,b| a[0] <=> b[0]}.each{|m| sv_vc_validation_result_s += m.join(": ") + "\n"} if error_sv_vc_h["tsv"]
+
+sv_vc_validation_result_s += <<EOS
+
+Error (ignore)
+EOS
+
+	error_ignore_sv_vc_h["tsv"].sort{|a,b| a[0] <=> b[0]}.each{|m| sv_vc_validation_result_s += m.join(": ") + "\n"} if error_ignore_sv_vc_h["tsv"]
+
+sv_vc_validation_result_s += <<EOS
+
+Warning
+EOS
+
+	warning_sv_vc_h["tsv"].sort{|a,b| a[0] <=> b[0]}.each{|m| sv_vc_validation_result_s += m.join(": ") + "\n"} if warning_sv_vc_h["tsv"]
+
+sv_vc_validation_result_s += <<EOS
+---------------------------------------------
+
+EOS
+
+else # VCF file(s)
+
+sv_vc_validation_result_s = <<EOS
+
+JVar-SV Variant Call validation results
+========================================================================
+EOS
+
+	for vcf_file in vcf_file_a
+
+sv_vc_validation_result_s += <<EOS
+
+VCF: #{vcf_file}
+---------------------------------------------
+Error
+EOS
+
+		error_sv_vc_h[vcf_file].sort{|a,b| a[0] <=> b[0]}.each{|m| sv_vc_validation_result_s += m.join(": ") + "\n"}
+
+sv_vc_validation_result_s += <<EOS
+
+Error (ignore)
+EOS
+
+	error_ignore_sv_vc_h[vcf_file].sort{|a,b| a[0] <=> b[0]}.each{|m| sv_vc_validation_result_s += m.join(": ") + "\n"}
+
+sv_vc_validation_result_s += <<EOS
+
+Warning
+EOS
+
+	warning_sv_vc_h[vcf_file].sort{|a,b| a[0] <=> b[0]}.each{|m| sv_vc_validation_result_s += m.join(": ") + "\n"}
+
+sv_vc_validation_result_s += <<EOS
+---------------------------------------------
+EOS
+
+	end # for vcf_file in vcf_file_a
+
+sv_vc_validation_result_s += <<EOS
+========================================================================
+EOS
+
 end
 
+end # if submission_type == "SV"
+
+
+## VCF
 if !vcf_snp_a.empty? || !vcf_sv_f.empty?
 
 vcf_validation_result_s = <<EOS
 
 JVar-#{submission_type == "SNP" ? "SNP" : "SV"} VCF validation results
+========================================================================
+EOS
+
+	for vcf_file in vcf_file_a
+
+vcf_validation_result_s += <<EOS
+
+VCF: #{vcf_file}
+
 Header
 ---------------------------------------------
 Error
 EOS
 
-error_vcf_header_a.sort{|a,b| a[0] <=> b[0]}.each{|m| vcf_validation_result_s += m.join(": ") + "\n"}
+	error_vcf_header_h[vcf_file].sort{|a,b| a[0] <=> b[0]}.each{|m| vcf_validation_result_s += m.join(": ") + "\n"}
 
 vcf_validation_result_s += <<EOS
 
 Error (ignore)
 EOS
 
-error_ignore_vcf_header_a.sort{|a,b| a[0] <=> b[0]}.each{|m| vcf_validation_result_s += m.join(": ") + "\n"}
+	error_ignore_vcf_header_h[vcf_file].sort{|a,b| a[0] <=> b[0]}.each{|m| vcf_validation_result_s += m.join(": ") + "\n"}
+
+vcf_validation_result_s += <<EOS
+
+Error (exchange)
+EOS
+
+	error_exchange_vcf_header_h[vcf_file].sort{|a,b| a[0] <=> b[0]}.each{|m| vcf_validation_result_s += m.join(": ") + "\n"}
 
 vcf_validation_result_s += <<EOS
 
 Warning
 EOS
 
-warning_vcf_header_a.sort{|a,b| a[0] <=> b[0]}.each{|m| vcf_validation_result_s += m.join(": ") + "\n"}
+	warning_vcf_header_h[vcf_file].sort{|a,b| a[0] <=> b[0]}.each{|m| vcf_validation_result_s += m.join(": ") + "\n"}
+
 vcf_validation_result_s += <<EOS
 ---------------------------------------------
 
+EOS
+
+vcf_validation_result_s += <<EOS
 Content
 ---------------------------------------------
 Error
 EOS
 
-error_vcf_content_a.sort{|a,b| a[0] <=> b[0]}.each{|m| vcf_validation_result_s += m.join(": ") + "\n"}
+	error_vcf_content_h[vcf_file].sort{|a,b| a[0] <=> b[0]}.each{|m| vcf_validation_result_s += m.join(": ") + "\n"}
 
 vcf_validation_result_s += <<EOS
 
 Error (ignore)
 EOS
 
-error_ignore_vcf_content_a.sort{|a,b| a[0] <=> b[0]}.each{|m| vcf_validation_result_s += m.join(": ") + "\n"}
+	error_ignore_vcf_content_h[vcf_file].sort{|a,b| a[0] <=> b[0]}.each{|m| vcf_validation_result_s += m.join(": ") + "\n"}
+
+vcf_validation_result_s += <<EOS
+
+Error (exchange)
+EOS
+
+	error_exchange_vcf_content_h[vcf_file].sort{|a,b| a[0] <=> b[0]}.each{|m| vcf_validation_result_s += m.join(": ") + "\n"}
 
 vcf_validation_result_s += <<EOS
 
 Warning
 EOS
 
-warning_vcf_content_a.sort{|a,b| a[0] <=> b[0]}.each{|m| vcf_validation_result_s += m.join(": ") + "\n"}
+	warning_vcf_content_h[vcf_file].sort{|a,b| a[0] <=> b[0]}.each{|m| vcf_validation_result_s += m.join(": ") + "\n"}
 
 vcf_validation_result_s += <<EOS
 ---------------------------------------------
-
 EOS
 
-end
+	end # for vcf_file in vcf_file_a
+
+vcf_validation_result_s += <<EOS
+========================================================================
+EOS
+
+end # if !vcf_snp_a.empty? || !vcf_sv_f.empty?
 
 ## Assembly にない INSDC fasta を download & index
 unless contig_download_a.empty?
@@ -3610,6 +3839,12 @@ end
 if submission_type == "SV"
 	validation_result_f.puts sv_validation_result_s
 	puts sv_validation_result_s
+end
+
+# Variant Call
+if submission_type == "SV"
+	validation_result_f.puts sv_vc_validation_result_s
+	puts sv_vc_validation_result_s
 end
 
 # VCF

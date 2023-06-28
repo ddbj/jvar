@@ -231,7 +231,7 @@ def vcf_parser(vcf_file, vcf_type)
 		if line_c == 0
 			## JV_VCF0037: Missing fileformat
 			unless line =~ /^##fileformat=VCFv4\.[0-4]$/
-				error_vcf_header_a.push(["JV_VCF0037", "First line must be the fileformat tag. #{vcf_file}"])
+				error_vcf_header_a.push(["JV_VCF0037", "First line must be the fileformat tag."])
 			end
 		end
 
@@ -332,7 +332,7 @@ def vcf_parser(vcf_file, vcf_type)
 
 			# column 前後の whitespace 削除
 			unless column_whitespaces_a.empty?
-				warning_vcf_header_a.push(["JV_VCF0005", "White space characters before/after fields are automatically removed. #{vcf_file} #{column_whitespaces_a.join(",")}"])
+				warning_vcf_header_a.push(["JV_VCF0005", "White space characters before/after fields are automatically removed. #{column_whitespaces_a.join(",")}"])
 				vcf_log_a.push("#{line.strip}\t# JV_VCF0005 Warning: White space characters before/after fields are automatically removed.")
 				vcf_column_out_a = vcf_column_a.collect{|e| e.strip }
 			else
@@ -341,9 +341,9 @@ def vcf_parser(vcf_file, vcf_type)
 
 			## JV_VCF0004: Missing VCF column
 			if vcf_column_out_a.empty?
-				error_vcf_header_a.push(["JV_VCF0004", "Provide missing VCF column. #{vcf_file}"]) unless $required_column_a == vcf_column_a[0, 8]
+				error_vcf_header_a.push(["JV_VCF0004", "Provide missing VCF column."]) unless $required_column_a == vcf_column_a[0, 8]
 			else
-				error_vcf_header_a.push(["JV_VCF0004", "Provide missing VCF column. #{vcf_file}"]) unless $required_column_a == vcf_column_out_a[0, 8]
+				error_vcf_header_a.push(["JV_VCF0004", "Provide missing VCF column."]) unless $required_column_a == vcf_column_out_a[0, 8]
 			end
 
 			## sample columns
@@ -359,7 +359,7 @@ def vcf_parser(vcf_file, vcf_type)
 
 	## JV_VCF0001: Missing VCF meta tag
 	unless ($required_header_tag_a - header_tag_a).empty?
-		error_vcf_header_a.push(["JV_VCF0001", "Provide missing VCF meta tags. #{vcf_file} #{($required_header_tag_a - header_tag_a).join(",")}"])
+		error_vcf_header_a.push(["JV_VCF0001", "Provide missing VCF meta tags. #{($required_header_tag_a - header_tag_a).join(",")}"])
 	end
 
 	## JV_VCF0002: Duplicated VCF meta tag
@@ -368,7 +368,7 @@ def vcf_parser(vcf_file, vcf_type)
 		duplicated_required_header_tag_a.push(required_header_tag) if header_tag_a.count(required_header_tag) > 1
 	end
 
-	error_vcf_header_a.push(["JV_VCF0002", "Remove duplicated VCF meta tags. #{vcf_file} #{duplicated_required_header_tag_a.join(",")}"]) unless duplicated_required_header_tag_a.empty?
+	error_vcf_header_a.push(["JV_VCF0002", "Remove duplicated VCF meta tags. #{duplicated_required_header_tag_a.join(",")}"]) unless duplicated_required_header_tag_a.empty?
 
 	## Assembly
 	assembly_a = []
@@ -389,7 +389,7 @@ def vcf_parser(vcf_file, vcf_type)
 	}
 
 	## JV_VCF0003: Invalid reference genome
-	error_vcf_header_a.push(["JV_VCF0003", "Reference assembly must refer to a valid assembly db name, UCSC name, assembly RefSeq accession, or assembly INSDC accession. #{vcf_file}"]) if refseq_assembly.empty?
+	error_vcf_header_a.push(["JV_VCF0003", "Reference assembly must refer to a valid assembly db name, UCSC name, assembly RefSeq accession, or assembly INSDC accession."]) if refseq_assembly.empty?
 
 	## refseq assembly から構成配列を取得
 	chromosome_per_assembly_a = []
@@ -404,7 +404,7 @@ def vcf_parser(vcf_file, vcf_type)
 	if vcf_type == "SNP"
 		## JV_VCFP005: Invalid variation type (VRT)
 		if vrt_tags_h != $snp_vrt_h
-			error_vcf_header_a.push(["JV_VCFP005", "Invalid variation type (VRT) definition. Refer to the JVar VCF submission guideline to correctly define the VRT type. #{vcf_file} INFO tag: #{(vrt_tags_h.to_a - $snp_vrt_h.to_a).flatten.join(" - ")}"])
+			error_vcf_header_a.push(["JV_VCFP005", "Invalid variation type (VRT) definition. Refer to the JVar VCF submission guideline to correctly define the VRT type. INFO tag: #{(vrt_tags_h.to_a - $snp_vrt_h.to_a).flatten.join(" - ")}"])
 		end
 	end
 
@@ -1419,100 +1419,100 @@ def vcf_parser(vcf_file, vcf_type)
 	end # for vcf_line_a in vcf_content_a
 
 	## JV_VCF0005: white spaces
-	warning_vcf_content_a.push(["JV_VCF0005", "White space characters before/after fields are automatically removed. #{vcf_file} #{field_whitespaces_c} lines"]) if field_whitespaces_c > 0
+	warning_vcf_content_a.push(["JV_VCF0005", "White space characters before/after fields are automatically removed. #{field_whitespaces_c} lines"]) if field_whitespaces_c > 0
 
 	## JV_VCF0028: Empty line
 	warning_vcf_content_a.push(["JV_VCF0028", "The empty line is automatically removed. #{empty_line_c} lines"]) if empty_line_c > 0
 
 	## JV_VCF0021: Duplicated local IDs
-	error_vcf_content_a.push(["JV_VCF0021", "Local IDs should be unique. #{vcf_file} #{duplicated_id_c} sites"]) if duplicated_id_c > 0
+	error_vcf_content_a.push(["JV_VCF0021", "Local IDs should be unique in an assay/VCF. #{duplicated_id_c} sites"]) if duplicated_id_c > 0
 
 	## JV_VCF0036: Multi-allelic ALT allele
-	error_vcf_content_a.push(["JV_VCF0036", "JVar only accepts mono-allelic ALT alleles (no commas in ALT). #{vcf_file} #{multi_allelic_c} sites"]) if multi_allelic_c > 0
+	error_vcf_content_a.push(["JV_VCF0036", "JVar only accepts mono-allelic ALT alleles (no commas in ALT). #{multi_allelic_c} sites"]) if multi_allelic_c > 0
 
 	## JV_VCF0026: Same chromosome not grouped
-	error_vcf_content_a.push(["JV_VCF0026", "Same chromosome not grouped. #{vcf_file} #{chr_not_grouped_c} sites"]) if chr_not_grouped_c > 0
+	error_vcf_content_a.push(["JV_VCF0026", "Same chromosome not grouped. #{chr_not_grouped_c} sites"]) if chr_not_grouped_c > 0
 
 	## JV_VCF0027: Data not sorted based on positions
-	error_vcf_content_a.push(["JV_VCF0027", "Sort data based on their positions. #{vcf_file} #{not_sorted_pos_c} sites"]) if not_sorted_pos_c > 0
+	error_vcf_content_a.push(["JV_VCF0027", "Sort data based on their positions. #{not_sorted_pos_c} sites"]) if not_sorted_pos_c > 0
 
 	## JV_VCF0008: Invalid position (POS)	
-	error_vcf_content_a.push(["JV_VCF0008", "Positions (POS) should be numbers. #{vcf_file} #{pos_not_number_c} sites"]) if pos_not_number_c > 0
+	error_vcf_content_a.push(["JV_VCF0008", "Positions (POS) should be numbers. #{pos_not_number_c} sites"]) if pos_not_number_c > 0
 	
 	## JV_VCF0009: Local ID longer than 64 characters
-	error_vcf_content_a.push(["JV_VCF0009", "Provide unique local IDs shorter than 64 characters. #{vcf_file} #{id_not_within_size_c} sites"]) if id_not_within_size_c > 0
+	error_vcf_content_a.push(["JV_VCF0009", "Provide unique local IDs shorter than 64 characters. #{id_not_within_size_c} sites"]) if id_not_within_size_c > 0
 	
 	## JV_VCF0010: Missing local ID
-	error_vcf_content_a.push(["JV_VCF0010", "Provide unique local IDs shorter than 64 characters. #{vcf_file} #{missing_id_c} sites"]) if missing_id_c > 0
+	error_vcf_content_a.push(["JV_VCF0010", "Provide unique local IDs shorter than 64 characters. #{missing_id_c} sites"]) if missing_id_c > 0
 
 	# JV_VCF0017: Invalid chromosome name
-	error_vcf_content_a.push(["JV_VCF0017", "Chromosome name need to match the INSDC reference assembly. #{vcf_file} #{invalid_chr_c} sites"]) if invalid_chr_c > 0
+	error_vcf_content_a.push(["JV_VCF0017", "Chromosome name need to match the INSDC reference assembly. #{invalid_chr_c} sites"]) if invalid_chr_c > 0
 
 	# JV_VCF0014: REF allele mismatch with reference
-	error_vcf_content_a.push(["JV_VCF0014", "Need to match the reference genome on the forward orientation. #{vcf_file} #{ref_mismatch_c} sites"]) if ref_mismatch_c > 0
+	error_vcf_content_a.push(["JV_VCF0014", "Need to match the reference genome on the forward orientation. #{ref_mismatch_c} sites"]) if ref_mismatch_c > 0
 
 	# JV_VCF0013: Missing REF allele
-	error_vcf_content_a.push(["JV_VCF0013", "Provide REF allele. #{vcf_file} #{missing_ref_c} sites"]) if missing_ref_c > 0
+	error_vcf_content_a.push(["JV_VCF0013", "Provide REF allele. #{missing_ref_c} sites"]) if missing_ref_c > 0
 
 	# JV_VCF0016: Missing ALT allele
-	error_vcf_content_a.push(["JV_VCF0016", "Provide ALT allele. #{vcf_file} #{missing_alt_c} sites"]) if missing_alt_c > 0
+	error_vcf_content_a.push(["JV_VCF0016", "Provide ALT allele. #{missing_alt_c} sites"]) if missing_alt_c > 0
 
 	## JV_VCF0022: Same REF and ALT alleles
-	error_vcf_content_a.push(["JV_VCF0022", "REF and ALT alleles should not be the same. #{vcf_file} #{same_ref_alt_c} sites"]) if same_ref_alt_c > 0
+	error_vcf_content_a.push(["JV_VCF0022", "REF and ALT alleles should not be the same. #{same_ref_alt_c} sites"]) if same_ref_alt_c > 0
 
 	# JV_VCF0035: Variant at telomere
-	warning_vcf_content_a.push(["JV_VCF0035", "Variant at telomere. #{vcf_file} #{telomere_c} sites"]) if telomere_c > 0
+	warning_vcf_content_a.push(["JV_VCF0035", "Variant at telomere. #{telomere_c} sites"]) if telomere_c > 0
 
 	# JV_VCF0031: Invalid INFO value format
-	warning_vcf_content_a.push(["JV_VCF0031", "Provide INFO value in a valid format. #{vcf_file} #{invalid_info_c} values"]) if invalid_info_c > 0
+	warning_vcf_content_a.push(["JV_VCF0031", "Provide INFO value in a valid format. #{invalid_info_c} values"]) if invalid_info_c > 0
 
 	# JV_VCF0032: Invalid FORMAT value format
-	warning_vcf_content_a.push(["JV_VCF0032", "Provide FORMAT value in a valid format. #{vcf_file} #{invalid_ft_c} values"]) if invalid_ft_c > 0
+	warning_vcf_content_a.push(["JV_VCF0032", "Provide FORMAT value in a valid format. #{invalid_ft_c} values"]) if invalid_ft_c > 0
 
 	# JV_VCF0039: Inconsistent FORMAT keys and sample values
-	warning_vcf_content_a.push(["JV_VCF0039", "Number of FORMAT keys and sample values are different. #{vcf_file} #{inconsistent_format_c} values"]) if inconsistent_format_c > 0
+	warning_vcf_content_a.push(["JV_VCF0039", "Number of FORMAT keys and sample values are different. #{inconsistent_format_c} values"]) if inconsistent_format_c > 0
 
 	# JV_VCF0040: Undefined FORMAT key
-	warning_vcf_content_a.push(["JV_VCF0040", "The FORMAT key is not defined in the VCF header. #{vcf_file} #{undefined_ft_key_c} keys"]) if undefined_ft_key_c > 0
+	warning_vcf_content_a.push(["JV_VCF0040", "The FORMAT key is not defined in the VCF header. #{undefined_ft_key_c} keys"]) if undefined_ft_key_c > 0
 
 	# JV_VCF0041: Undefined INFO key
-	warning_vcf_content_a.push(["JV_VCF0041", "The INFO key is not defined in the VCF header. #{vcf_file} #{undefined_info_key_c} keys"]) if undefined_info_key_c > 0
+	warning_vcf_content_a.push(["JV_VCF0041", "The INFO key is not defined in the VCF header. #{undefined_info_key_c} keys"]) if undefined_info_key_c > 0
 
 	## SNP overall error & warning
 	if vcf_type == "SNP"
 
 		# JV_VCFP0006: Variation type not in defined set
-		error_vcf_content_a.push(["JV_VCFP0006", "Provide variation type in the defined set. #{vcf_file} #{not_defined_vrt_c} sites"]) if not_defined_vrt_c > 0
+		error_vcf_content_a.push(["JV_VCFP0006", "Provide variation type in the defined set. #{not_defined_vrt_c} sites"]) if not_defined_vrt_c > 0
 
 		# JV_VCF0011: Duplicated sites
-		error_vcf_content_a.push(["JV_VCF0011", "Remove duplicated sites. #{vcf_file} #{duplicated_site_c} sites"]) if duplicated_site_c > 0
+		error_vcf_content_a.push(["JV_VCF0011", "Remove duplicated sites. #{duplicated_site_c} sites"]) if duplicated_site_c > 0
 
 		# JV_VCFP0007: Invalid REF allele
-		error_vcf_content_a.push(["JV_VCFP0007", "Remove non-ATGC base from REF allele. #{vcf_file} #{invalid_ref_c} sites"]) if invalid_ref_c > 0
+		error_vcf_content_a.push(["JV_VCFP0007", "Remove non-ATGC base from REF allele. #{invalid_ref_c} sites"]) if invalid_ref_c > 0
 
 		# JV_VCFP0002: REF allele longer than 50 nucleotides
-		error_vcf_content_a.push(["JV_VCFP0002", "Remove and submit the allele longer than 50 nucleotides to JVar-SV. #{vcf_file} #{longer_ref_c} sites"]) if longer_ref_c > 0
+		error_vcf_content_a.push(["JV_VCFP0002", "Remove and submit the allele longer than 50 nucleotides to JVar-SV. #{longer_ref_c} sites"]) if longer_ref_c > 0
 
 		# JV_VCFP0005: Invalid ALT allele
-		error_vcf_content_a.push(["JV_VCFP0005", "Remove non-ATGC base from ALT allele. #{vcf_file} #{invalid_alt_c} sites"]) if invalid_alt_c > 0
+		error_vcf_content_a.push(["JV_VCFP0005", "Remove non-ATGC base from ALT allele. #{invalid_alt_c} sites"]) if invalid_alt_c > 0
 
 		# JV_VCFP0003: ALT allele longer than 50 nucleotides
-		error_vcf_content_a.push(["JV_VCFP0003", "Remove and submit the allele longer than 50 nucleotides to JVar-SV. #{vcf_file} #{longer_alt_c} sites"]) if longer_alt_c > 0
+		error_vcf_content_a.push(["JV_VCFP0003", "Remove and submit the allele longer than 50 nucleotides to JVar-SV. #{longer_alt_c} sites"]) if longer_alt_c > 0
 
 		# JV_VCF0019: Missing variation type
-		error_vcf_content_a.push(["JV_VCF0019", "Provide variation type. #{vcf_file} #{missing_vrt_c} sites"]) if missing_vrt_c > 0
+		error_vcf_content_a.push(["JV_VCF0019", "Provide variation type. #{missing_vrt_c} sites"]) if missing_vrt_c > 0
 
 		# JV_VCF0023: REF and ALT alleles without leading base
-		error_vcf_content_a.push(["JV_VCF0023", "Indels need leading bases in REF and ALT alleles. #{vcf_file} #{no_leading_base_indel_c} sites"]) if no_leading_base_indel_c > 0
+		error_vcf_content_a.push(["JV_VCF0023", "Indels need leading bases in REF and ALT alleles. #{no_leading_base_indel_c} sites"]) if no_leading_base_indel_c > 0
 
 		# JV_C0061: Chromosome position larger than chromosome size + 1
-		error_vcf_content_a.push(["JV_C0061", "Chromosome position is larger than chromosome size + 1. Check if the position is correct. #{vcf_file} #{pos_outside_chr_c} sites"]) if pos_outside_chr_c > 0
+		error_vcf_content_a.push(["JV_C0061", "Chromosome position is larger than chromosome size + 1. Check if the position is correct. #{pos_outside_chr_c} sites"]) if pos_outside_chr_c > 0
 
 		# JV_VCFP0004: Insertion and deletion at base position 1
-		warning_vcf_content_a.push(["JV_VCFP0004", "Provide a base after the insertion and deletion at base position 1. #{vcf_file} #{pos_one_c} sites"]) if pos_one_c > 0
+		warning_vcf_content_a.push(["JV_VCFP0004", "Provide a base after the insertion and deletion at base position 1. #{pos_one_c} sites"]) if pos_one_c > 0
 
 		# JV_VCFP0001: Region contains too many SNPs
-		warning_vcf_content_a.push(["JV_VCFP0001", "Verify these regions are legitimate. #{vcf_file} #{dense_snp_c} sites"]) if dense_snp_c > 0
+		warning_vcf_content_a.push(["JV_VCFP0001", "Too many SNPs (more than 10 SNPs in 50bp). Verify these regions are legitimate. #{dense_snp_c} sites"]) if dense_snp_c > 0
 
 	end
 
@@ -1521,20 +1521,20 @@ def vcf_parser(vcf_file, vcf_type)
 
 		 if invalid_svtype_c > 0 && !(translocation_f && sv_type =~ /translocation/)
 		 	# JV_VCFS0004: Invalid structural variation type
-			error_vcf_content_a.push(["JV_VCFS0004", "Invalid structural variation type. #{vcf_file} #{invalid_svtype_c} sites"])
+			error_vcf_content_a.push(["JV_VCFS0004", "Invalid structural variation type. #{invalid_svtype_c} sites"])
 		end
 
 		# JV_VCF0019: Missing variation type
-		error_vcf_content_a.push(["JV_VCF0019", "Provide variation type. #{vcf_file} #{missing_svtype_c} sites"]) if missing_svtype_c > 0
+		error_vcf_content_a.push(["JV_VCF0019", "Provide variation type. #{missing_svtype_c} sites"]) if missing_svtype_c > 0
 
 		# JV_VCFS0005: Invalid POSrange
-		error_vcf_content_a.push(["JV_VCFS0005", "One POSrange value must be the same as the POS value. #{vcf_file} #{invalid_posrange_c} sites"]) if invalid_posrange_c > 0
+		error_vcf_content_a.push(["JV_VCFS0005", "One POSrange value must be the same as the POS value. #{invalid_posrange_c} sites"]) if invalid_posrange_c > 0
 
 		# JV_VCFS0006: Invalid ENDrange
-		error_vcf_content_a.push(["JV_VCFS0006", "One ENDrange value must be the same as the END value. #{vcf_file} #{invalid_endrange_c} sites"]) if invalid_endrange_c > 0
+		error_vcf_content_a.push(["JV_VCFS0006", "One ENDrange value must be the same as the END value. #{invalid_endrange_c} sites"]) if invalid_endrange_c > 0
 
 		# JV_VCFS0003: Invalid chromosome translocation
-		error_vcf_content_a.push(["JV_VCFS0003", "Describe chromosome translocations according to the VCF specification and the JVar guideline. #{vcf_file} #{invalid_translocation_c} sites"]) if invalid_translocation_c > 0
+		error_vcf_content_a.push(["JV_VCFS0003", "Describe chromosome translocations according to the VCF specification and the JVar guideline. #{invalid_translocation_c} sites"]) if invalid_translocation_c > 0
 
 	end
 
