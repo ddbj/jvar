@@ -1409,9 +1409,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 			for db, id in sample["Sample Resource"].scan(/(#{xref_db_all_regex}) *: *([-A-Za-z0-9]+)/)
 
 				submission.SAMPLE(sample_attr_h){|sample_e|
-					sample_e.LINK{|link|
-						link.DB_ID("db" => db, "id" => id)
-					}
+					sample_e.LINK("db" => db, "id" => id)
 				}
 
 			end # for db, id in sample["Sample Resource"].scan(/(#{xref_db_all_regex}) *: *([-A-Za-z0-9]+)/)
