@@ -8,7 +8,7 @@ require 'net/http'
 require 'json'
 require 'jsonl'
 require 'builder'
-require './lib/jvar-method.rb'
+require_relative 'lib/jvar-method.rb'
 #sin require '/usr/local/bin/lib/jvar-method.rb'
 
 #
@@ -44,7 +44,7 @@ OptionParser.new{|opt|
 raise "Specify a valid submission_id." if submission_id.empty?
 
 ## 設定
-conf_path = "conf"
+conf_path = File.join(File.expand_path('..', __FILE__),"conf")
 #sin conf_path = "/usr/local/bin/conf"
 submitter_handle = "JVAR"
 

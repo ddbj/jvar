@@ -22,7 +22,7 @@ require 'roo'
 ### 設定
 ###
 
-$conf_path = "conf"
+$conf_path = File.join(File.expand_path('../..', __FILE__),"conf") 
 #sin $conf_path = "/usr/local/bin/conf"
 
 ###
