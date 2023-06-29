@@ -459,10 +459,7 @@ for experiment_pre in experiment_pre_a
 end
 
 ## JV_C0004: Invalid Submission Type
-submission_type_a = []
-open("#{conf_path}/submission_type.json"){|f|
-	submission_type_a = JSON.load(f)
-}
+submission_type_a = ["Short genetic variations", "Structural variations"]
 
 unless submission_type_a.include?(submission_h["Submission Type"])
 	error_common_a.push(["JV_C0004", 'A submission type must be either "Short genetic variations" or "Structural variations"'])
@@ -1384,7 +1381,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 		unless sample["BioSample Accession"].empty?
 
-			unless sample["BioSample Accession"] =~ /^SAMD\d{8}$/
+			unless sample["BioSample Accession"] =~ /^SAMD\d{8}$|^SAME\d{1,}$|^SAMN\d{8}$/
 				## JV_C0042: Invalid BioSample accession
 				error_common_a.push(["JV_C0042", "BioSample accession must be a valid BioSample accession. #{sample["BioSample Accession"]}"])
 			end
@@ -1394,10 +1391,11 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 		end
 
-		submission.SAMPLE(sample_attr_h){|sample_e|
 			unless sample["SampleSet ID"].empty?
 
-				sample_e.SAMPLESET("sampleset_id" => sample["SampleSet ID"])
+				submission.SAMPLE(sample_attr_h){|sample_e|
+					sample_e.SAMPLESET("sampleset_id" => sample["SampleSet ID"])
+				} 
 
 				unless sampleset_id_a.include?(sample["SampleSet ID"])
 					## JV_C0039: Invalid SampleSet ID
@@ -1405,18 +1403,21 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 				end
 
 			end
-		}
 
 		# Links
 		if sample["Sample Resource"].scan(/(#{xref_db_all_regex}) *: *([-A-Za-z0-9]+)/).size > 0
 			for db, id in sample["Sample Resource"].scan(/(#{xref_db_all_regex}) *: *([-A-Za-z0-9]+)/)
-				sample_e.LINK{|link|
-					link.DB_ID("db" => db, "id" => id)
+
+				submission.SAMPLE(sample_attr_h){|sample_e|
+					sample_e.LINK{|link|
+						link.DB_ID("db" => db, "id" => id)
+					}
 				}
+
 			end # for db, id in sample["Sample Resource"].scan(/(#{xref_db_all_regex}) *: *([-A-Za-z0-9]+)/)
 		elsif !sample["Sample Resource"].empty?
 			## JV_SV0009: Invalid Sample link
-			warning_sv_a.push(["JV_SV0009", "Sample link must reference a valid external db:id"])
+			warning_sv_a.push(["JV_SV0009", "Sample link must reference a valid external db:id #{sample["Sample Resource"]}"])
 		end
 
 	end
@@ -1860,7 +1861,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 		chromosome_per_assembly_a = []
 		chr_name = ""
 		chr_accession = ""
-		chr_length = 0
+		chr_length = -1
 		contig_accession = ""
 		assembly = ""
 
@@ -1908,7 +1909,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 			# variant call 毎に初期化
 			chr_name = ""
 			chr_accession = ""
-			chr_length = 0
+			chr_length = -1
 			contig_accession = ""
 			assembly = ""
 
@@ -1945,9 +1946,9 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 			}
 
 			unless variant_call["Variant Call Type"].empty? && vtype_h["Variant Call Type"][variant_call["Variant Call Type"]]
-				variant_call_type = variant_call["Variant Call Type"]
-				variant_call_attr_h.store("variant_call_type", variant_call["Variant Call Type"])
-				variant_call_id_type_h.store(variant_call_id, variant_call["Variant Call Type"])
+				variant_call_type = vtype_h["Variant Call Type"][variant_call["Variant Call Type"]]
+				variant_call_attr_h.store("variant_call_type", variant_call_type)
+				variant_call_id_type_h.store(variant_call_id, variant_call_type)
 			end
 
 			# JV_SV0099: Invalid assay reference
@@ -2096,7 +2097,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 							# variant call 毎に初期化
 							from_chr_name = ""
 							from_chr_accession = ""
-							from_chr_length = 0
+							from_chr_length = -1
 							from_coord = -1
 							from_contig_accession = ""
 							from_assembly = ""
@@ -2152,29 +2153,33 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 								variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0072 Error: Invalid chromosome reference.")
 							end
 
-							# GENOME
-							genome_attr_h = {}
-							genome_attr_h.store("assembly", from_assembly)
+							# FROM GENOME
+							from_genome_attr_h = {}
+							from_genome_attr_h.store("assembly", from_assembly)
 
-							genome_attr_h.store("chr_name", from_chr_name)
-							genome_attr_h.store("chr_accession", from_chr_accession)
-							genome_attr_h.store("contig_accession", from_contig_accession)
-							genome_attr_h.store("strand", variant_call["From Strand"])
+							from_genome_attr_h.store("chr_name", from_chr_name)
+							from_genome_attr_h.store("chr_accession", from_chr_accession)
+							from_genome_attr_h.store("contig_accession", from_contig_accession)
+							from_genome_attr_h.store("strand", variant_call["From Strand"])
 													
 							# FROM COORD
 							if variant_call["From Coord"] && variant_call["From Coord"].to_i
 								from_coord = variant_call["From Coord"].to_i
-								genome_attr_h.store("start", variant_call["From Coord"])
-								genome_attr_h.store("stop", variant_call["From Coord"])
+								from_genome_attr_h.store("start", variant_call["From Coord"])
+								from_genome_attr_h.store("stop", variant_call["From Coord"])
 							else
-								genome_attr_h.store("start", "")
-								genome_attr_h.store("stop", "")
+								from_genome_attr_h.store("start", "")
+								from_genome_attr_h.store("stop", "")
 							end
 
-							# GENOME attributes
-							placement_e.GENOME(genome_attr_h)
+							# cipos
+							from_genome_attr_h.store("ciposleft", variant_call["ciposleft"]) if variant_call["ciposleft"] && !variant_call["ciposleft"].empty?
+							from_genome_attr_h.store("ciposright", variant_call["ciposright"]) if variant_call["ciposright"] && !variant_call["ciposright"].empty?
 
-							if from_chr_length != 0 
+							# GENOME attributes
+							placement_e.GENOME(from_genome_attr_h)
+
+							if from_chr_length != -1
 								if from_coord != -1 && (from_coord > from_chr_length + 1)
 									pos_outside_chr_call_a.push(variant_call_id)
 									variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_C0061 Error: Chromosome position is larger than chromosome size + 1. Check if the position is correct.")
@@ -2191,7 +2196,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 							# variant call 毎に初期化
 							to_chr_name = ""
 							to_chr_accession = ""
-							to_chr_length = 0
+							to_chr_length = -1
 							to_coord = -1
 							to_contig_accession = ""
 							to_assembly = ""
@@ -2246,30 +2251,34 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 								variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0072 Error: Invalid chromosome reference.")
 							end
 
-							# GENOME
-							genome_attr_h = {}
-							genome_attr_h.store("assembly", to_assembly)
+							# TO GENOME
+							to_genome_attr_h = {}
+							to_genome_attr_h.store("assembly", to_assembly)
 
-							genome_attr_h.store("chr_name", to_chr_name)
-							genome_attr_h.store("chr_accession", to_chr_accession)
-							genome_attr_h.store("contig_accession", to_contig_accession)
-							genome_attr_h.store("strand", variant_call["To Strand"])
+							to_genome_attr_h.store("chr_name", to_chr_name)
+							to_genome_attr_h.store("chr_accession", to_chr_accession)
+							to_genome_attr_h.store("contig_accession", to_contig_accession)
+							to_genome_attr_h.store("strand", variant_call["To Strand"])
 
 							# TO COORD
 							if variant_call["To Coord"] && variant_call["To Coord"].to_i
 								to_coord = variant_call["To Coord"].to_i
-								genome_attr_h.store("start", variant_call["To Coord"])
-								genome_attr_h.store("stop", variant_call["To Coord"])
+								to_genome_attr_h.store("start", variant_call["To Coord"])
+								to_genome_attr_h.store("stop", variant_call["To Coord"])
 							else
-								genome_attr_h.store("start", "")
-								genome_attr_h.store("stop", "")
+								to_genome_attr_h.store("start", "")
+								to_genome_attr_h.store("stop", "")
 							end
 
+							# ciend
+							to_genome_attr_h.store("ciendleft", variant_call["ciendleft"]) if variant_call["ciendleft"] && !variant_call["ciendleft"].empty?
+							to_genome_attr_h.store("ciendright", variant_call["ciendright"]) if variant_call["ciendright"] && !variant_call["ciendright"].empty?
+
 							# GENOME attributes
-							placement_e.GENOME(genome_attr_h)
+							placement_e.GENOME(to_genome_attr_h)
 
 							## JV_C0061: Chromosome position larger than chromosome size + 1
-							if to_chr_length != 0 
+							if to_chr_length != -1
 								if to_coord != -1 && (to_coord > to_chr_length + 1)
 									pos_outside_chr_call_a.push(variant_call_id)
 									variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_C0061 Error: Chromosome position is larger than chromosome size + 1. Check if the position is correct.")
@@ -2334,7 +2343,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 							# variant call 毎に初期化
 							chr_name = ""
 							chr_accession = ""
-							chr_length = 0
+							chr_length = -1
 							contig_accession = ""
 							assembly = ""
 							start_pos = -1
@@ -2413,7 +2422,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 						end
 
 						## JV_SV0059: Chromosome Y for female
-						if chr_name == "Y" && !variant_call["SampleSet ID"].empty? && sampleset_id_sex_h[variant_call["SampleSet ID"]] && sampleset_id_sex_h[variant_call["SampleSet ID"]] == "Female"
+						if chr_name == "Y" && variant_call["SampleSet ID"] && !variant_call["SampleSet ID"].empty? && sampleset_id_sex_h[variant_call["SampleSet ID"]] && sampleset_id_sex_h[variant_call["SampleSet ID"]] == "Female"
 							chry_for_female_call_a.push(variant_call_id)
 							variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0059 Warning: Chromosome Y for female")
 						end
@@ -2499,9 +2508,11 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 						end
 
 						# JV_SV0089: Inconsistent sequence length and start/stop
-						if (!variant_call["Stop"].empty? && variant_call["Stop"].to_i > chr_length.to_i) || (!variant_call["Inner Stop"].empty? && variant_call["Inner Stop"].to_i > chr_length.to_i) || (!variant_call["Outer Stop"].empty? && variant_call["Outer Stop"].to_i > chr_length.to_i)
-							inconsistent_length_start_stop_call_a.push(variant_call_id)
-							variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0089 Error: Inconsistent sequence length and start/stop.")
+						if chr_length != -1
+							if (!variant_call["Stop"].empty? && variant_call["Stop"].to_i > chr_length.to_i) || (!variant_call["Inner Stop"].empty? && variant_call["Inner Stop"].to_i > chr_length.to_i) || (!variant_call["Outer Stop"].empty? && variant_call["Outer Stop"].to_i > chr_length.to_i)
+								inconsistent_length_start_stop_call_a.push(variant_call_id)
+								variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0089 Error: Inconsistent sequence length and start/stop.")
+							end
 						end
 
 						# JV_SV0090: Inconsistent inner start and stop
@@ -2553,7 +2564,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 						end
 
 						# JV_C0061: Chromosome position larger than chromosome size + 1
-						if chr_length != 0 
+						if chr_length != -1
 							if (start_pos != -1 && (start_pos > chr_length + 1)) || (stop_pos != -1 && (stop_pos > chr_length + 1))
 								pos_outside_chr_call_a.push(variant_call_id)
 								variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_C0061 Error: Chromosome position is larger than chromosome size + 1. Check if the position is correct.")
@@ -2751,7 +2762,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 	chr_name = ""
 	chr_accession = ""
-	chr_length = 0
+	chr_length = -1
 	contig_accession = ""
 	assembly = ""
 	start_pos = -1
@@ -3199,9 +3210,11 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 				end
 
 				# JV_SV0089: Inconsistent sequence length and start/stop
-				if (!variant_region["Stop"].empty? && variant_region["Stop"].to_i > chr_length.to_i) || (!variant_region["Inner Stop"].empty? && variant_region["Inner Stop"].to_i > chr_length.to_i) || (!variant_region["Outer Stop"].empty? && variant_region["Outer Stop"].to_i > chr_length.to_i)
-					inconsistent_length_start_stop_region_a.push(variant_region_id)
-					variant_region_tsv_log_a.push("#{variant_region["row"].join("\t")}\t# JV_SV0089 Error: Error if inner_stop, stop, or outer_stop are beyond the length of the sequence (chromosome or scaffold).")
+				if chr_length != -1
+					if (!variant_region["Stop"].empty? && variant_region["Stop"].to_i > chr_length.to_i) || (!variant_region["Inner Stop"].empty? && variant_region["Inner Stop"].to_i > chr_length.to_i) || (!variant_region["Outer Stop"].empty? && variant_region["Outer Stop"].to_i > chr_length.to_i)
+						inconsistent_length_start_stop_region_a.push(variant_region_id)
+						variant_region_tsv_log_a.push("#{variant_region["row"].join("\t")}\t# JV_SV0089 Error: Error if inner_stop, stop, or outer_stop are beyond the length of the sequence (chromosome or scaffold).")
+					end
 				end
 
 				# JV_SV0090: Inconsistent inner start and stop
@@ -3257,7 +3270,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 				end
 
 	            ## JV_C0061: Chromosome position larger than chromosome size + 1
-				if chr_length != 0 
+				if chr_length != -1
 					if (start_pos != -1 && (start_pos > chr_length + 1)) || (stop_pos != -1 && (stop_pos > chr_length + 1))
 						pos_outside_chr_region_a.push(variant_region_id)
 						variant_region_tsv_log_a.push("#{variant_region["row"].join("\t")}\t# JV_C0061 Error: Chromosome position is larger than chromosome size + 1. Check if the position is correct.")

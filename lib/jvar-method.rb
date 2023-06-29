@@ -103,9 +103,9 @@ $sv_type_alt_h = {
 	"DUP:TANDEM" => "tandem duplication",
 	"INS:NOVEL" => "novel sequence insertion",
 	"INS:ME" => "mobile element insertion",
-	"INS:ME:ALU" => "alu insertion",
+	"INS:ME:ALU" => "Alu insertion",
 	"DEL:ME" => "mobile element deletion",
-	"DEL:ME:ALU" => "alu deletion"
+	"DEL:ME:ALU" => "Alu deletion"
 }
 
 # SV VCF INFO SVTYPE
@@ -215,6 +215,10 @@ def vcf_parser(vcf_file, vcf_type)
 	format_def_h = {}
 	contig_def_h = {}
 	line_c = 0
+
+	# keys
+	undefined_ft_key_a = []
+	undefined_info_key_a = []
 
 	# empty line
 	empty_line_c = 0
@@ -402,9 +406,9 @@ def vcf_parser(vcf_file, vcf_type)
 
 	## SNP specific header validation
 	if vcf_type == "SNP"
-		## JV_VCFP005: Invalid variation type (VRT)
+		## JV_VCFP0009: Invalid variation type (VRT)
 		if vrt_tags_h != $snp_vrt_h
-			error_vcf_header_a.push(["JV_VCFP005", "Invalid variation type (VRT) definition. Refer to the JVar VCF submission guideline to correctly define the VRT type. INFO tag: #{(vrt_tags_h.to_a - $snp_vrt_h.to_a).flatten.join(" - ")}"])
+			error_vcf_header_a.push(["JV_VCFP0009", "Invalid variation type (VRT) definition. Refer to the JVar VCF submission guideline to correctly define the VRT type. INFO tag: #{(vrt_tags_h.to_a - $snp_vrt_h.to_a).flatten.join(" - ")}"])
 		end
 	end
 
@@ -451,6 +455,8 @@ def vcf_parser(vcf_file, vcf_type)
 	duplicated_site_f = false
 	duplicated_id_c = 0
 	invalid_ref_c = 0
+	invalid_sv_ref_c = 0
+	invalid_sv_alt_c = 0
 	missing_ref_c = 0
 	invalid_alt_c = 0
 	missing_alt_c = 0
@@ -485,12 +491,10 @@ def vcf_parser(vcf_file, vcf_type)
 
 	# INFO
 	invalid_info_c = 0
-	undefined_info_key_c = 0
 
 	# FORMAT
 	invalid_ft_c = 0
 	inconsistent_format_c = 0
-	undefined_ft_key_c = 0
 
 	id_a = []
 	sites_a = []
@@ -498,6 +502,7 @@ def vcf_parser(vcf_file, vcf_type)
 	pre_pos = -1
 	snp_in_window_c = 0
 	chrom_a = []
+	# VCF line 毎の処理
 	for vcf_line_a in vcf_content_a
 
 		chrom = ""
@@ -517,7 +522,7 @@ def vcf_parser(vcf_file, vcf_type)
 		# chromosome
 		chr_name = ""
 		chr_accession = ""
-		chr_length = 0
+		chr_length = -1
 
 		## JV_VCF0005: White space characters before/after column header
 		vcf_field_whitespaces_a = []
@@ -575,7 +580,6 @@ def vcf_parser(vcf_file, vcf_type)
 		sample_a = vcf_line_a[9..-1] if vcf_line_a[9..-1]
 
 		info_h = {}
-		undefined_info_key_a = []
 		if info && info.scan(/([^;=]+)=([^;=]+)/).size > 0
 			info.scan(/([^;=]+)=([^;=]+)/).each{|key,value|
 				# target INFO tag のみ格納
@@ -586,7 +590,6 @@ def vcf_parser(vcf_file, vcf_type)
 				# header INFO で定義されているかどうか
 				unless info_def_h.keys.include?(key)
 					undefined_info_key_a.push(key)
-					undefined_info_key_c += 1
 				end
 			}
 		end
@@ -614,11 +617,6 @@ def vcf_parser(vcf_file, vcf_type)
 			vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_VCF0031 Warning: Provide INFO value in a valid format. #{invalid_info_a.join(",")}")
 		end
 
-		# JV_VCF0041
-		unless undefined_info_key_a.empty?
-			vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_VCF0041 Warning: The INFO key is not defined in the VCF header. #{undefined_info_key_a.sort.uniq.join(",")}")
-		end
-
 		# JV_VCF0021: Duplicated local IDs
 		if id && !id.empty?
 			if id_a.include?(id)
@@ -629,9 +627,11 @@ def vcf_parser(vcf_file, vcf_type)
 		end
 
 		# JV_VCF0036: Multi-allelic ALT allele
+		multi_allelic_f = false
 		if !alt.empty? && alt.include?(",")
 			vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_VCF0036 Error: JVar only accepts mono-allelic ALT alleles (no commas in ALT).")
 			multi_allelic_c += 1
+			multi_allelic_f = true
 		end
 
 		# JV_VCF0008: Invalid position (POS)
@@ -734,7 +734,7 @@ def vcf_parser(vcf_file, vcf_type)
 		# JV_VCF0035: Variant at telomere
 		# VCF spec と dbSNP VCF guideline では telomere 0 or N+1
 		# dbVar VCF guideline では 1 (p-arm), N (q-arm) となっているが dbSNP/VCF spec に準拠する 
-		if pos == 0 || pos == chr_length + 1
+		if chr_length != -1 && (pos == 0 || pos == chr_length + 1)
 			vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_VCF0035 Warning: Variant at telomere.")
 			telomere_c += 1
 		end
@@ -743,7 +743,7 @@ def vcf_parser(vcf_file, vcf_type)
 		if invalid_chr_f
 			vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_VCF0017 Error: Chromosome name need to match the INSDC reference assembly.")
 			invalid_chr_c += 1
-		elsif pos > 0 && (pos < chr_length + 1)
+		elsif chr_length != -1 && pos > 0 && (pos < chr_length + 1)
 
 			ref_fasta = ""
 			ref_fasta_extracted = ""
@@ -777,7 +777,6 @@ def vcf_parser(vcf_file, vcf_type)
 		if !format.empty? && vcf_sample_a.size > 0 && sample_a.size > 0
 
 			s = 0
-			tmp_undefined_ft_key_a = []
 			for sample_value in sample_a
 
 				if sample_value.split(":").size != format.split(":").size
@@ -792,18 +791,17 @@ def vcf_parser(vcf_file, vcf_type)
 
 					# JV_VCF0040: Undefined FORMAT key
 					unless format_def_h.keys.include?(key)
-						undefined_ft_key_c += 1
-						tmp_undefined_ft_key_a.push(key)
+						undefined_ft_key_a.push(key)
 					end
 
 					# archive target のみ格納
 					if vcf_type == "SNP"
-						$target_format_tag_snp_h.keys.each{|target_ft_key|
-							tmp_format_data_h.store(target_ft_key, sample_value.split(":")[k]) if key == target_ft_key && sample_value.split(":")[k].gsub(".", "") # per SampleSet this VCF/assay belongs to.
+						$target_format_tag_snp_h.keys.each{|target_ft_key|							
+							tmp_format_data_h.store(target_ft_key, sample_value.split(":")[k]) if key == target_ft_key && sample_value.split(":")[k] && sample_value.split(":")[k].gsub(".", "") # per SampleSet this VCF/assay belongs to.
 						}
 					elsif vcf_type == "SV"
 						$target_format_tag_sv_h.keys.each{|target_ft_key|
-							tmp_format_data_h.store(target_ft_key, sample_value.split(":")[k]) if key == target_ft_key && sample_value.split(":")[k].gsub(".", "") # per SampleSet this VCF/assay belongs to.
+							tmp_format_data_h.store(target_ft_key, sample_value.split(":")[k]) if key == target_ft_key && sample_value.split(":")[k] && sample_value.split(":")[k].gsub(".", "") # per SampleSet this VCF/assay belongs to.
 						}
 					end
 
@@ -837,9 +835,6 @@ def vcf_parser(vcf_file, vcf_type)
 
 			format_data_a.push(format_data_h)
 
-			# JV_VCF0040: Undefined FORMAT key
-			vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_VCF0040 Warning: The FORMAT key is not defined in the VCF header. #{tmp_undefined_ft_key_a.sort.uniq.join(",")}") unless tmp_undefined_ft_key_a.empty?
-
 			unless invalid_ft_value_a.empty?
 				# JV_VCF0032: Invalid FORMAT value format
 				vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_VCF0032 Warning: Provide FORMAT value in a valid format. #{invalid_ft_value_a.join(",")}")
@@ -852,8 +847,8 @@ def vcf_parser(vcf_file, vcf_type)
 		if vcf_type == "SNP"
 
 			# JV_VCFP0007: Invalid REF allele
-			if !ref.empty? && ref !~ /^[ATGCN]+$/
-				vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_VCFP0007 Error: Remove non-ATGCN base from REF allele.")
+			if !ref.empty? && ref !~ /^[ATGC]+$/
+				vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_VCFP0007 Error: Remove non-ATGC base from REF allele.")
 				invalid_ref_c += 1
 			end
 
@@ -949,7 +944,7 @@ def vcf_parser(vcf_file, vcf_type)
 			end
 
 			# JV_C0061: Chromosome position larger than chromosome size + 1
-			if pos > chr_length + 1
+			if chr_length != -1 && pos > chr_length + 1
 				vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_C0061 Error: Chromosome position is larger than chromosome size + 1. Check if the position is correct.")
 				pos_outside_chr_c += 1
 			end
@@ -972,6 +967,12 @@ def vcf_parser(vcf_file, vcf_type)
 			# Chr
 			vcf_variant_call_h.store("Chr", chrom)
 
+			# JV_VCFS0009: Invalid REF allele
+			if !ref.empty? && ref !~ /^[ATGCN]+$/
+				vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_VCFS0009 Error: Remove non-ATGCN base from REF allele.")
+				invalid_sv_ref_c += 1
+			end
+
 			## Start and end
 			outer_start = -1
 			start = -1
@@ -982,7 +983,7 @@ def vcf_parser(vcf_file, vcf_type)
 			ciposleft = -1
 			ciposright = -1
 			ciendleft = -1
-			ciendleft = -1
+			ciendright = -1
 
 			svlen = 0
 
@@ -1083,6 +1084,7 @@ def vcf_parser(vcf_file, vcf_type)
 			mutation_id = info_h["EVENT"] if info_h["EVENT"] && info_h["EVENT"]
 
 			chr_trans_regex = "([A-Za-z0-9_.]+):([0-9]+)"
+			# if translocation
 			if alt =~ /\[.*\[/ || alt =~ /\].*\]/
 
 				valid_translocation_f = false
@@ -1223,13 +1225,22 @@ def vcf_parser(vcf_file, vcf_type)
 				vcf_variant_call_h.store("To Strand", "")
 				vcf_variant_call_h.store("Mutation ID", "")
 
+				# ALT が translocation 以外、かつ、symbolic ALT 以外の時に . があるとエラー
+				# gridss sample data で N. .N のような出力例あり
+				# https://github.com/PapenfussLab/gridss/blob/master/example/DO52605T.purple.sv.vcf
+				if !alt.include?("<") && alt.include?(".")
+					# JV_VCFS0010: Invalid ALT allele
+					vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_VCFS0010 Error: Remove invalid ALT allele other than ATGCN bases, symbolic allele and translocations.")
+					invalid_sv_alt_c += 1					
+				end
+
 			end # if translocation
 
 			## SV TYPE
 			# 優先順位 [[/]] in ALT > ALT > SVTYPE
 			unless sv_type =~ /translocation/ && translocation_f
 
-				# ALT, graphtyper のような <DEL:SVSIZE=129:COVERAGE> を想定して前方一致
+				# ALT, graphtyper のような <DEL:SVSIZE=129:COVERAGE> を想定して前方一致。より specific な type が後でマッチされるのでより特異的な type が選択される
 				$sv_type_alt_h.each{|sv_type_symbol_key, sv_type_symbol_value|
 					sv_type = sv_type_symbol_value if alt =~ /^\<#{sv_type_symbol_key}/
 				}
@@ -1395,7 +1406,6 @@ def vcf_parser(vcf_file, vcf_type)
 
 			# FORMAT data を格納
 			vcf_variant_call_h.store("FORMAT", format_data_a)
-
 			vcf_variant_call_a.push(vcf_variant_call_h)
 
 		end # if vcf_type == "SV"
@@ -1473,10 +1483,10 @@ def vcf_parser(vcf_file, vcf_type)
 	warning_vcf_content_a.push(["JV_VCF0039", "Number of FORMAT keys and sample values are different. #{inconsistent_format_c} values"]) if inconsistent_format_c > 0
 
 	# JV_VCF0040: Undefined FORMAT key
-	warning_vcf_content_a.push(["JV_VCF0040", "The FORMAT key is not defined in the VCF header. #{undefined_ft_key_c} keys"]) if undefined_ft_key_c > 0
+	warning_vcf_content_a.push(["JV_VCF0040", "The FORMAT key is not defined in the VCF header. #{undefined_ft_key_a.sort.uniq.join(",")}"]) if undefined_ft_key_a.sort.uniq.size > 0
 
 	# JV_VCF0041: Undefined INFO key
-	warning_vcf_content_a.push(["JV_VCF0041", "The INFO key is not defined in the VCF header. #{undefined_info_key_c} keys"]) if undefined_info_key_c > 0
+	warning_vcf_content_a.push(["JV_VCF0041", "The INFO key is not defined in the VCF header. #{undefined_info_key_a.sort.uniq.join(",")}"]) if undefined_info_key_a.sort.uniq.size > 0
 
 	## SNP overall error & warning
 	if vcf_type == "SNP"
@@ -1523,6 +1533,12 @@ def vcf_parser(vcf_file, vcf_type)
 		 	# JV_VCFS0004: Invalid structural variation type
 			error_vcf_content_a.push(["JV_VCFS0004", "Invalid structural variation type. #{invalid_svtype_c} sites"])
 		end
+
+		# JV_VCFS0009: Invalid REF allele
+		error_vcf_content_a.push(["JV_VCFS0009", "Remove non-ATGCN base from REF allele. #{invalid_sv_ref_c} sites"]) if invalid_sv_ref_c > 0
+
+		# JV_VCFS0010: Invalid ALT allele
+		error_vcf_content_a.push(["JV_VCFS0010", "Remove invalid ALT allele other than ATGCN bases, symbolic allele and translocations. #{invalid_sv_alt_c} sites"]) if invalid_sv_alt_c > 0
 
 		# JV_VCF0019: Missing variation type
 		error_vcf_content_a.push(["JV_VCF0019", "Provide variation type. #{missing_svtype_c} sites"]) if missing_svtype_c > 0
