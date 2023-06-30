@@ -9,15 +9,15 @@ NCBI [dbSNP](https://ncbi.nlm.nih.gov/snp)/[dbVar](https://ncbi.nlm.nih.gov/dbva
 
 ## データモデル
 
-dbVar のデータモデルに dbSNP の Assay を取り込んで拡張し SNP/SV 共通モデルを構築。BioProject/BioSample は必須。Variant は Assay を介して Study/SampleSet (Sample) にリンク。  
+dbVar のデータモデルに dbSNP の Assay を Dataset として取り込んで拡張し SNP/SV 共通モデルを構築。BioProject/BioSample は必須。Variant は Dataset を介して Study/SampleSet (Sample) にリンク。  
 
-![jvar-dm](https://github.com/ddbj/jvar/assets/5100160/a4cbf8cf-f066-4ec2-8cd7-36c790ffd890)
+![jvar-dm](https://github.com/ddbj/jvar/assets/5100160/8641c247-2548-4888-b124-503470267576)
 
 アクセッション番号  
 * JVar-SNP: study - dstd, variant - dss  
 * JVar-SV: study - dstd, variant call - dssv, variant region - dsv  
 
-SampleSet, Experiment, Assay は内部的に連番 ID で参照。dbSNP メタデータ中では、それぞれ、ss1、e1、a1 のように区別して参照。　　
+SampleSet, Experiment, Dataset は内部的に連番 ID で参照。dbSNP メタデータ中では、それぞれ、ss1、e1、a1 のように区別して参照。　　
 
 variant は mono-allelic で受付。取り扱いをシンプルにするのと TogoVar と粒度を揃えるため。  
 dbSNP/dbVar は pos + variation type が同じ multi-allelic を許容。dbSNP rs と Variant region は multi。
@@ -33,7 +33,7 @@ JVar-SNP variant は公開後 dbSNP に取り込まれると、dbSNP により s
 * SampleSet  
 * Sample  
 * Experiment  
-* Assay  
+* Dataset   
 * Variant Call (SV)
 * Variant Region (SV)
 
@@ -79,7 +79,7 @@ reference の値は [/conf/ref_assembly.jsonl](/conf/ref_assembly.jsonl) で制�
 ruby jvar-convert.rb -v VSUB000001 JVar.xlsx
 ```
 
-Assay に VCF ファイルパスが記載されている場合、対象 VCF を読み込む。   
+Dataset に VCF ファイルパスが記載されている場合、対象 VCF を読み込む。   
 SNP or SV は study の Submission Type で判定。  
 
 ### SNP

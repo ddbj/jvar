@@ -209,7 +209,7 @@ def vcf_parser(vcf_file, vcf_type)
 
 	fileformat = ""
 	reference = ""
-	assay_id = ""
+	dataset_id = ""
 
 	# meta tags info
 	info_def_h = {}
@@ -480,6 +480,8 @@ def vcf_parser(vcf_file, vcf_type)
 	telomere_c = 0
 	multi_allelic_c = 0
 	invalid_translocation_c = 0
+	calculated_af_c = 0
+	ac_greater_than_an_c = 0
 
 	# fasta
 	ref_fasta_no_exist_a = []
@@ -524,6 +526,9 @@ def vcf_parser(vcf_file, vcf_type)
 		chr_name = ""
 		chr_accession = ""
 		chr_length = -1
+
+		# SV 格納
+		vcf_variant_call_h = {}
 
 		## JV_VCF0005: White space characters before/after column header
 		vcf_field_whitespaces_a = []
@@ -798,11 +803,11 @@ def vcf_parser(vcf_file, vcf_type)
 					# archive target のみ格納
 					if vcf_type == "SNP"
 						$target_format_tag_snp_h.keys.each{|target_ft_key|							
-							tmp_format_data_h.store(target_ft_key, sample_value.split(":")[k]) if key == target_ft_key && sample_value.split(":")[k] && sample_value.split(":")[k].gsub(".", "") # per SampleSet this VCF/assay belongs to.
+							tmp_format_data_h.store(target_ft_key, sample_value.split(":")[k]) if key == target_ft_key && sample_value.split(":")[k] && sample_value.split(":")[k].gsub(".", "") # per SampleSet this VCF/dataset belongs to.
 						}
 					elsif vcf_type == "SV"
 						$target_format_tag_sv_h.keys.each{|target_ft_key|
-							tmp_format_data_h.store(target_ft_key, sample_value.split(":")[k]) if key == target_ft_key && sample_value.split(":")[k] && sample_value.split(":")[k].gsub(".", "") # per SampleSet this VCF/assay belongs to.
+							tmp_format_data_h.store(target_ft_key, sample_value.split(":")[k]) if key == target_ft_key && sample_value.split(":")[k] && sample_value.split(":")[k].gsub(".", "") # per SampleSet this VCF/dataset belongs to.
 						}
 					end
 
@@ -842,6 +847,50 @@ def vcf_parser(vcf_file, vcf_type)
 				invalid_ft_c += 1
 			end
 
+		end
+
+		## Allele Frequency
+		af = ""
+		if info_h["AN"] && !info_h["AN"].empty? && info_h["AC"] && !info_h["AC"].empty?
+
+			if vcf_type == "SV"
+				vcf_variant_call_h.store("Allele Number", info_h["AN"])
+				vcf_variant_call_h.store("Allele Count", info_h["AC"])
+			end
+
+			# JV_C0063: Allele count greater than allele number
+			ac_greater_than_an_f = false
+			if info_h["AC"].to_i > info_h["AN"].to_i
+				ac_greater_than_an_c += 1
+				vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_C0063 Error: Allele count is greater than allele number.")				
+				ac_greater_than_an_f = true
+			end
+
+			# AF
+			if info_h["AF"] && !info_h["AF"].empty?
+				vcf_variant_call_h.store("Allele Frequency", info_h["AF"])
+			else
+				if info_h["AC"].to_i.fdiv(info_h["AN"].to_i).floor(6).to_s && !ac_greater_than_an_f
+					af = info_h["AC"].to_i.fdiv(info_h["AN"].to_i).floor(6).to_s
+					
+					calculated_af_c += 1
+					vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_C0062 Warning: Allele frequency was calculated as allele count/allele number. #{af}")
+
+					if vcf_type == "SNP"
+						vcf_line_a[7] = "#{vcf_line_a[7]};AF=#{af}"
+					elsif vcf_type == "SV"
+						vcf_variant_call_h.store("Allele Frequency", af)
+					end
+				else
+					vcf_variant_call_h.store("Allele Frequency", "") if vcf_type == "SV"
+				end
+			end
+		else # if info_h["AN"] && !info_h["AN"].empty? && info_h["AC"] && !info_h["AC"].empty?
+			if vcf_type == "SV"
+				vcf_variant_call_h.store("Allele Number", "")
+				vcf_variant_call_h.store("Allele Count", "")
+				vcf_variant_call_h.store("Allele Frequency", "")
+			end
 		end
 
 		## SNP specific validations
@@ -955,7 +1004,6 @@ def vcf_parser(vcf_file, vcf_type)
 		##
 		## SV
 		##
-		vcf_variant_call_h = {}
 		if vcf_type == "SV"
 
 			# Variant Call ID
@@ -1022,31 +1070,8 @@ def vcf_parser(vcf_file, vcf_type)
 				vcf_variant_call_h.store("External Links", "")
 			end
 
-			## allele frequency
-			# INFO にある場合は VCF assay が参照している SampleSet 中の頻度
-			if info_h["AN"] && info_h["AC"]
-
-				# AN
-				vcf_variant_call_h.store("Allele Number", info_h["AN"])
-
-				# AC
-				vcf_variant_call_h.store("Allele Count", info_h["AC"])
-
-				if info_h["AF"]
-					# AF
-					vcf_variant_call_h.store("Allele Frequency", info_h["AF"])
-				else
-					# AF
-					vcf_variant_call_h.store("Allele Frequency", "")
-				end
-			else
-				vcf_variant_call_h.store("Allele Number", "")
-				vcf_variant_call_h.store("Allele Count", "")
-				vcf_variant_call_h.store("Allele Frequency", "")
-			end
-
 			## copy number
-			# INFO にある場合は VCF assay が参照している SampleSet 中のコピー数
+			# INFO にある場合は VCF dataset が参照している SampleSet 中のコピー数
 			if info_h["CN"]
 				# CN
 				vcf_variant_call_h.store("Copy Number", info_h["CN"])
@@ -1055,14 +1080,14 @@ def vcf_parser(vcf_file, vcf_type)
 			end
 
 			## reference_copy_number
-			# INFO にある場合は VCF assay が参照している SampleSet 中のコピー数
+			# INFO にある場合は VCF dataset が参照している SampleSet 中のコピー数
 			if info_h["refCN"]
 				# refCN
 				vcf_variant_call_h.store("reference_copy_number", info_h["refCN"])
 			end
 
 			## Genotype
-			# INFO にある場合は VCF assay が参照している SampleSet 中の genotype
+			# INFO にある場合は VCF dataset が参照している SampleSet 中の genotype
 			if info_h["GT"]
 				# GT
 				vcf_variant_call_h.store("submitted_genotype", info_h["GT"])
@@ -1436,7 +1461,7 @@ def vcf_parser(vcf_file, vcf_type)
 	warning_vcf_content_a.push(["JV_VCF0028", "The empty line is automatically removed. #{empty_line_c} lines"]) if empty_line_c > 0
 
 	## JV_VCF0021: Duplicated local IDs
-	error_vcf_content_a.push(["JV_VCF0021", "Local IDs should be unique in an assay/VCF. #{duplicated_id_c} sites"]) if duplicated_id_c > 0
+	error_vcf_content_a.push(["JV_VCF0021", "Local IDs should be unique in a dataset/VCF. #{duplicated_id_c} sites"]) if duplicated_id_c > 0
 
 	## JV_VCF0036: Multi-allelic ALT allele
 	error_vcf_content_a.push(["JV_VCF0036", "JVar only accepts mono-allelic ALT alleles (no commas in ALT). #{multi_allelic_c} sites"]) if multi_allelic_c > 0
@@ -1488,6 +1513,12 @@ def vcf_parser(vcf_file, vcf_type)
 
 	# JV_VCF0041: Undefined INFO key
 	warning_vcf_content_a.push(["JV_VCF0041", "The INFO key is not defined in the VCF header. #{undefined_info_key_a.sort.uniq.join(",")}"]) if undefined_info_key_a.sort.uniq.size > 0
+
+	# JV_C0062: Calculated allele frequency
+	warning_vcf_content_a.push(["JV_C0062", "Allele frequency was calculated as allele count/allele number. #{calculated_af_c} sites"]) if calculated_af_c > 0
+
+	# JV_C0063: Allele count greater than allele number
+	error_vcf_content_a.push(["JV_C0063", "Allele count is greater than allele number. #{ac_greater_than_an_c} sites"]) if ac_greater_than_an_c > 0
 
 	## SNP overall error & warning
 	if vcf_type == "SNP"

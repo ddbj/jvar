@@ -194,7 +194,7 @@ rescue
 end
 
 # sheets
-object_a = ['Study', 'SampleSet', 'Sample', 'Experiment', 'Assay', 'Variant Call (SV)', 'Variant Region (SV)']
+object_a = ['Study', 'SampleSet', 'Sample', 'Experiment', 'Dataset', 'Variant Call (SV)', 'Variant Region (SV)']
 
 # array for metadata objects
 study_sheet_a = Array.new
@@ -202,7 +202,7 @@ study_store_h = Hash.new
 sampleset_sheet_a = Array.new
 sample_sheet_a = Array.new
 experiment_sheet_a = Array.new
-assay_sheet_a = Array.new
+dataset_sheet_a = Array.new
 small_variant_sheet_a = Array.new
 variant_call_sheet_a = Array.new
 variant_region_sheet_a = Array.new
@@ -232,10 +232,8 @@ for object in object_a
 			sample_sheet_a.push(line_trimmed_a)
 		when "Experiment" then
 			experiment_sheet_a.push(line_trimmed_a)
-		when "Assay" then
-			assay_sheet_a.push(line_trimmed_a)
-		when "Small Variant" then
-			small_variant_sheet_a.push(line_trimmed_a)
+		when "Dataset" then
+			dataset_sheet_a.push(line_trimmed_a)
 		when "Variant Call (SV)" then
 			variant_call_sheet_a.push(line_trimmed_a)
 		when "Variant Region (SV)" then
@@ -316,11 +314,11 @@ unless experiment_table_parse_error_a.empty?
 end
 
 ###
-### Assay
+### Dataset
 ###
-assay_a, assay_h, assay_table_parse_error_a = table_parse(assay_sheet_a, [2], "Assay")
-unless assay_table_parse_error_a.empty?
-	error_common_a.push(["JV_C0058", "Provide a required key value. Assay: Experiment ID"])
+dataset_a, dataset_h, dataset_table_parse_error_a = table_parse(dataset_sheet_a, [2], "Dataset")
+unless dataset_table_parse_error_a.empty?
+	error_common_a.push(["JV_C0058", "Provide a required key value. Dataset: Experiment ID"])
 end
 
 ###
@@ -350,9 +348,9 @@ end
 ## Common checks
 ##
 
-# JV_C0008: Missing Assay
-if assay_a.empty?
-	error_common_a.unshift(["JV_C0008", "Assay is missing."])
+# JV_C0008: Missing Dataset
+if dataset_a.empty?
+	error_common_a.unshift(["JV_C0008", "Dataset is missing."])
 end
 
 # JV_C0007: Missing Experiment
@@ -604,18 +602,18 @@ for object in required_fields_error_h.keys
 
 		end
 
-	when "Assay" then
+	when "Dataset" then
 
-		for assay in assay_a
+		for dataset in dataset_a
 			required_fields_error_h[object].each{|field|
-				assay.each{|key, value|
+				dataset.each{|key, value|
 					if key == field
 						error_common_a.push(["JV_C0009", "#{object} has missing mandatory field(s) #{key}."]) if value.nil? || value.empty?
 					end
-				} # assay.each{|key, value|
+				} # dataset.each{|key, value|
 			} # required_fields_error_h[object].each{|field|
 
-			assay.each{|key, value|
+			dataset.each{|key, value|
 				# CV
 				if value && !value.empty? && cv_h[object] && cv_h[object][key] && !cv_h[object][key].include?(value)
 					## JV_C0057: Invalid value for controlled terms
@@ -713,15 +711,15 @@ for object in required_fields_error_ignore_h.keys
 			end # unless experiment["Method Type"] == "Merging"
 		end
 
-	when "Assay" then
+	when "Dataset" then
 
-		for assay in assay_a
+		for dataset in dataset_a
 			required_fields_error_ignore_h[object].each{|field|
-				assay.each{|key, value|
+				dataset.each{|key, value|
 					if key == field
 						error_ignore_common_a.push(["JV_C0010", "#{object} has missing mandatory field(s) #{key}."]) if value.nil? || value.empty?
 					end
-				} # assay.each{|key, value|
+				} # dataset.each{|key, value|
 			} # required_fields_error_ignore_h
 		end
 
@@ -929,7 +927,7 @@ method_s = ""
 population_s = ""
 assay_s = ""
 
-# assay id and SNP VCF filepath
+# dataset id and SNP VCF filepath
 vcf_snp_a = []
 
 if submission_h["Submission Type"] == "Short genetic variations"
@@ -1032,38 +1030,38 @@ EOS
 	##
 	## ASSAY
 	##
-	vcf_header_assay_h = {}
-	for assay in assay_a
+	vcf_header_dataset_h = {}
+	for dataset in dataset_a
 
 		# JV_VCFP008: Missing short genetic variants
-		error_snp_a.push(["JV_VCFP008", "Provide short genetic variants in VCF."]) if assay["VCF Filename"].empty?
+		error_snp_a.push(["JV_VCFP008", "Provide short genetic variants in VCF."]) if dataset["VCF Filename"].empty?
 
-		if !assay["Experiment ID"].empty? && !assay["VCF Filename"].empty?
+		if !dataset["Experiment ID"].empty? && !dataset["VCF Filename"].empty?
 
-			# assay ID and VCF filepath
-			vcf_snp_a.push([assay["Assay ID"], assay["VCF Filename"]])
+			# Dataset ID and VCF filepath
+			vcf_snp_a.push([dataset["Dataset ID"], dataset["VCF Filename"]])
 
 assay_s += <<EOS
 TYPE:\tSNPASSAY
 HANDLE:\t#{submitter_handle}
-BATCH:\t#{submission_id}_a#{assay["Assay ID"]}
+BATCH:\t#{submission_id}_a#{dataset["Dataset ID"]}
 MOLTYPE: Genomic
-METHOD:\t#{submission_id}_e#{assay["Experiment ID"]}
+METHOD:\t#{submission_id}_e#{dataset["Experiment ID"]}
 EOS
 
-		assay_s += assay["Number of Chromosomes Sampled"].empty? ? "" : "SAMPLESIZE:\t#{assay["Number of Chromosomes Sampled"]}\n"
+		assay_s += dataset["Number of Chromosomes Sampled"].empty? ? "" : "SAMPLESIZE:\t#{dataset["Number of Chromosomes Sampled"]}\n"
 		assay_s += "ORGANISM:\tHomo sapiens\n"
-		assay_s += assay["SampleSet ID"].empty? ? "" : "POPULATION:\t#{submission_id}_ss#{assay["SampleSet ID"]}\n"
-		assay_s += assay["Linkout URL"].empty? ? "" : "LINKOUT_URL:\t#{assay["Linkout URL"]}\n"
-		assay_s += assay["Assay Description"].empty? ? "" : "COMMENT:\t#{assay["Assay Description"]}\n"
+		assay_s += dataset["SampleSet ID"].empty? ? "" : "POPULATION:\t#{submission_id}_ss#{dataset["SampleSet ID"]}\n"
+		assay_s += dataset["Linkout URL"].empty? ? "" : "LINKOUT_URL:\t#{dataset["Linkout URL"]}\n"
+		assay_s += dataset["Dataset Description"].empty? ? "" : "COMMENT:\t#{dataset["Dataset Description"]}\n"
 
 		assay_s += "||\n"
 
-		vcf_header_assay_h.store(assay["Assay ID"], {"batch_id" => "#{submission_id}_a#{assay["Assay ID"]}", "biosample_ids" => sampleset_biosample_acc_h[assay["SampleSet ID"]]? sampleset_biosample_acc_h[assay["SampleSet ID"]] : ""})
+		vcf_header_dataset_h.store(dataset["Dataset ID"], {"batch_id" => "#{submission_id}_a#{dataset["Dataset ID"]}", "biosample_ids" => sampleset_biosample_acc_h[dataset["SampleSet ID"]]? sampleset_biosample_acc_h[dataset["SampleSet ID"]] : ""})
 
 		end # if !sampleset["SampleSet Name"].empty?
 
-	end # for assay in assay_a
+	end # for dataset in dataset_a
 
 	## dbSNP metadata TSV を作成
 	snp_tsv_f = open("#{submission_id}_dbsnp.tsv", "w")
@@ -1080,7 +1078,7 @@ EOS
 	id_a = []
 
 	error_vcf_header_a, error_ignore_vcf_header_a, error_exchange_vcf_header_a, warning_vcf_header_a, error_vcf_content_a, error_ignore_vcf_content_a, error_exchange_vcf_content_a, warning_vcf_content_a, vcf_variant_a = [], [], [], [], [], [], [], [], []
-	for assay in assay_a
+	for dataset in dataset_a
 
 		# VCF ファイル毎の初期化
 		invalid_sample_ref_vcf_a = []
@@ -1096,32 +1094,32 @@ EOS
 		tmp_vcf_variant_region_a = []
 		tmp_vcf_content_log_a = []
 
-		if !assay["Experiment ID"].empty? && !assay["VCF Filename"].empty?
+		if !dataset["Experiment ID"].empty? && !dataset["VCF Filename"].empty?
 
-			vcf_file_a.push(assay["VCF Filename"])
+			vcf_file_a.push(dataset["VCF Filename"])
 
 			tmp_error_vcf_header_a, tmp_error_ignore_vcf_header_a, tmp_error_exchange_vcf_header_a, tmp_warning_vcf_header_a, tmp_error_vcf_content_a, tmp_error_ignore_vcf_content_a, tmp_error_exchange_vcf_content_a, tmp_warning_vcf_content_a, tmp_vcf_variant_a, tmp_vcf_sample_a = [], [], [], [], [], [], [], [], [], []
-			tmp_error_vcf_header_a, tmp_error_ignore_vcf_header_a, tmp_error_exchange_vcf_header_a, tmp_warning_vcf_header_a, tmp_error_vcf_content_a, tmp_error_ignore_vcf_content_a, tmp_error_exchange_vcf_content_a, tmp_warning_vcf_content_a, tmp_vcf_variant_a, tmp_vcf_sample_a = vcf_parser(assay["VCF Filename"], "SNP")
+			tmp_error_vcf_header_a, tmp_error_ignore_vcf_header_a, tmp_error_exchange_vcf_header_a, tmp_warning_vcf_header_a, tmp_error_vcf_content_a, tmp_error_ignore_vcf_content_a, tmp_error_exchange_vcf_content_a, tmp_warning_vcf_content_a, tmp_vcf_variant_a, tmp_vcf_sample_a = vcf_parser(dataset["VCF Filename"], "SNP")
 
 			# VCF 毎に格納
-			error_vcf_header_h.store(assay["VCF Filename"], tmp_error_vcf_header_a)
-			error_ignore_vcf_header_h.store(assay["VCF Filename"], tmp_error_ignore_vcf_header_a)
-			error_exchange_vcf_header_h.store(assay["VCF Filename"], tmp_error_exchange_vcf_header_a)
-			warning_vcf_header_h.store(assay["VCF Filename"], tmp_warning_vcf_header_a)
-			error_vcf_content_h.store(assay["VCF Filename"], tmp_error_vcf_content_a)
-			error_ignore_vcf_content_h.store(assay["VCF Filename"], tmp_error_ignore_vcf_content_a)
-			error_exchange_vcf_content_h.store(assay["VCF Filename"], tmp_error_exchange_vcf_content_a)
-			warning_vcf_content_h.store(assay["VCF Filename"], tmp_warning_vcf_content_a)
+			error_vcf_header_h.store(dataset["VCF Filename"], tmp_error_vcf_header_a)
+			error_ignore_vcf_header_h.store(dataset["VCF Filename"], tmp_error_ignore_vcf_header_a)
+			error_exchange_vcf_header_h.store(dataset["VCF Filename"], tmp_error_exchange_vcf_header_a)
+			warning_vcf_header_h.store(dataset["VCF Filename"], tmp_warning_vcf_header_a)
+			error_vcf_content_h.store(dataset["VCF Filename"], tmp_error_vcf_content_a)
+			error_ignore_vcf_content_h.store(dataset["VCF Filename"], tmp_error_ignore_vcf_content_a)
+			error_exchange_vcf_content_h.store(dataset["VCF Filename"], tmp_error_exchange_vcf_content_a)
+			warning_vcf_content_h.store(dataset["VCF Filename"], tmp_warning_vcf_content_a)
 
 			# JV_VCF0042: Invalid sample reference in VCF			
-			if sample_name_per_sampleset_h[assay["SampleSet ID"]] && biosample_accession_per_sampleset_h[assay["SampleSet ID"]] && sampleset_name_per_sampleset_h[assay["SampleSet ID"]] && !tmp_vcf_sample_a.empty?
-				unless (tmp_vcf_sample_a - sample_name_per_sampleset_h[assay["SampleSet ID"]]).empty? || (tmp_vcf_sample_a - biosample_accession_per_sampleset_h[assay["SampleSet ID"]]).empty? || (tmp_vcf_sample_a - sampleset_name_per_sampleset_h[assay["SampleSet ID"]]).empty?
-					invalid_sample_ref_vcf_a.push(assay["VCF Filename"])
+			if sample_name_per_sampleset_h[dataset["SampleSet ID"]] && biosample_accession_per_sampleset_h[dataset["SampleSet ID"]] && sampleset_name_per_sampleset_h[dataset["SampleSet ID"]] && !tmp_vcf_sample_a.empty?
+				unless (tmp_vcf_sample_a - sample_name_per_sampleset_h[dataset["SampleSet ID"]]).empty? || (tmp_vcf_sample_a - biosample_accession_per_sampleset_h[dataset["SampleSet ID"]]).empty? || (tmp_vcf_sample_a - sampleset_name_per_sampleset_h[dataset["SampleSet ID"]]).empty?
+					invalid_sample_ref_vcf_a.push(dataset["VCF Filename"])
 				end
 			end
 
 			# dbSNP VCF 出力
-			dbsnp_vcf_f = open("#{submission_id}_a#{assay["Assay ID"]}.vcf", "w")
+			dbsnp_vcf_f = open("#{submission_id}_a#{dataset["Dataset ID"]}.vcf", "w")
 
 			first_info_f = true
 			format_f = false
@@ -1130,9 +1128,9 @@ EOS
 				# submitter handle etc を挿入
 				if line_a =~ /^##reference=/
 					dbsnp_vcf_f.puts "##handle=#{submitter_handle}"
-					dbsnp_vcf_f.puts "##batch_id=#{vcf_header_assay_h[assay["Assay ID"]]["batch_id"]}" if vcf_header_assay_h[assay["Assay ID"]] && vcf_header_assay_h[assay["Assay ID"]]["batch_id"]
+					dbsnp_vcf_f.puts "##batch_id=#{vcf_header_dataset_h[dataset["Dataset ID"]]["batch_id"]}" if vcf_header_dataset_h[dataset["Dataset ID"]] && vcf_header_dataset_h[dataset["Dataset ID"]]["batch_id"]
 					dbsnp_vcf_f.puts "##bioproject_id=#{bioproject_accession}" unless bioproject_accession.empty?
-					dbsnp_vcf_f.puts "##biosample_id=#{vcf_header_assay_h[assay["Assay ID"]]["biosample_ids"].join(",")}" if vcf_header_assay_h[assay["Assay ID"]] && vcf_header_assay_h[assay["Assay ID"]]["biosample_ids"]
+					dbsnp_vcf_f.puts "##biosample_id=#{vcf_header_dataset_h[dataset["Dataset ID"]]["biosample_ids"].join(",")}" if vcf_header_dataset_h[dataset["Dataset ID"]] && vcf_header_dataset_h[dataset["Dataset ID"]]["biosample_ids"]
 				end
 
 				# INFO 先頭に VRT 挿入、既存 VRT はスキップ
@@ -1147,8 +1145,8 @@ EOS
 				next if line_a =~ /^##contig=\<ID=/
 
 				# CHROM の前に挿入
-				if line_a =~ /^#CHROM/ && sampleset_name_per_sampleset_h[assay["SampleSet ID"]] && sampleset_name_per_sampleset_h[assay["SampleSet ID"]].size > 0
-					sampleset_name_per_sampleset_h[assay["SampleSet ID"]].each{|population_id|
+				if line_a =~ /^#CHROM/ && sampleset_name_per_sampleset_h[dataset["SampleSet ID"]] && sampleset_name_per_sampleset_h[dataset["SampleSet ID"]].size > 0
+					sampleset_name_per_sampleset_h[dataset["SampleSet ID"]].each{|population_id|
 						dbsnp_vcf_f.puts "##population_id=#{population_id}"
 					}
 				end
@@ -1165,7 +1163,7 @@ EOS
 			error_vcf_header_a.push(["JV_VCF0042", "Reference a Sample Name/BioSample Accession of a Sample in the SampleSet or a SampleSet Name in the VCF sample column. #{invalid_sample_ref_vcf_a.sort.uniq.join(",")}"])
 		end
 
-	end # for assay in assay_a
+	end # for dataset in dataset_a
 
 end # if submission_h["Submission Type"] == "Short genetic variations"
 
@@ -1667,19 +1665,19 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 	# Variant Call
 	#
 
-	# tsv Assay ID to Experiment/SamplaSet IDs
-	assay_to_experiment_h = {}
-	assay_to_sampleset_h = {}
+	# tsv Dataset ID to Experiment/SamplaSet IDs
+	dataset_to_experiment_h = {}
+	dataset_to_sampleset_h = {}
 
 	## Variant Call Sheet or VCF
 	error_vcf_header_a, error_ignore_vcf_header_a, error_exchange_vcf_header_a, warning_vcf_header_a, error_vcf_content_a, error_ignore_vcf_content_a, error_exchange_vcf_content_a, warning_vcf_content_a, vcf_variant_call_a, vcf_variant_region_a, vcf_content_log_a = [], [], [], [], [], [], [], [], [], []
-	for assay in assay_a
+	for dataset in dataset_a
 
-		assay_to_experiment_h.store(assay["Assay ID"], assay["Experiment ID"])
-		assay_to_sampleset_h.store(assay["Assay ID"], assay["SampleSet ID"])
+		dataset_to_experiment_h.store(dataset["Dataset ID"], dataset["Experiment ID"])
+		dataset_to_sampleset_h.store(dataset["Dataset ID"], dataset["SampleSet ID"])
 
-		unless assay["VCF Filename"].empty?
-			vcf_sv_f = assay["VCF Filename"]
+		unless dataset["VCF Filename"].empty?
+			vcf_sv_f = dataset["VCF Filename"]
 		else
 			if variant_call_a.empty?
 				# JV_VCFS0008: Missing structural variants
@@ -1721,20 +1719,20 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 			for tmp_vcf_variant_call_h in tmp_vcf_variant_call_a
 
-				unless assay["Assay ID"].empty?
-					tmp_vcf_variant_call_h.store("Assay ID", assay["Assay ID"])
+				unless dataset["Dataset ID"].empty?
+					tmp_vcf_variant_call_h.store("Dataset ID", dataset["Dataset ID"])
 				else
-					tmp_vcf_variant_call_h.store("Assay ID", "")
+					tmp_vcf_variant_call_h.store("Dataset ID", "")
 				end
 
-				unless assay["Experiment ID"].empty?
-					tmp_vcf_variant_call_h.store("Experiment ID", assay["Experiment ID"])
+				unless dataset["Experiment ID"].empty?
+					tmp_vcf_variant_call_h.store("Experiment ID", dataset["Experiment ID"])
 				else
 					tmp_vcf_variant_call_h.store("Experiment ID", "")
 				end
 
-				unless assay["SampleSet ID"].empty?
-					tmp_vcf_variant_call_h.store("SampleSet ID", assay["SampleSet ID"])
+				unless dataset["SampleSet ID"].empty?
+					tmp_vcf_variant_call_h.store("SampleSet ID", dataset["SampleSet ID"])
 				else
 					tmp_vcf_variant_call_h.store("SampleSet ID", "")
 				end
@@ -1805,7 +1803,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 			
 		end # unless vcf_sv_f.empty? SV VCF 毎の処理
 
-	end # for assay in assay_a
+	end # for dataset in dataset_a
 
 	## Variant call in TSV or VCF
 	# variant call は sheet から
@@ -1898,7 +1896,9 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 		stop_outer_inner_stop_coexist_call_a = [] # JV_SV0092
 		invalid_placements_pe_seq_call_a = [] # JV_SV0054
 		invalid_seq_call_a = [] # JV_SV0060
-		invalid_assay_id_call_a = [] # JV_SV0099
+		invalid_dataset_id_call_a = [] # JV_SV0099
+		calculated_af_a = [] # JV_C0062
+		ac_greater_than_an_a = [] # JV_C0063
 
 		pos_outside_chr_call_a = [] # JV_C0061
 
@@ -1949,10 +1949,10 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 				variant_call_id_type_h.store(variant_call_id, variant_call_type)
 			end
 
-			# JV_SV0099: Invalid assay reference
-			unless assay_to_experiment_h.keys.include?(variant_call["Assay ID"])
-				invalid_assay_id_call_a.push("#{variant_call_id}")
-				variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0099 Error: Provide a valid assay ID. #{variant_call["Assay ID"]}")			
+			# JV_SV0099: Invalid dataset reference
+			unless dataset_to_experiment_h.keys.include?(variant_call["Dataset ID"])
+				invalid_dataset_id_call_a.push("#{variant_call_id}")
+				variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0099 Error: Provide a valid dataset ID. #{variant_call["Dataset ID"]}")
 			end
 
 			variant_call_attr_h.store("variant_call_type_SO_id", "")
@@ -1972,19 +1972,31 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 			if variant_call["Experiment ID"]
 				variant_call_attr_h.store("experiment_id", variant_call["Experiment ID"])
 			# from tsv
-			elsif !variant_call["Assay ID"].empty? && assay_to_experiment_h[variant_call["Assay ID"]]
-				variant_call_attr_h.store("experiment_id", assay_to_experiment_h[variant_call["Assay ID"]])
+			elsif !variant_call["Dataset ID"].empty? && dataset_to_experiment_h[variant_call["Dataset ID"]]
+				variant_call_attr_h.store("experiment_id", dataset_to_experiment_h[variant_call["Dataset ID"]])
 			end
 
-			variant_call_attr_h.store("allele_count", variant_call["Allele Count"]) unless variant_call["Allele Count"].empty?
-			variant_call_attr_h.store("allele_number", variant_call["Allele Number"]) unless variant_call["Allele Number"].empty?
+			variant_call_attr_h.store("allele_count", variant_call["Allele Count"]) if variant_call["Allele Count"] && !variant_call["Allele Count"].empty?
+			variant_call_attr_h.store("allele_number", variant_call["Allele Number"]) if variant_call["Allele Number"] && !variant_call["Allele Number"].empty?
 
-			if !variant_call["Allele Frequency"].empty?
+			# JV_C0063: Allele count greater than allele number
+			ac_greater_than_an_f = false
+			if variant_call["Allele Count"].to_i && variant_call["Allele Number"].to_i && variant_call["Allele Count"].to_i > variant_call["Allele Number"].to_i
+				ac_greater_than_an_a.push(variant_call_id)
+				variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_C0063 Error: Allele count is greater than allele number.")
+				ac_greater_than_an_f = true
+			end
+
+			af = ""
+			if variant_call["Allele Frequency"] && !variant_call["Allele Frequency"].empty?
 				variant_call_attr_h.store("allele_frequency", variant_call["Allele Frequency"])
-			elsif !variant_call["Allele Number"].empty? && variant_call["Allele Number"].to_i && !variant_call["Allele Count"].empty? && variant_call["Allele Count"].to_i
-				if (variant_call["Allele Count"].to_i/variant_call["Allele Number"].to_i).floor(6).to_s
-					aq = (variant_call["Allele Count"].to_i/variant_call["Allele Number"].to_i).floor(6).to_s
-					variant_call_attr_h.store("allele_frequency", aq)
+			# AN AC があって AF がない場合、AF を計算
+			elsif variant_call["Allele Number"] && !variant_call["Allele Number"].empty? && variant_call["Allele Number"].to_i && variant_call["Allele Count"] && !variant_call["Allele Count"].empty? && variant_call["Allele Count"].to_i && !ac_greater_than_an_f
+				if variant_call["Allele Count"].to_i.fdiv(variant_call["Allele Number"].to_i).floor(6).to_s
+					af = variant_call["Allele Count"].to_i.fdiv(variant_call["Allele Number"].to_i).floor(6).to_s
+					variant_call_attr_h.store("allele_frequency", af)
+					calculated_af_a.push(variant_call_id)
+					variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_C0062 Warning: Allele frequency was calculated as allele count/allele number.")
 				end
 			end
 
@@ -2008,9 +2020,9 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 					variant_call_e.SAMPLESET("sampleset_id" => variant_call["SampleSet ID"])
 					variant_call_id_sampleset_h.store(variant_call_id, variant_call["SampleSet ID"])
 				# from tsv
-				elsif !variant_call["Assay ID"].empty? && assay_to_sampleset_h[variant_call["Assay ID"]]
-					variant_call_e.SAMPLESET("sampleset_id" => assay_to_sampleset_h[variant_call["Assay ID"]])
-					variant_call_id_sampleset_h.store(variant_call_id, assay_to_sampleset_h[variant_call["Assay ID"]])
+				elsif !variant_call["Dataset ID"].empty? && dataset_to_sampleset_h[variant_call["Dataset ID"]]
+					variant_call_e.SAMPLESET("sampleset_id" => dataset_to_sampleset_h[variant_call["Dataset ID"]])
+					variant_call_id_sampleset_h.store(variant_call_id, dataset_to_sampleset_h[variant_call["Dataset ID"]])
 				end
 
 				# LINK
@@ -2695,7 +2707,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 		error_sv_vc_a.push(["JV_SV0074", "Contig accession must refer to a valid INSDC accession and version. Variant Call: #{invalid_contig_acc_ref_call_a.size} sites, #{invalid_contig_acc_ref_call_a.size > 4? invalid_contig_acc_ref_call_a[0, limit_for_etc].join(",") + " etc" : invalid_contig_acc_ref_call_a.join(",")}"]) unless invalid_contig_acc_ref_call_a.empty?
 		error_sv_vc_a.push(["JV_SV0076", "Genomic placement must contain either a chr_name, chr_accession, or contig_accession unless it is on a novel sequence insertion or translocation. Variant Call: #{missing_chr_contig_acc_call_a.size} sites, #{missing_chr_contig_acc_call_a.size > 4? missing_chr_contig_acc_call_a[0, limit_for_etc].join(",") + " etc" : missing_chr_contig_acc_call_a.join(",")}"]) unless missing_chr_contig_acc_call_a.empty?
 		error_sv_vc_a.push(["JV_SV0077", "Genomic placement should not have a contig_accession if there is also a chr_name or chr_accession. Variant Call: #{contig_acc_for_chr_acc_call_a.size} sites, #{contig_acc_for_chr_acc_call_a.size > 4? contig_acc_for_chr_acc_call_a[0, limit_for_etc].join(",") + " etc" : contig_acc_for_chr_acc_call_a.join(",")}"]) unless contig_acc_for_chr_acc_call_a.empty?
-		error_sv_vc_a.push(["JV_SV0099", "Provide a valid assay ID. Variant Call: #{invalid_assay_id_call_a.size} sites, #{invalid_assay_id_call_a.size > 4? invalid_assay_id_call_a[0, limit_for_etc].join(",") + " etc" : invalid_assay_id_call_a.join(",")}"]) unless invalid_assay_id_call_a.empty?
+		error_svdataset.push(["JV_SV0099", "Provide a valid dataset ID. Variant Call: #{invalid_dataset_id_call_a.size} sites, #{invalid_dataset_id_call_a.size > 4? invalid_dataset_id_call_a[0, limit_for_etc].join(",") + " etc" : invalid_dataset_id_call_a.join(",")}"]) unless invalid_dataset_id_call_a.empty?
 
 		## Variant Call, Error ignore
 		error_ignore_sv_vc_a.push(["JV_SV0045", "Missing From/To in translocation. Variant Call: #{invalid_from_to_call_a.size} sites, #{invalid_from_to_call_a.size > 4? invalid_from_to_call_a[0, limit_for_etc].join(",") + " etc" : invalid_from_to_call_a.join(",")}"]) unless invalid_from_to_call_a.empty?
@@ -2726,6 +2738,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 		warning_sv_vc_a.push(["JV_SV0054", "Warning if method_type=Sequencing and analysis_type=Paired-end mapping, and there are placements other than outer_start, outer_stop. Variant Call: #{invalid_placements_pe_seq_call_a.size} sites, #{invalid_placements_pe_seq_call_a.size > 4? invalid_placements_pe_seq_call_a[0, limit_for_etc].join(",") + " etc" : invalid_placements_pe_seq_call_a.join(",")}"]) unless invalid_placements_pe_seq_call_a.empty?
 		warning_sv_vc_a.push(["JV_SV0060", "Warning if Variant/Sequence contains other than valid iupac codes (ABCDGHKMNRSTUVWY) or space, period '.' or dash '-' Variant Call: #{invalid_seq_call_a.size} sites, #{invalid_seq_call_a.size > 4? invalid_seq_call_a[0, limit_for_etc].join(",") + " etc" : invalid_seq_call_a.join(",")}"]) unless invalid_seq_call_a.empty?
 		warning_sv_vc_a.push(["JV_SV0059", "Warning if variant call has a placement on Chr Y for a female subject. Variant Call: #{chry_for_female_call_a.size} sites, #{chry_for_female_call_a.size > 4? chry_for_female_call_a[0, limit_for_etc].join(",") + " etc" : chry_for_female_call_a.join(",")}"]) unless chry_for_female_call_a.empty?
+		warning_sv_vc_a.push(["JV_C0062", "Allele frequency was calculated as allele count/allele number. Variant Call: #{calculated_af_a.size} sites, #{calculated_af_a.size > 4? calculated_af_a[0, limit_for_etc].join(",") + " etc" : calculated_af_a.join(",")}"]) unless calculated_af_a.empty?
 
 		# VCF 毎に格納
 		error_sv_vc_h.store(vc_input, error_sv_vc_a)
@@ -3355,6 +3368,9 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 	error_common_a.push(["JV_C0061", "Chromosome position is larger than chromosome size + 1. Check if the position is correct. Variant Call: #{pos_outside_chr_call_a.size} sites, #{pos_outside_chr_call_a.size > 4? pos_outside_chr_call_a[0, limit_for_etc].join(",") + " etc" : pos_outside_chr_call_a.join(",")}"]) unless pos_outside_chr_call_a.empty?
 	error_common_a.push(["JV_C0061", "Chromosome position is larger than chromosome size + 1. Check if the position is correct. Variant Region: #{pos_outside_chr_region_a.size} sites, #{pos_outside_chr_region_a.size > 4? pos_outside_chr_region_a[0, limit_for_etc].join(",") + " etc" : pos_outside_chr_region_a.join(",")}"]) unless pos_outside_chr_region_a.empty?
 
+	# JV_C0063: Allele count greater than allele number
+	error_common_a.push(["JV_C0063", "Allele count is greater than allele number. Variant Call: #{ac_greater_than_an_a.size} sites, #{ac_greater_than_an_a.size > 4? ac_greater_than_an_a[0, limit_for_etc].join(",") + " etc" : ac_greater_than_an_a.join(",")}"]) if ac_greater_than_an_a.size > 0
+
 	## JV_SV0068: Missing assertion_method
 	error_ignore_sv_a.push(["JV_SV0068", "Region MUST have an assertion_method. JVar will fill in this field. Variant Region: #{missing_assertion_method_region_a.size} sites, #{missing_assertion_method_region_a.size > 4? missing_assertion_method_region_a[0, limit_for_etc].join(",") + " etc" : missing_assertion_method_region_a.join(",")}"]) unless missing_assertion_method_region_a.empty?
 
@@ -3488,7 +3504,10 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 						missing_ref_biosample_acc_a.push(sample_key) if ref_biosample_acc.empty?
 
+						# xsd error を回避するためデフォルト true
+						success = "true"
 						for ft_key, sample_value in sample_value_h
+							
 							if ft_key == "GT"
 								genotype_attr_h.store("submitted_genotype", sample_value)
 							end
@@ -3500,13 +3519,15 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 							# FT PASS or not
 							if ft_key == "FT"
 								if sample_value =~ /PASS/i
-									genotype_attr_h.store("success", "true")
+									success = "true"
 								else
-									genotype_attr_h.store("success", "false")
+									success = "false"
 								end
 							end
 
 						end
+
+						genotype_attr_h.store("success", success)
 
 						if cn.empty?
 							submission.GENOTYPE(genotype_attr_h){|genotype_e|
