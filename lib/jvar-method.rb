@@ -137,7 +137,7 @@ $target_info_tag_sv_h = {
 	"CIPOS" => "([0-9.+-]+),([0-9.+-]+)",
 	"CIEND" => "([0-9.+-]+),([0-9.+-]+)",
 	"END" => "([0-9]+)",
-	"SVLEN" => "([0-9]+)",
+	"SVLEN" => "(-?[0-9]+)",
 	"AN" => "([0-9.]+)",
 	"AC" => "([0-9.]+)",
 	"AF" => "([0-9.]*\.?[0-9]*)",
@@ -162,7 +162,8 @@ $target_format_tag_sv_h = {
 	"GL" => "([^;=]+)",
 	"PL" => "([^;=]+)",
 	"GP" => "([^;=]+)",
-	"PP" => "([^;=]+)"
+	"PP" => "([^;=]+)",
+	"FT" => "([^;=]+)"
 }
 
 ##
@@ -1264,9 +1265,9 @@ def vcf_parser(vcf_file, vcf_type)
 
 			# SVLEN
 			if info_h["SVLEN"] && !info_h["SVLEN"].empty?
-				svlen = info_h["SVLEN"].to_i if info_h["SVLEN"].to_i
+				svlen = info_h["SVLEN"].sub(/^-/, "") if info_h["SVLEN"].sub(/^-/, "")
 				if sv_type =~ /deletion|insertion/
-					vcf_variant_call_h.store("Insertion Length", info_h["SVLEN"])
+					vcf_variant_call_h.store("Insertion Length", svlen)
 				else
 					vcf_variant_call_h.store("Insertion Length", "")
 				end

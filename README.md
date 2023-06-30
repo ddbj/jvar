@@ -58,6 +58,17 @@ VCF Guidelines
 * REF 塩基配列チェック用に [samtools faidx](http://www.htslib.org/doc/samtools-faidx.html) で fasta のインデックス作成
 * [Genome sequence report](https://www.ncbi.nlm.nih.gov/datasets/docs/v2/reference-docs/data-reports/genome-sequence/) jsonl を結合し reference sequence と CHROM チェックに使用
 
+## VCF
+
+reference 指定が必須。
+
+```
+##fileformat=VCFv4.1
+##reference=GRCh38
+```
+
+reference の値は [/conf/ref_assembly.jsonl](/conf/ref_assembly.jsonl) で制限。
+
 ## Conversion & validation
 
 ルール (dbVar から提供されたルール、dbSNP offline validator、独自)  

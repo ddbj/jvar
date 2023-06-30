@@ -1497,8 +1497,8 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 			## JV_SV0027: Experiment Resolution is 'bp' for Sequencing Method Type
 			if experiment["Method Type"] == "Sequencing" && experiment["Experiment Resolution"] =~ /(\d{1,}) *BP/i
-				unless ["de novo sequence assembly", "de novo and local sequence assembly", "Local sequence assembly", "Sequence alignment", "Split read mapping"].include?(experiment["Analysis Type"])
-					warning_sv_a.push(["JV_SV0027", "Warning if Method Type=Sequencing and Experiment Resolution is 'bp' and Analysis Type IS NOT de novo sequence assembly, de novo and local sequence assembly, Local sequence assembly, Sequence alignment, Split read mapping"])
+				unless ["de novo sequence assembly", "de novo and local sequence assembly", "Local sequence assembly", "Sequence alignment", "Split read mapping", "Split read and paired-end mapping"].include?(experiment["Analysis Type"])
+					warning_sv_a.push(["JV_SV0027", "Warning if Method Type=Sequencing and Experiment Resolution is 'bp' and Analysis Type IS NOT de novo sequence assembly, de novo and local sequence assembly, Local sequence assembly, Sequence alignment, Split read mapping, Split read and paired-end mapping"])
 				end
 			end
 
@@ -1977,8 +1977,17 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 			end
 
 			variant_call_attr_h.store("allele_count", variant_call["Allele Count"]) unless variant_call["Allele Count"].empty?
-			variant_call_attr_h.store("allele_frequency", variant_call["Allele Frequency"]) unless variant_call["Allele Frequency"].empty?
 			variant_call_attr_h.store("allele_number", variant_call["Allele Number"]) unless variant_call["Allele Number"].empty?
+
+			if !variant_call["Allele Frequency"].empty?
+				variant_call_attr_h.store("allele_frequency", variant_call["Allele Frequency"])
+			elsif !variant_call["Allele Number"].empty? && variant_call["Allele Number"].to_i && !variant_call["Allele Count"].empty? && variant_call["Allele Count"].to_i
+				if (variant_call["Allele Count"].to_i/variant_call["Allele Number"].to_i).floor(6).to_s
+					aq = (variant_call["Allele Count"].to_i/variant_call["Allele Number"].to_i).floor(6).to_s
+					variant_call_attr_h.store("allele_frequency", aq)
+				end
+			end
+
 			variant_call_attr_h.store("repeat_count", "")
 
 			submission.VARIANT_CALL(variant_call_attr_h){|variant_call_e|
@@ -3463,9 +3472,6 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 						genotype_attr_h.store("experiment_id", variant_call["Experiment ID"])
 					end
 
-					# success to avoid xsd error
-					genotype_attr_h.store("success", "true")
-
 					# per sample
 					ft_value_h.each{|sample_key, sample_value_h|
 
@@ -3490,6 +3496,16 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 							if ft_key == "CN"
 								cn = sample_value
 							end
+
+							# FT PASS or not
+							if ft_key == "FT"
+								if sample_value =~ /PASS/i
+									genotype_attr_h.store("success", "true")
+								else
+									genotype_attr_h.store("success", "false")
+								end
+							end
+
 						end
 
 						if cn.empty?
