@@ -401,7 +401,7 @@ def vcf_parser(vcf_file, vcf_type)
 
 	sequence_a.each{|sequence_h|
 		if sequence_h["assemblyAccession"] == refseq_assembly
-			chromosome_per_assembly_a.push({"chrName"=>sequence_h["chrName"], "refseqAccession"=>sequence_h["refseqAccession"], "genbankAccession"=>sequence_h["genbankAccession"], "role"=>sequence_h["role"], "length"=>sequence_h["length"]})
+			chromosome_per_assembly_a.push({"chrName"=>sequence_h["chrName"], "ucscStyleName"=>sequence_h["ucscStyleName"], "refseqAccession"=>sequence_h["refseqAccession"], "genbankAccession"=>sequence_h["genbankAccession"], "role"=>sequence_h["role"], "length"=>sequence_h["length"]})
 		end
 	}
 
@@ -561,14 +561,14 @@ def vcf_parser(vcf_file, vcf_type)
 
 		end
 
-		if vcf_line_a[3] && vcf_line_a[3].upcase
-			ref = vcf_line_a[3].upcase
+		if vcf_line_a[3]
+			ref = vcf_line_a[3]
 		else
 			ref = ""
 		end
 
-		if vcf_line_a[4] && vcf_line_a[4].upcase
-			alt = vcf_line_a[4].upcase
+		if vcf_line_a[4]
+			alt = vcf_line_a[4]
 		else
 			alt = ""
 		end
@@ -713,7 +713,7 @@ def vcf_parser(vcf_file, vcf_type)
 		ref_download_f = false
 		for chromosome_per_assembly_h in chromosome_per_assembly_a
 
-			## SNP は assembled-molecule 想定
+			## SNP chromosome
 			if chrom && chromosome_per_assembly_h["chrName"] == chrom.sub(/chr/i, "") && chromosome_per_assembly_h["role"] == "assembled-molecule"
 				chr_name = chromosome_per_assembly_h["chrName"]
 				chr_accession = chromosome_per_assembly_h["refseqAccession"]
@@ -726,6 +726,13 @@ def vcf_parser(vcf_file, vcf_type)
 				chr_length = chromosome_per_assembly_h["length"]
 
 				invalid_chr_f = false
+			elsif chrom && chromosome_per_assembly_h["ucscStyleName"].sub(/^chr/i, "") == chrom.sub(/^chr/i, "")
+				chr_name = chromosome_per_assembly_h["ucscStyleName"]
+				chr_accession = chromosome_per_assembly_h["refseqAccession"]
+				chr_length = chromosome_per_assembly_h["length"]
+
+				invalid_chr_f = false
+
 			elsif chrom && $ref_download_h.keys.include?(chrom)
 				chr_name = chrom
 				chr_accession = chrom

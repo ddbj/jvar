@@ -1924,7 +1924,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 				if variant_call_id_a.include?(variant_call_id)
 					# JV_SV0030: Duplicated Variant Call ID
 					duplicated_variant_call_id_a.push(variant_call_id)
-					variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_C0030 Error: Variant Call ID must be unique.")				
+					variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0030 Error: Variant Call ID must be unique.")				
 				end
 
 				# VCF を跨った study (submission) 単位のチェック
@@ -2102,7 +2102,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 							## refseq assembly から構成配列を取得
 							sequence_a.each{|sequence_h|
 								if sequence_h["assemblyAccession"] == refseq_assembly
-									chromosome_per_assembly_a.push({"chrName"=>sequence_h["chrName"], "refseqAccession"=>sequence_h["refseqAccession"], "genbankAccession"=>sequence_h["genbankAccession"], "role"=>sequence_h["role"], "length"=>sequence_h["length"]})
+									chromosome_per_assembly_a.push({"chrName"=>sequence_h["chrName"], "ucscStyleName"=>sequence_h["ucscStyleName"], "refseqAccession"=>sequence_h["refseqAccession"], "genbankAccession"=>sequence_h["genbankAccession"], "role"=>sequence_h["role"], "length"=>sequence_h["length"]})
 								end
 							}
 
@@ -2160,11 +2160,21 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 										
 										from_valid_chr_f = true
 										from_found_f = true
+									elsif !variant_call["From Chr"].empty? && chromosome_per_assembly_h["ucscStyleName"].sub(/^chr/i, "") == variant_call["From Chr"].sub(/^chr/i, "") && !from_found_f
+										from_assembly = variant_call["Assembly for Translocation Breakpoint"]
+										from_chr_name = chromosome_per_assembly_h["ucscStyleName"]
+										from_chr_accession = chromosome_per_assembly_h["refseqAccession"]
+										from_chr_length = chromosome_per_assembly_h["length"]
+										from_contig_accession = ""
+										
+										from_valid_chr_f = true
+										from_found_f = true
 									end
 								
 								end # for chromosome_per_assembly_h in chromosome_per_assembly_a						
 
 							end # if !variant_call["From Chr"].empty? && $ref_download_h.keys.include?(variant_call["From Chr"])
+
 
 							## JV_SV0072: Invalid chromosome reference, to/from は contig 列がなく一体
 							if !variant_call["From Chr"].empty? && !from_valid_chr_f && !from_valid_contig_f
@@ -2258,6 +2268,15 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 										to_valid_chr_f = true
 										to_found_f = true
+									elsif !variant_call["To Chr"].empty? && chromosome_per_assembly_h["ucscStyleName"].sub(/^chr/i, "") == variant_call["To Chr"].sub(/^chr/i, "") && !to_found_f
+										to_assembly = variant_call["Assembly for Translocation Breakpoint"]
+										to_chr_name = chromosome_per_assembly_h["ucscStyleName"]
+										to_chr_accession = chromosome_per_assembly_h["refseqAccession"]
+										to_chr_length = chromosome_per_assembly_h["length"]
+										to_contig_accession = ""
+
+										to_valid_chr_f = true
+										to_found_f = true
 									end
 								
 								end # for chromosome_per_assembly_h in chromosome_per_assembly_a						
@@ -2335,7 +2354,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 						## refseq assembly から構成配列を取得
 						sequence_a.each{|sequence_h|
 							if sequence_h["assemblyAccession"] == refseq_assembly
-								chromosome_per_assembly_a.push({"chrName"=>sequence_h["chrName"], "refseqAccession"=>sequence_h["refseqAccession"], "genbankAccession"=>sequence_h["genbankAccession"], "role"=>sequence_h["role"], "length"=>sequence_h["length"]})
+								chromosome_per_assembly_a.push({"chrName"=>sequence_h["chrName"], "ucscStyleName"=>sequence_h["ucscStyleName"], "refseqAccession"=>sequence_h["refseqAccession"], "genbankAccession"=>sequence_h["genbankAccession"], "role"=>sequence_h["role"], "length"=>sequence_h["length"]})
 							end
 						}
 
@@ -2400,6 +2419,15 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 									elsif !variant_call["Chr"].empty? && chromosome_per_assembly_h["chrName"] == variant_call["Chr"].sub(/chr/i, "") && chromosome_per_assembly_h["role"] == "assembled-molecule" && !found_f
 										assembly = variant_call["Assembly for Translocation Breakpoint"]
 										chr_name = chromosome_per_assembly_h["chrName"]
+										chr_accession = chromosome_per_assembly_h["refseqAccession"]
+										chr_length = chromosome_per_assembly_h["length"]
+										contig_accession = ""
+
+										valid_chr_f = true
+										found_f = true
+									elsif !variant_call["Chr"].empty? && chromosome_per_assembly_h["ucscStyleName"].sub(/^chr/i, "") == variant_call["Chr"].sub(/^chr/i, "") && !found_f
+										assembly = variant_call["Assembly for Translocation Breakpoint"]
+										chr_name = chromosome_per_assembly_h["ucscStyleName"]
 										chr_accession = chromosome_per_assembly_h["refseqAccession"]
 										chr_length = chromosome_per_assembly_h["length"]
 										contig_accession = ""
@@ -3108,6 +3136,11 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 						ref_download_f = true
 					# chr が sequence report の chrName にあるかどうか
 					elsif !variant_region["Chr"].empty? && variant_region["Contig"].empty? && chromosome_per_assembly_h["chrName"] == variant_region["Chr"].sub(/chr/i, "") && chromosome_per_assembly_h["role"] == "assembled-molecule"
+						chr_name = chromosome_per_assembly_h["chrName"]
+						chr_accession = chromosome_per_assembly_h["refseqAccession"]
+						chr_length = chromosome_per_assembly_h["length"]
+						valid_chr_f = true
+					elsif !variant_region["Chr"].empty? && variant_region["Contig"].empty? && chromosome_per_assembly_h["ucscStyleName"].sub(/^chr/i, "") == variant_region["Chr"].sub(/^chr/i, "")
 						chr_name = chromosome_per_assembly_h["chrName"]
 						chr_accession = chromosome_per_assembly_h["refseqAccession"]
 						chr_length = chromosome_per_assembly_h["length"]
