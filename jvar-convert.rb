@@ -1836,6 +1836,9 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 	object = "Variant Call"
 	all_variant_call_tsv_s = ""
 
+	# GENOTYPE XML
+	gt_xml = Builder::XmlMarkup.new(:indent=>4, :margin=>1)
+
 	vcf_count = 0
 	for vc_input, variant_call_a in total_variant_call_h
 
@@ -1908,9 +1911,10 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 		invalid_seq_call_a = [] # JV_SV0060
 		invalid_dataset_id_call_a = [] # JV_SV0099
 		calculated_af_a = [] # JV_C0062
-		ac_greater_than_an_a = [] # JV_C0063
-
+		ac_greater_than_an_a = [] # JV_C0063		
 		pos_outside_chr_call_a = [] # JV_C0061
+
+		missing_sample_sampleset_ref_a = [] # GENOTYPE
 
 		for variant_call in variant_call_a
 
@@ -2665,6 +2669,97 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 			} # variant_call_e
 
+			##
+			## GENOTYPE
+			##
+			if sv_genotype_f
+
+				# Sample Name, Subject ID は BioSample accession に置換
+				unless variant_call["FORMAT"].empty?
+					
+					for ft_value_h in variant_call["FORMAT"]
+
+						genotype_attr_h = {}
+
+						unless variant_call["Variant Call ID"] && variant_call["Variant Call ID"].empty?
+							genotype_attr_h.store("variant_accession", variant_call["Variant Call ID"])
+						else
+							genotype_attr_h.store("variant_accession", "")
+						end
+
+						unless variant_call["Experiment ID"] && variant_call["Experiment ID"].empty?
+							genotype_attr_h.store("experiment_id", variant_call["Experiment ID"])
+						end
+
+						# per sample
+						# genotype から sample への reference は sample_name (sample_id in XML)
+						# genotype から sampleset への reference は sampleset_id
+pp ft_value_h
+						ft_value_h.each{|sample_key, sample_value_h|
+
+							ref_sample_name = ""
+							ref_sampleset_id = ""
+							cn = ""
+							if sample_key =~ /^SAM[D|E|N]\d{1,}$/ && sample_name_accession_h.key(sample_key)
+								ref_sample_name = sample_name_accession_h.key(sample_key)
+							elsif sample_name_accession_h[sample_key]
+								ref_sample_name = sample_key
+							# sampleset name であれば OK
+							elsif sampleset_name_per_sampleset_h[variant_call["SampleSet ID"]] && sampleset_name_per_sampleset_h[variant_call["SampleSet ID"]] == [sample_key]
+								ref_sampleset_id = variant_call["SampleSet ID"]
+							end
+
+							missing_sample_sampleset_ref_a.push(sample_key) if ref_sample_name.empty? && ref_sampleset_id.empty?
+
+							# xsd error を回避するためデフォルト true
+							success = "true"
+							for ft_key, sample_value in sample_value_h
+								
+								if ft_key == "GT"
+									genotype_attr_h.store("submitted_genotype", sample_value)
+								end
+
+								if ft_key == "CN"
+									cn = sample_value
+								end
+
+								# FT PASS or not
+								if ft_key == "FT"
+									if sample_value =~ /PASS/i
+										success = "true"
+									else
+										success = "false"
+									end
+								end
+
+							end
+
+							genotype_attr_h.store("success", success)
+
+							if !ref_sample_name.empty?
+								gt_xml.GENOTYPE(genotype_attr_h){|genotype_e|
+									genotype_e.SAMPLE("sample_id" => ref_sample_name)
+									genotype_e.ALLELE("allele_copy_number" => cn) unless cn.empty?
+								}
+							elsif !ref_sampleset_id.empty?
+								gt_xml.GENOTYPE(genotype_attr_h){|genotype_e|
+									genotype_e.SAMPLESET("sampleset_id" => ref_sampleset_id)
+									genotype_e.ALLELE("allele_copy_number" => cn) unless cn.empty?
+								}
+							end
+
+						} # ft_value_h.each{|sample_key, sample_value_h|
+
+					end # for ft_value_h in variant_call["FORMAT"]
+
+				end # unless variant_call["FORMAT"].empty?
+
+			end # if sv_genotype_f
+
+			##
+			## Variant call TSV
+			##
+
 			# VCF で提供された場合、variant call tsv を出力
 			if !vcf_sv_f.empty?
 				variant_call_field_a = []
@@ -2739,6 +2834,20 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 		end
 
 		vcf_count += 1
+
+		# VCF header error
+		unless missing_sample_sampleset_ref_a.empty?
+
+			# JV_VCF0042: Invalid sample reference in VCF				
+			if error_vcf_header_h[vc_input]
+				if error_vcf_header_h[vc_input].size == 0
+					error_vcf_header_h[vc_input] = [["JV_VCF0042", "Reference a Sample Name of a Sample in the SampleSet or a SampleSet Name in the VCF sample column (GT). #{missing_sample_sampleset_ref_a.sort.uniq.join(",")}"]]
+				elsif error_vcf_header_h[vc_input].size > 0
+					error_vcf_header_h[vc_input] = error_vcf_header_h[vc_input].push(["JV_VCF0042", "Reference a Sample Name of a Sample in the SampleSet or a SampleSet Name in the VCF sample column (GT). #{missing_sample_sampleset_ref_a.sort.uniq.join(",")}"])
+				end
+			end
+
+		end # unless missing_sample_sampleset_ref_a.empty?
 
 		## Variant Call, Error
 		error_sv_vc_a.push(["JV_SV0072", "chr_name or chr_accession must refer to a valid chromosome for the specified assembly, and chr_name can contain 'chr'. Variant Call: #{invalid_chr_ref_call_a.size} sites, #{invalid_chr_ref_call_a.size > 4? invalid_chr_ref_call_a[0, limit_for_etc].join(",") + " etc" : invalid_chr_ref_call_a.join(",")}"]) unless invalid_chr_ref_call_a.empty?
@@ -3508,115 +3617,11 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 	warning_sv_a.push(["JV_SV0092", "Warning if genomic placement with stop also contains outer_stop and inner_stop. Variant Region: #{stop_outer_inner_stop_coexist_region_a.size} sites, #{stop_outer_inner_stop_coexist_region_a.size > 4? stop_outer_inner_stop_coexist_region_a[0, limit_for_etc].join(",") + " etc" : stop_outer_inner_stop_coexist_region_a.join(",")}"]) unless stop_outer_inner_stop_coexist_region_a.empty?
 
 	##
-	## GENOTYPE
+	## GENOTYPE_XML
 	##
-
-	# variant region の下なので再度 variant call を処理
-	if sv_genotype_f
-
-		for vc_input, variant_call_a in total_variant_call_h
-
-			missing_sample_sampleset_ref_a = []
-			for variant_call in variant_call_a
-
-				# Sample Name, Subject ID は BioSample accession に置換
-				unless variant_call["FORMAT"].empty?
-					
-					for ft_value_h in variant_call["FORMAT"]
-
-						genotype_attr_h = {}
-
-						unless variant_call["Variant Call ID"] && variant_call["Variant Call ID"].empty?
-							genotype_attr_h.store("variant_accession", variant_call["Variant Call ID"])
-						else
-							genotype_attr_h.store("variant_accession", "")
-						end
-
-						unless variant_call["Experiment ID"] && variant_call["Experiment ID"].empty?
-							genotype_attr_h.store("experiment_id", variant_call["Experiment ID"])
-						end
-
-						# per sample
-						# genotype から sample への reference は sample_name (sample_id in XML)
-						# genotype から sampleset への reference は sampleset_id
-						ft_value_h.each{|sample_key, sample_value_h|
-
-							ref_sample_name = ""
-							ref_sampleset_id = ""
-							cn = ""
-							if sample_key =~ /^SAM[D|E|N]\d{1,}$/ && sample_name_accession_h.key(sample_key)
-								ref_sample_name = sample_name_accession_h.key(sample_key)
-							elsif sample_name_accession_h[sample_key]
-								ref_sample_name = sample_key
-							# sampleset name であれば OK
-							elsif sampleset_name_per_sampleset_h[variant_call["SampleSet ID"]] && sampleset_name_per_sampleset_h[variant_call["SampleSet ID"]] == [sample_key]
-								ref_sampleset_id = variant_call["SampleSet ID"]
-							end
-
-							missing_sample_sampleset_ref_a.push(sample_key) if ref_sample_name.empty? && ref_sampleset_id.empty?
-
-							# xsd error を回避するためデフォルト true
-							success = "true"
-							for ft_key, sample_value in sample_value_h
-								
-								if ft_key == "GT"
-									genotype_attr_h.store("submitted_genotype", sample_value)
-								end
-
-								if ft_key == "CN"
-									cn = sample_value
-								end
-
-								# FT PASS or not
-								if ft_key == "FT"
-									if sample_value =~ /PASS/i
-										success = "true"
-									else
-										success = "false"
-									end
-								end
-
-							end
-
-							genotype_attr_h.store("success", success)
-
-							if !ref_sample_name.empty?
-								submission.GENOTYPE(genotype_attr_h){|genotype_e|
-									genotype_e.SAMPLE("sample_id" => ref_sample_name)
-									genotype_e.ALLELE("allele_copy_number" => cn) unless cn.empty?
-								}
-							elsif !ref_sampleset_id.empty?
-								submission.GENOTYPE(genotype_attr_h){|genotype_e|
-									genotype_e.SAMPLESET("sampleset_id" => ref_sampleset_id)
-									genotype_e.ALLELE("allele_copy_number" => cn) unless cn.empty?
-								}
-							end
-
-						} # # per sample
-
-					end
-
-				end
-
-			end # for variant_call in variant_call_a
-
-			unless missing_sample_sampleset_ref_a.empty?
-
-				# JV_VCF0042: Invalid sample reference in VCF				
-				if error_vcf_header_h[vc_input]
-					if error_vcf_header_h[vc_input].size == 0
-						error_vcf_header_h[vc_input] = [["JV_VCF0042", "Reference a Sample Name of a Sample in the SampleSet or a SampleSet Name in the VCF sample column (GT). #{missing_sample_sampleset_ref_a.sort.uniq.join(",")}"]]
-					elsif error_vcf_header_h[vc_input].size > 0
-						error_vcf_header_h[vc_input] = error_vcf_header_h[vc_input].push(["JV_VCF0042", "Reference a Sample Name of a Sample in the SampleSet or a SampleSet Name in the VCF sample column (GT). #{missing_sample_sampleset_ref_a.sort.uniq.join(",")}"])
-					end
-				end
-
-				#error_vcf_content_h.store(vc_input, error_vcf_content_a)
-			end
-
-		end # for vc_input, variant_call_a in total_variant_call_h
-
-	end # if genotype_f
+	if gt_xml && sv_genotype_f
+		submission << gt_xml.target!
+	end
 
 } # SUBMISSION
 

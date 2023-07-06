@@ -911,7 +911,7 @@ def vcf_parser(vcf_file, vcf_type)
 
 			# JV_VCFP0002: REF allele longer than 50 nucleotides
 			if !ref.empty? && ref.size > 51
-				vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_VCFP0002 Error: Remove and submit the allele longer than 50 nucleotides to JVar-SV.")
+				vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_VCFP0002 Error: Remove and submit the allele longer than 50 nucleotides (REF) to JVar-SV.")
 				longer_ref_c += 1
 			end
 
@@ -923,7 +923,7 @@ def vcf_parser(vcf_file, vcf_type)
 
 			# JV_VCFP0003: ALT allele longer than 50 nucleotides
 			if !alt.empty? && alt.size > 51
-				vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_VCFP0003 Error: Remove and submit the allele longer than 50 nucleotides to JVar-SV.")
+				vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_VCFP0003 Error: Remove and submit the allele longer than 50 nucleotides (ALT) to JVar-SV.")
 				longer_alt_c += 1
 			end
 
