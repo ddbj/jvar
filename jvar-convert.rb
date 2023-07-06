@@ -184,6 +184,24 @@ open("#{conf_path}/ref_sequence_report.jsonl"){|f|
 	sequence_a = JSONL.parse(f)
 }
 
+## Globally defined samples (e.g. Hapmap, 1000 Genomes, https://www.internationalgenome.org/data-portal/sample)
+defined_samples_h = {}
+open("#{conf_path}/defined_samples.json"){|f|
+	defined_samples_h = JSON.load(f)
+}
+
+defined_samples_a = []
+for defined_sample_name, defined_sample_h in defined_samples_h
+
+	defined_samples_a.push(defined_sample_h["sample_name"]) if defined_sample_h["sample_name"] && !defined_sample_h["sample_name"].empty?
+	defined_samples_a.push(defined_sample_h["biosample_accession"]) if defined_sample_h["biosample_accession"] && !defined_sample_h["biosample_accession"].empty?
+	defined_samples_a.push(defined_sample_h["population_code"]) if defined_sample_h["population_code"] && !defined_sample_h["population_code"].empty?
+	defined_samples_a.push(defined_sample_h["superpopulation_code"]) if defined_sample_h["superpopulation_code"] && !defined_sample_h["superpopulation_code"].empty?
+
+end
+
+defined_samples_a = defined_samples_a.sort.uniq
+
 ### Read the JVar submission excel file
 
 # open xlsx file
@@ -1113,8 +1131,8 @@ EOS
 
 			# JV_VCF0042: Invalid sample reference in VCF			
 			if sample_name_per_sampleset_h[dataset["SampleSet ID"]] && biosample_accession_per_sampleset_h[dataset["SampleSet ID"]] && sampleset_name_per_sampleset_h[dataset["SampleSet ID"]] && !tmp_vcf_sample_a.empty?
-				unless (tmp_vcf_sample_a - sample_name_per_sampleset_h[dataset["SampleSet ID"]] - biosample_accession_per_sampleset_h[dataset["SampleSet ID"]] - sampleset_name_per_sampleset_h[dataset["SampleSet ID"]]).empty?
-					invalid_sample_ref_vcf_a.push(tmp_vcf_sample_a - sample_name_per_sampleset_h[dataset["SampleSet ID"]] - biosample_accession_per_sampleset_h[dataset["SampleSet ID"]] - sampleset_name_per_sampleset_h[dataset["SampleSet ID"]])
+				unless (tmp_vcf_sample_a - sample_name_per_sampleset_h[dataset["SampleSet ID"]] - biosample_accession_per_sampleset_h[dataset["SampleSet ID"]] - sampleset_name_per_sampleset_h[dataset["SampleSet ID"]] - defined_samples_a).empty?
+					invalid_sample_ref_vcf_a.push(tmp_vcf_sample_a - sample_name_per_sampleset_h[dataset["SampleSet ID"]] - biosample_accession_per_sampleset_h[dataset["SampleSet ID"]] - sampleset_name_per_sampleset_h[dataset["SampleSet ID"]] - defined_samples_a)
 				end
 			end
 
@@ -1752,8 +1770,8 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 						if sample_name_per_sampleset_h[tmp_vcf_variant_call_h["SampleSet ID"]] && biosample_accession_per_sampleset_h[tmp_vcf_variant_call_h["SampleSet ID"]] && sampleset_name_per_sampleset_h[tmp_vcf_variant_call_h["SampleSet ID"]]
 
-							unless (ft_value_h.keys - sample_name_per_sampleset_h[tmp_vcf_variant_call_h["SampleSet ID"]] - biosample_accession_per_sampleset_h[tmp_vcf_variant_call_h["SampleSet ID"]] - sampleset_name_per_sampleset_h[tmp_vcf_variant_call_h["SampleSet ID"]]).empty?
-								invalid_sample_ref_vcf_a.push((ft_value_h.keys - sample_name_per_sampleset_h[tmp_vcf_variant_call_h["SampleSet ID"]] - biosample_accession_per_sampleset_h[tmp_vcf_variant_call_h["SampleSet ID"]] - sampleset_name_per_sampleset_h[tmp_vcf_variant_call_h["SampleSet ID"]]))
+							unless (ft_value_h.keys - sample_name_per_sampleset_h[tmp_vcf_variant_call_h["SampleSet ID"]] - biosample_accession_per_sampleset_h[tmp_vcf_variant_call_h["SampleSet ID"]] - sampleset_name_per_sampleset_h[tmp_vcf_variant_call_h["SampleSet ID"]] - defined_samples_a).empty?
+								invalid_sample_ref_vcf_a.push((ft_value_h.keys - sample_name_per_sampleset_h[tmp_vcf_variant_call_h["SampleSet ID"]] - biosample_accession_per_sampleset_h[tmp_vcf_variant_call_h["SampleSet ID"]] - sampleset_name_per_sampleset_h[tmp_vcf_variant_call_h["SampleSet ID"]] - defined_samples_a))
 							end
 
 							# Genotype flag
