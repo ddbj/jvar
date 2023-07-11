@@ -1016,10 +1016,6 @@ def vcf_parser(vcf_file, vcf_type)
 			# Variant Call ID
 			vcf_variant_call_h.store("Variant Call ID", id)
 
-			# Assembly
-			vcf_variant_call_h.store("Assembly", reference)
-			vcf_variant_call_h.store("Assembly for Translocation Breakpoint", reference)
-
 			# Chr
 			vcf_variant_call_h.store("Chr", chrom)
 
@@ -1223,6 +1219,9 @@ def vcf_parser(vcf_file, vcf_type)
 
 				# translocation && valid translocation、より深いチェックは convert で.
 				if valid_translocation_f
+
+					# Assembly
+					vcf_variant_call_h.store("Assembly for Translocation Breakpoint", reference)
 					
 					vcf_variant_call_h.store("From Chr", from_chr)
 					vcf_variant_call_h.store("From Coord", from_coord.to_s)
@@ -1249,6 +1248,9 @@ def vcf_parser(vcf_file, vcf_type)
 				end
 
 			else # if alt =~ /\[.*\[/ || alt =~ /\].*\]/
+
+				# Assembly
+				vcf_variant_call_h.store("Assembly", reference)
 
 				vcf_variant_call_h.store("From Chr", "")
 				vcf_variant_call_h.store("From Coord", "")

@@ -8,6 +8,7 @@ require 'net/http'
 require 'json'
 require 'jsonl'
 require 'builder'
+require 'open3'
 require './lib/jvar-method.rb'
 #sin require '/usr/local/bin/lib/jvar-method.rb'
 
@@ -24,12 +25,18 @@ require './lib/jvar-method.rb'
 
 ### Options
 submission_id = ""
+xsd_f = false
 OptionParser.new{|opt|
 
 	opt.on('-v [VSUB ID]', 'VSUB submission ID'){|v|
 		raise "usage: -v JVar submission ID (VSUB000001)" if v.nil? || !(/^VSUB\d{6}$/ =~ v)
 		submission_id = v
 		puts "JVar Submission ID: #{v}"
+	}
+
+	opt.on('-x', 'dbVar xsd validation'){|v|
+		xsd_f = true
+		puts "Validate against dbVar xsd"
 	}
 
 	begin
@@ -78,6 +85,7 @@ Dir.glob("#{ref_download_path}/*fna").each{|dl_fna|
 vcf_sv_f = ""
 
 vcf_file_a = []
+vc_input_filename = ""
 
 submission_type = ""
 bioproject_accession = ""
@@ -1703,7 +1711,8 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 		dataset_to_experiment_h.store(dataset["Dataset ID"], dataset["Experiment ID"])
 		dataset_to_sampleset_h.store(dataset["Dataset ID"], dataset["SampleSet ID"])
 
-		unless dataset["VCF Filename"].empty?
+		# VCF と variant call sheet 両方ある場合は sheet を優先。VCF 登録で region 作成時の処理
+		if !dataset["VCF Filename"].empty? && variant_call_a.empty?
 			vcf_sv_f = dataset["VCF Filename"]
 		else
 			if variant_call_a.empty?
@@ -2216,7 +2225,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 							# FROM GENOME
 							from_genome_attr_h = {}
-							from_genome_attr_h.store("assembly", from_assembly)
+							from_genome_attr_h.store("assembly", refseq_assembly)
 
 							from_genome_attr_h.store("chr_name", from_chr_name)
 							from_genome_attr_h.store("chr_accession", from_chr_accession)
@@ -2323,7 +2332,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 							# TO GENOME
 							to_genome_attr_h = {}
-							to_genome_attr_h.store("assembly", to_assembly)
+							to_genome_attr_h.store("assembly", refseq_assembly)
 
 							to_genome_attr_h.store("chr_name", to_chr_name)
 							to_genome_attr_h.store("chr_accession", to_chr_accession)
@@ -2508,7 +2517,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 						## genome_attr_h
 						## download に存在　=　Assembly　には含まれていない					
-						genome_attr_h.store("assembly", assembly)
+						genome_attr_h.store("assembly", refseq_assembly)
 
 						## chr/chr_accession/contig_accession
 						genome_attr_h.store("chr_name", chr_name)
@@ -2651,7 +2660,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 						end
 
 						## parent region の placement との整合性チェック
-						variant_call_placement_h.store(variant_call_id, {"Assembly" => assembly, "Chr" => chr_name, "Contig" => contig_accession, "Outer Start" => variant_call["Outer Start"], "Start" => variant_call["Start"], "Inner Start" => variant_call["Inner Start"], "Stop" => variant_call["Stop"], "Inner Stop" => variant_call["Inner Stop"], "Outer Stop" => variant_call["Outer Stop"]})
+						variant_call_placement_h.store(variant_call_id, {"Assembly" => refseq_assembly, "Chr" => chr_name, "Contig" => contig_accession, "Outer Start" => variant_call["Outer Start"], "Start" => variant_call["Start"], "Inner Start" => variant_call["Inner Start"], "Stop" => variant_call["Stop"], "Inner Stop" => variant_call["Inner Stop"], "Outer Stop" => variant_call["Outer Stop"]})
 
 					} # placement_e
 
@@ -2712,7 +2721,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 						# per sample
 						# genotype から sample への reference は sample_name (sample_id in XML)
 						# genotype から sampleset への reference は sampleset_id
-pp ft_value_h
+
 						ft_value_h.each{|sample_key, sample_value_h|
 
 							ref_sample_name = ""
@@ -2785,9 +2794,8 @@ pp ft_value_h
 					variant_call_field_a = JSON.load(f)
 				}
 
-				variant_call_tsv_s += "#{variant_call_field_a.join("\t")}\n" if vc_line == 0
-				all_variant_call_tsv_s += "#{variant_call_field_a.join("\t")}\n" if vc_line == 0 && vcf_count == 0
-
+				variant_call_tsv_s += "# #{variant_call_field_a[0]}\t#{variant_call_field_a[1..-1].join("\t")}\n" if vc_line == 0
+				all_variant_call_tsv_s += "# #{variant_call_field_a[0]}\t#{variant_call_field_a[1..-1].join("\t")}\n" if vc_line == 0 && vcf_count == 0
 
 				variant_call_tsv_line_a = []
 				for field in variant_call_field_a
@@ -2829,10 +2837,15 @@ pp ft_value_h
 		all_variant_call_tsv_log_a.push(variant_call_tsv_log_a)
 
 		# VCF 毎の tsv 出力
-		vc_input_filename = ""
 		vc_input_filename = File.basename(vc_input)
 		if !variant_call_tsv_s.empty?
-			variant_call_tsv_f = open("#{submission_id}_#{vc_input_filename}.variant_call.tsv", "w")
+			
+			if vc_input_filename == "tsv"
+				variant_call_tsv_f = open("#{submission_id}.variant_call.tsv", "w")
+			else
+				variant_call_tsv_f = open("#{submission_id}_#{vc_input_filename}.variant_call.tsv", "w")
+			end
+
 			variant_call_tsv_f.puts variant_call_tsv_s
 			variant_call_tsv_f.close
 		end
@@ -2840,7 +2853,11 @@ pp ft_value_h
 		# VCF 毎の tsv log 出力
 		if !variant_call_tsv_log_a.empty?
 
-			variant_call_tsv_log_f = open("#{submission_id}_#{vc_input_filename}.variant_call.tsv.log.txt", "w")
+			if vc_input_filename == "tsv"
+				variant_call_tsv_log_f = open("#{submission_id}.variant_call.tsv.log.txt", "w")
+			else
+				variant_call_tsv_log_f = open("#{submission_id}_#{vc_input_filename}.variant_call.tsv.log.txt", "w")
+			end
 
 			variant_call_tsv_log_f.puts variant_call_sheet_header_a.join("\t")
 
@@ -2872,7 +2889,7 @@ pp ft_value_h
 		error_sv_vc_a.push(["JV_SV0074", "Contig accession must refer to a valid INSDC accession and version. Variant Call: #{invalid_contig_acc_ref_call_a.size} sites, #{invalid_contig_acc_ref_call_a.size > 4? invalid_contig_acc_ref_call_a[0, limit_for_etc].join(",") + " etc" : invalid_contig_acc_ref_call_a.join(",")}"]) unless invalid_contig_acc_ref_call_a.empty?
 		error_sv_vc_a.push(["JV_SV0076", "Genomic placement must contain either a chr_name, chr_accession, or contig_accession unless it is on a novel sequence insertion or translocation. Variant Call: #{missing_chr_contig_acc_call_a.size} sites, #{missing_chr_contig_acc_call_a.size > 4? missing_chr_contig_acc_call_a[0, limit_for_etc].join(",") + " etc" : missing_chr_contig_acc_call_a.join(",")}"]) unless missing_chr_contig_acc_call_a.empty?
 		error_sv_vc_a.push(["JV_SV0077", "Genomic placement should not have a contig_accession if there is also a chr_name or chr_accession. Variant Call: #{contig_acc_for_chr_acc_call_a.size} sites, #{contig_acc_for_chr_acc_call_a.size > 4? contig_acc_for_chr_acc_call_a[0, limit_for_etc].join(",") + " etc" : contig_acc_for_chr_acc_call_a.join(",")}"]) unless contig_acc_for_chr_acc_call_a.empty?
-		error_svdataset.push(["JV_SV0099", "Provide a valid dataset ID. Variant Call: #{invalid_dataset_id_call_a.size} sites, #{invalid_dataset_id_call_a.size > 4? invalid_dataset_id_call_a[0, limit_for_etc].join(",") + " etc" : invalid_dataset_id_call_a.join(",")}"]) unless invalid_dataset_id_call_a.empty?
+		error_sv_vc_a.push(["JV_SV0099", "Provide a valid dataset ID. Variant Call: #{invalid_dataset_id_call_a.size} sites, #{invalid_dataset_id_call_a.size > 4? invalid_dataset_id_call_a[0, limit_for_etc].join(",") + " etc" : invalid_dataset_id_call_a.join(",")}"]) unless invalid_dataset_id_call_a.empty?
 
 		## Variant Call, Error ignore
 		error_ignore_sv_vc_a.push(["JV_SV0045", "Missing From/To in translocation. Variant Call: #{invalid_from_to_call_a.size} sites, #{invalid_from_to_call_a.size > 4? invalid_from_to_call_a[0, limit_for_etc].join(",") + " etc" : invalid_from_to_call_a.join(",")}"]) unless invalid_from_to_call_a.empty?
@@ -3319,7 +3336,7 @@ pp ft_value_h
 	            elsif !variant_region["Assembly"].empty?
 					assembly = variant_region["Assembly"]
 					variant_region_assembly_a.push(assembly)
-					genome_attr_h.store("assembly", assembly)
+					genome_attr_h.store("assembly", refseq_assembly)
 	            else
 					genome_attr_h.store("assembly", "")
 	            end
@@ -3647,9 +3664,9 @@ end # if submission_h["Submission Type"] == "Structural variations"
 
 # Variant Call TSV log
 # Excel sheet tsv log
-if !all_variant_call_tsv_log_a.empty?
+if !all_variant_call_tsv_log_a.empty? && vc_input_filename != "tsv"
 
-	all_variant_call_tsv_log_f = open("#{submission_id}_variant_call.tsv.log.txt", "w")
+	all_variant_call_tsv_log_f = open("#{submission_id}.variant_call.tsv.log.txt", "w")
 
 	all_variant_call_tsv_log_f.puts variant_call_sheet_header_a.join("\t")
 
@@ -3663,7 +3680,7 @@ end
 # Variant Region TSV log
 unless variant_region_tsv_log_a.empty?
 
-	variant_region_tsv_log_f = open("#{submission_id}_variant_region.tsv.log.txt", "w")
+	variant_region_tsv_log_f = open("#{submission_id}.variant_region.tsv.log.txt", "w")
 
 	variant_region_tsv_log_f.puts variant_region_sheet_header_a.join("\t")
 
@@ -3848,6 +3865,19 @@ EOS
 
 end
 
+	# dbVar xsd validation
+	xsd_results_s = ""
+	if xsd_f && FileTest.exist?("#{submission_id}_dbvar.xml")		
+		o, e, s = Open3.capture3("xmllint --schema dbVar.xsd --noout #{submission_id}_dbvar.xml")
+
+		xsd_results_s = <<EOS
+JVar-SV XML dbVar xsd validation results
+---------------------------------------------
+#{e.strip}
+---------------------------------------------
+EOS
+	end
+
 end # if submission_type == "SV"
 
 
@@ -3978,6 +4008,12 @@ if submission_type == "SV"
 	puts sv_vc_validation_result_s
 end
 
+# dbVar xsd validation
+if xsd_f && !xsd_results_s.empty? && submission_type == "SV"
+	validation_result_f.puts xsd_results_s
+	puts xsd_results_s
+end
+
 # VCF
 if !vcf_snp_a.empty? || !vcf_sv_f.empty?
 	validation_result_f.puts vcf_validation_result_s
@@ -3989,4 +4025,6 @@ unless contig_download_s.empty?
 	validation_result_f.puts contig_download_s
 	puts contig_download_s
 end
+
+
 
