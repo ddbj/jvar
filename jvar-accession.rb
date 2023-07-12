@@ -82,6 +82,11 @@ dsv_a = []
 dssv_a = []
 first = true
 
+study_id_a = []
+submission_id_a = []
+dss_all_a = []
+dssv_all_a = []
+dsv_all_a = []
 for line in last_f
 	
 	if first
@@ -93,7 +98,7 @@ for line in last_f
 		next
 	end
 
-	line_a = line.split("\t")
+	line_a = line.rstrip.split("\t")
 
 	valid_line_f = false
 	valid_study_f = false
@@ -102,60 +107,142 @@ for line in last_f
 	valid_dsv_f = false
 	valid_sv_f = false
 
-	duplicated_f = false
-
-	# study
+	# format check
+	# study accession
 	if line_a[0] =~ /^dstd(\d{1,})$/
 		dstd_a.push($1.to_i)
-		valid_study_f = true
+	else
+		raise "Invalid study accession. #{line_a[0]}"		
+	end
+	
+	# VSUB
+	if line_a[1] =~ /^(VSUB\d{6})$/
+		submission_id_a.push($1)
+	else
+		raise "Invalid submission id. #{line_a[1]}"
 	end
 
-	# submission ID
-	if line_a[1] == submission_id
-		duplicated_f = true
+	# dss
+	if line_a[2] && !line_a[2].empty? && line_a[2].split(",").size > 0
+		for range in line_a[2].split(",")
+ 			if range =~ /^dss(\d{1,})-dss(\d{1,})$/
+ 				unless $1.to_i <= $2.to_i
+ 					raise "Invalid dss accession range. #{line_a[2]}"	
+ 				end
+ 				dss_a.push([*$1.to_i..$2.to_i])
+ 				valid_dss_f = true
+ 			else
+ 				raise "Invalid dss accession range. #{line_a[2]}"
+ 			end
+		end
 	end
 
-	# snp
-	if line_a[2] =~ /^dss(\d{1,})-dss(\d{1,})$/
-		dss_a.push($2.to_i)
-		valid_dss_f = true
+	# dssv
+	if line_a[3] && !line_a[3].empty? && line_a[3].split(",").size > 0
+		for range in line_a[3].split(",")
+ 			if range =~ /^dssv(\d{1,})-dssv(\d{1,})$/
+ 				unless $1.to_i <= $2.to_i
+ 					raise "Invalid dssv accession range. #{line_a[3]}"	
+ 				end
+ 				dssv_a.push([*$1.to_i..$2.to_i])
+ 				valid_dssv_f = true
+ 			else
+ 				raise "Invalid dssv accession range. #{line_a[3]}"
+ 			end
+		end
 	end
 
-	# ssv
-	if line_a[3] =~ /^dssv(\d{1,})-dssv(\d{1,})$/
-		dssv_a.push($2.to_i)
-		valid_dssv_f = true
+	# dsv
+	if line_a[4] && !line_a[4].empty? && line_a[4].split(",").size > 0
+		for range in line_a[4].split(",")
+ 			if range =~ /^dsv(\d{1,})-dsv(\d{1,})$/
+ 				unless $1.to_i <= $2.to_i
+ 					raise "Invalid dsv accession range. #{line_a[4]}"	
+ 				end
+ 				dsv_a.push([*$1.to_i..$2.to_i])
+ 				valid_dsv_f = true
+ 			else
+ 				raise "Invalid dsv accession range. #{line_a[4]}"
+ 			end
+		end
 	end
 
-	# sv
-	if line_a[4] =~ /^dsv(\d{1,})-dsv(\d{1,})$/
-		dsv_a.push($2.to_i)
-		valid_dsv_f = true
-	end
-
+	# Both dssv and dsv exist, then sv is valid.
 	valid_sv_f = true if valid_dssv_f && valid_dsv_f
 
-	# file check
-	if !valid_study_f
-		raise "Invalid study."
-	end
-
-	if duplicated_f
-		raise "Duplicated submission ID. Already assigned accessions?: #{submission_id}"
-	end
-
+	# dss and (dssv or dsv) exist
 	if valid_dss_f && (valid_dssv_f || valid_dsv_f)
-		raise "Invalid: both dss and (dssv or dsv) exist."
+		raise "Invalid: both dss and (dssv or dsv) exist. #{line}"
 	end
 
+	# only (dssv or dsv) exist
 	if (valid_dssv_f && !valid_dsv_f) || (!valid_dssv_f && valid_dsv_f)
-		raise "Invalid: only dssv or dsv exists."
+		raise "Invalid: only dssv or dsv exists. #{line}"
 	end
 
+	# Not valid SNP nor valid SV
 	if !valid_dss_f && !valid_sv_f
-		raise "Invalid SNP and SV."
+		raise "Invalid SNP and SV. #{line}"
 	end
 
+	# 多重配列をフラットに
+	dss_a = dss_a.flatten
+	dssv_a = dssv_a.flatten
+	dsv_a = dsv_a.flatten
+
+end
+
+# sort
+dstd_a = dstd_a.sort
+dss_a = dss_a.sort
+dssv_a = dssv_a.sort
+dsv_a = dsv_a.sort
+
+# duplication check
+if submission_id_a.select{|e| submission_id_a.count(e) > 1}.size > 0
+	raise "Duplicated submission ID. #{submission_id_a.select{|e| submission_id_a.count(e) > 1}.sort.uniq.join(",")}"
+end
+
+if submission_id_a.include?(submission_id)
+	raise "Specified submission ID already exists. #{submission_id}"
+end
+
+if dss_a.select{|e| dss_a.count(e) > 1}.size > 0
+	raise "Duplicated dss accession. #{dss_a.select{|e| dss_a.count(e) > 1}.sort.uniq.join(",")}"
+end
+
+if dssv_a.select{|e| dssv_a.count(e) > 1}.size > 0
+	raise "Duplicated dssv accession. #{dssv_a.select{|e| dssv_a.count(e) > 1}.sort.uniq.join(",")}"
+end
+
+if dsv_a.select{|e| dsv_a.count(e) > 1}.size > 0
+	raise "Duplicated dsv accession. #{dsv_a.select{|e| dsv_a.count(e) > 1}.sort.uniq.join(",")}"
+end
+
+# serial check
+unless dstd_a.empty?
+	unless (dstd_a[-1] - dstd_a[0] + 1) == dstd_a.size
+		puts "Warning: dstd accessions are not serial."
+	end
+end
+
+unless dss_a.empty?
+	unless (dss_a[-1] - dss_a[0] + 1) == dss_a.size
+		puts "Warning: dss accessions are not serial."
+	end
+end
+
+unless dssv_a.empty?
+	unless (dssv_a[-1] - dssv_a[0] + 1) == dssv_a.size
+		puts "Warning: dssv accessions are not serial."
+	end
+
+end
+
+unless dsv_a.empty?
+	unless (dsv_a[-1] - dsv_a[0] + 1) == dsv_a.size
+		puts "Warning: dsv accessions are not serial."
+	end
 end
 
 last_f.close
@@ -266,12 +353,13 @@ for object in object_a
 
 end
 
-## metadata
-acc_meta_f = open("#{sub_path}/#{submission_id}/dstd#{dstd_next}.meta.tsv", "w")
+## JVar metadata tsv, SNP and SV
+`mkdir -p "#{sub_path}/#{submission_id}/accessioned"`
+acc_meta_f = open("#{sub_path}/#{submission_id}/accessioned/dstd#{dstd_next}.meta.tsv", "w")
 
 acc_meta_f.puts "## Study"
 for line in study_sheet_a	
-	acc_meta_f.puts line.join("\t")
+	acc_meta_f.puts line.join("\t") unless line.join("\t") =~ /^Submitter Email/ # remove submitter's email from public metadata
 end
 
 acc_meta_f.puts ""
@@ -305,21 +393,29 @@ now = Time.now.strftime('%Y-%m-%d_%H_%M')
 ## SNP VCF
 if submission_type == "SNP"
 
+	## dbSNP metadata tsv, replace VSUB by dstd and copy
+	`sed -e "s/:\tVSUB[0-9][0-9][0-9][0-9][0-9][0-9]_/:\tdstd1_/" "#{sub_path}/#{submission_id}/#{submission_id}_dbsnp.tsv" > "#{sub_path}/#{submission_id}/accessioned/dstd#{dstd_next}.meta.dbsnp.tsv"`
+
+	## VCF
 	# dbSNP vcf without accessions
 	vcf_a = Dir.glob("#{sub_path}/#{submission_id}/vcf/*vcf")
-	`mkdir #{sub_path}/#{submission_id}/dbsnp_vcf`
 	
 	for vcf in vcf_a
 		filename = File.basename(vcf)
 		vcf_f = open(vcf)
 		
-		out_vcf_f = open("#{sub_path}/#{submission_id}/dbsnp_vcf/#{filename.sub(".vcf", "_dbsnp.vcf")}", "w")
+		out_vcf_f = open("#{sub_path}/#{submission_id}/accessioned/#{filename.sub("#{submission_id}", "dstd#{dstd_next}")}", "w")
 		
 		info_range = false
 		vcf_f.each_line{|line|
 			
 			if line =~ /^#/
+
 				info_range = true if line =~ /^##INFO=/
+
+				if line =~ /^##batch_id=VSUB\d{6}_(a\d{1,})/
+					line = "##batch_id=dstd#{dstd_next}_#{$1}"
+				end
 
 				if info_range && line !~ /^##INFO=/
 					out_vcf_f.puts '##INFO=<ID=LOCALID,Number=1,Type=String,Description="Submitted local ID">'
@@ -350,17 +446,29 @@ if submission_type == "SNP"
 	end # for vcf in vcf_a
 
 	# record last number
-	`cp "#{study_path}/last.txt" "#{study_path}/last_#{now}.txt"`
+	`cp "#{study_path}/last.txt" "#{study_path}/log/last_#{now}.txt"`
 
-	last_out_f = open("#{study_path}/last.txt", "a"){|f|
-		f.puts "dstd#{dstd_next}\t#{submission_id}\tdss#{dss_start}-dss#{dss_next}\t\t"
-		puts "dstd#{dstd_next}\t#{submission_id}\tdss#{dss_start}-dss#{dss_next}\t\t"
-	}
+	last_out_a = []
+	last_out_bk_f = open("#{study_path}/log/last_#{now}.txt")
+	for last_line in last_out_bk_f.readlines
+		last_out_a.push(last_line.rstrip) if last_line.rstrip != ""
+	end
+
+	last_out_a.push("dstd#{dstd_next}\t#{submission_id}\tdss#{dss_start}-dss#{dss_next-1}\t\t")
+	puts "dstd#{dstd_next}\t#{submission_id}\tdss#{dss_start}-dss#{dss_next-1}\t\t"
+
+	last_out_f = open("#{study_path}/last.txt", "w")
+	for last_line in last_out_a
+		last_out_f. puts last_line
+	end
 	
 end # if submission_type == "SNP"
 
 ## Variant Call and Region tsv files
 if submission_type == "SV"
+
+	call_id_acc_h = {}
+	region_id_acc_h = {}
 
 	# Embed accession numbers to XML
 	xml = Nokogiri::XML(open("#{sub_path}/#{submission_id}/#{submission_id}_dbvar.xml"))
@@ -378,60 +486,109 @@ if submission_type == "SV"
 		# Variant Call
 		submission.css('VARIANT_CALL').each{|variant_call|
 			variant_call.attribute("variant_call_accession").value = "dssv#{dssv_next}"
+			call_id_acc_h.store(variant_call.attribute("variant_call_id").value, "dssv#{dssv_next}")
 			dssv_next += 1
 		}
 
 		# Variant Region
 		submission.css('VARIANT_REGION').each{|variant_region|
 			variant_region.attribute("variant_region_accession").value = "dsv#{dsv_next}"
+			region_id_acc_h.store(variant_region.attribute("variant_region_id").value, "dsv#{dsv_next}")
 			dsv_next += 1
 		}
 
 	}
 
 	# dbVar XML with accessions
-	out_xml_f = open("#{sub_path}/#{submission_id}/dstd#{dstd_next}.dbvar.xml", "w")
+	out_xml_f = open("#{sub_path}/#{submission_id}/accessioned/dstd#{dstd_next}.dbvar.xml", "w")
 	out_xml_f.puts xml
 	out_xml_f.close
 
 	## TSV
 	# Variant Call
 	if variant_call_sheet_a.size > 1
-		variant_call_tsv_f = open("#{sub_path}/#{submission_id}/dstd#{dstd_next}.variant_call.tsv", "w")
+		variant_call_tsv_f = open("#{sub_path}/#{submission_id}/accessioned/dstd#{dstd_next}.variant_call.tsv", "w")
+
+		first = true
 		for line in variant_call_sheet_a		
-			variant_call_tsv_f.puts line.join("\t")
+			if first
+				line[0] = line[0].sub(/^# /, "")
+				line.unshift("# Variant Call Accession")
+				
+				variant_call_tsv_f.puts line.join("\t")	
+				first = false
+				next
+			end
+
+			if call_id_acc_h[line[0]]
+				line.unshift(call_id_acc_h[line[0]])
+				variant_call_tsv_f.puts line.join("\t")
+			else
+				raise "No variant call accession exists. #{line[0]}"
+			end
+
 		end
+
 		variant_call_tsv_f.close
+
 	end
 
 	# Variant Region
 	if variant_region_sheet_a.size > 1
-		variant_region_tsv_f = open("#{sub_path}/#{submission_id}/dstd#{dstd_next}.variant_region.tsv", "w")
+		variant_region_tsv_f = open("#{sub_path}/#{submission_id}/accessioned/dstd#{dstd_next}.variant_region.tsv", "w")
+
+		first = true
 		for line in variant_region_sheet_a		
-			variant_region_tsv_f.puts line.join("\t")
+			if first
+				line[0] = line[0].sub(/^# /, "")
+				line.unshift("# Variant Region Accession")
+				
+				variant_region_tsv_f.puts line.join("\t")	
+				first = false
+				next
+			end
+
+			if region_id_acc_h[line[0]]
+				line.unshift(region_id_acc_h[line[0]])
+				variant_region_tsv_f.puts line.join("\t")
+			else
+				raise "No variant region accession exists. #{line[0]}"
+			end
+
 		end
-		variant_region_tsv_f.close
+
 	end
 
-	# record last number
-	
-	`cp "#{study_path}/last.txt" "#{study_path}/last_#{now}.txt"`
+	## xsd validation
+	if FileTest.exist?("#{sub_path}/#{submission_id}/accessioned/dstd#{dstd_next}.dbvar.xml")
+		o, e, s = Open3.capture3("xmllint --schema dbVar.xsd --noout #{sub_path}/#{submission_id}/accessioned/dstd#{dstd_next}.dbvar.xml")
 
-	last_out_f = open("#{study_path}/last.txt", "a"){|f|		
-		f.puts "dstd#{dstd_next}\t#{submission_id}\t\tdssv#{dssv_start}-dssv#{dssv_next}\tdsv#{dsv_start}-dsv#{dsv_next}"
-		puts "dstd#{dstd_next}\t#{submission_id}\t\tdssv#{dssv_start}-dssv#{dssv_next}\tdsv#{dsv_start}-dsv#{dsv_next}"
-	}
+		puts ""
+		puts "dbVar xsd validation results"
+		puts e
+	end
+
+	# record last number	
+	`cp "#{study_path}/last.txt" "#{study_path}/log/last_#{now}.txt"`
+
+
+	last_out_a = []
+	last_out_bk_f = open("#{study_path}/log/last_#{now}.txt")
+	for last_line in last_out_bk_f.readlines
+		last_out_a.push(last_line.rstrip) if last_line.rstrip != ""
+	end
+
+	last_out_a.push("dstd#{dstd_next}\t#{submission_id}\t\tdssv#{dssv_start}-dssv#{dssv_next-1}\tdsv#{dsv_start}-dsv#{dsv_next-1}")
+	puts "dstd#{dstd_next}\t#{submission_id}\t\tdssv#{dssv_start}-dssv#{dssv_next-1}\tdsv#{dsv_start}-dsv#{dsv_next-1}"
+
+	last_out_f = open("#{study_path}/last.txt", "w")
+	for last_line in last_out_a
+		last_out_f. puts last_line
+	end
 
 end # if submission_type == "SV"
 
-## xsd validation
-if FileTest.exist?("#{sub_path}/#{submission_id}/dstd#{dstd_next}.dbvar.xml")
-	o, e, s = Open3.capture3("xmllint --schema dbVar.xsd --noout #{submission_id}_dbvar.xml")
-
-	puts ""
-	puts "dbVar xsd validation results"
-	puts e
-end
 
 =begin
 =end
+
