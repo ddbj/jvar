@@ -1,5 +1,1 @@
 dstd	submission_id	dss	dssv	dsv
-dstd1	VSUB000001	dss1-dss8
-dstd2	VSUB000002	dss9-dss16
-dstd3	VSUB000003		dssv1-dssv13	dsv1-dsv5
-dstd4	VSUB000004		dssv14-dssv31	dsv6-dsv23
