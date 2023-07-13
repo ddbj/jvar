@@ -23,6 +23,14 @@ require './lib/jvar-method.rb'
 # Update history
 # 2023-03-23 created
 
+# ファイルオープン順序
+# スパコン jvar 直下での実行を想定
+# 1. 引数でエクセルが指定された場合、そのエクセルを開く
+# 2. VCF はエクセルからの相対パスで探す
+# エクセルが引数指定されていない場合
+# 3. submission ID 配下の所定エクセル submission/VSUB000001/VSUB000001_SV/SNP.xlsx
+# 4. VCF はエクセルの所在場所直下 submitted/ の下を相対パスで探す
+
 ### Options
 submission_id = ""
 xsd_f = false
@@ -45,6 +53,8 @@ OptionParser.new{|opt|
 		puts "Invalid option. #{opt}"
 	end
 
+	puts ""
+
 }
 
 # VSUB ない場合はエラー
@@ -53,6 +63,8 @@ raise "Specify a valid submission_id." if submission_id.empty?
 ## 設定
 conf_path = "conf"
 #sin conf_path = "/usr/local/bin/conf"
+sub_path = "submission"
+#sin sub_path = "/usr/local/bin/submission"
 submitter_handle = "JVAR"
 
 ref_download_path = "reference-download"
@@ -213,10 +225,21 @@ defined_samples_a = defined_samples_a.sort.uniq
 ### Read the JVar submission excel file
 
 # open xlsx file
-begin
+excel_path = ""
+if ARGV[0]
 	s = Roo::Excelx.new(ARGV[0])
-rescue
-	raise "No such file to open."
+	excel_path = File.dirname(ARGV[0])
+	vcf_path = excel_path
+elsif FileTest.exist?("#{sub_path}/#{submission_id}/#{submission_id}_SNP.xlsx")
+	s = Roo::Excelx.new("#{sub_path}/#{submission_id}/#{submission_id}_SNP.xlsx")
+	excel_path = "#{sub_path}/#{submission_id}"
+	vcf_path = "#{sub_path}/#{submission_id}/submitted"
+elsif FileTest.exist?("#{sub_path}/#{submission_id}/#{submission_id}_SV.xlsx")
+	s = Roo::Excelx.new("#{sub_path}/#{submission_id}/#{submission_id}_SV.xlsx")
+	excel_path = "#{sub_path}/#{submission_id}"
+	vcf_path = "#{sub_path}/#{submission_id}/submitted"
+else
+	raise "No JVar metadata excel to open."
 end
 
 # sheets
@@ -1090,7 +1113,7 @@ EOS
 	end # for dataset in dataset_a
 
 	## dbSNP metadata TSV を作成
-	snp_tsv_f = open("#{submission_id}_dbsnp.tsv", "w")
+	snp_tsv_f = open("#{excel_path}/#{submission_id}_dbsnp.tsv", "w")
 	snp_tsv_f.puts cont_s
 	snp_tsv_f.puts method_s
 	snp_tsv_f.puts population_s
@@ -1125,7 +1148,7 @@ EOS
 			vcf_file_a.push(dataset["VCF Filename"])
 
 			tmp_error_vcf_header_a, tmp_error_ignore_vcf_header_a, tmp_error_exchange_vcf_header_a, tmp_warning_vcf_header_a, tmp_error_vcf_content_a, tmp_error_ignore_vcf_content_a, tmp_error_exchange_vcf_content_a, tmp_warning_vcf_content_a, tmp_vcf_variant_a, tmp_vcf_sample_a = [], [], [], [], [], [], [], [], [], []
-			tmp_error_vcf_header_a, tmp_error_ignore_vcf_header_a, tmp_error_exchange_vcf_header_a, tmp_warning_vcf_header_a, tmp_error_vcf_content_a, tmp_error_ignore_vcf_content_a, tmp_error_exchange_vcf_content_a, tmp_warning_vcf_content_a, tmp_vcf_variant_a, tmp_vcf_sample_a = vcf_parser(dataset["VCF Filename"], "SNP")
+			tmp_error_vcf_header_a, tmp_error_ignore_vcf_header_a, tmp_error_exchange_vcf_header_a, tmp_warning_vcf_header_a, tmp_error_vcf_content_a, tmp_error_ignore_vcf_content_a, tmp_error_exchange_vcf_content_a, tmp_warning_vcf_content_a, tmp_vcf_variant_a, tmp_vcf_sample_a = vcf_parser("#{vcf_path}/#{dataset["VCF Filename"]}", "SNP")
 
 			# VCF 毎に格納
 			error_vcf_header_h.store(dataset["VCF Filename"], tmp_error_vcf_header_a)
@@ -1145,7 +1168,7 @@ EOS
 			end
 
 			# dbSNP VCF 出力
-			dbsnp_vcf_f = open("#{submission_id}_a#{dataset["Dataset ID"]}.vcf", "w")
+			dbsnp_vcf_f = open("#{excel_path}/#{submission_id}_a#{dataset["Dataset ID"]}.vcf", "w")
 
 			first_info_f = true
 			format_f = false
@@ -1218,7 +1241,7 @@ if submission_h["Submission Type"] == "Structural variations"
 # dbVar XML
 xml = Builder::XmlMarkup.new(:indent=>4)
 
-xml_f = open("#{submission_id}_dbvar.xml", "w")
+xml_f = open("#{excel_path}/#{submission_id}_dbvar.xml", "w")
 xml_f.puts instruction
 
 # Output dbVar XML
@@ -1727,7 +1750,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 			vcf_file_a.push(vcf_sv_f)
 
 			# VCF file for logging
-			vcf_log_f = File.open("#{vcf_sv_f}.log.txt", "w")
+			# vcf_log_f = File.open("#{excel_path}/#{vcf_sv_f}.log.txt", "w")
 
 			# VCF ファイル毎の初期化
 			invalid_sample_ref_vcf_a = []
@@ -1743,15 +1766,15 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 			tmp_vcf_variant_region_a = []
 			tmp_vcf_content_log_a = []
 			
-			tmp_error_vcf_header_a, tmp_error_ignore_vcf_header_a, tmp_error_exchange_vcf_header_a, tmp_warning_vcf_header_a, tmp_error_vcf_content_a, tmp_error_ignore_vcf_content_a, tmp_error_exchange_vcf_content_a, tmp_warning_vcf_content_a, tmp_vcf_variant_call_a, tmp_vcf_variant_region_a, tmp_vcf_content_log_a = vcf_parser(vcf_sv_f, "SV")
+			tmp_error_vcf_header_a, tmp_error_ignore_vcf_header_a, tmp_error_exchange_vcf_header_a, tmp_warning_vcf_header_a, tmp_error_vcf_content_a, tmp_error_ignore_vcf_content_a, tmp_error_exchange_vcf_content_a, tmp_warning_vcf_content_a, tmp_vcf_variant_call_a, tmp_vcf_variant_region_a, tmp_vcf_content_log_a = vcf_parser("#{vcf_path}/#{vcf_sv_f}", "SV")
 
 			# log を VCF に出力
 			# VCF log error and warning
-			unless tmp_vcf_content_log_a.empty?
-				tmp_vcf_content_log_a.each{|log_line|
-					vcf_log_f.puts log_line
-				}
-			end
+#			unless tmp_vcf_content_log_a.empty?
+#				tmp_vcf_content_log_a.each{|log_line|
+#					vcf_log_f.puts log_line
+#				}
+#			end
 
 			for tmp_vcf_variant_call_h in tmp_vcf_variant_call_a
 
@@ -2841,9 +2864,9 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 		if !variant_call_tsv_s.empty?
 			
 			if vc_input_filename == "tsv"
-				variant_call_tsv_f = open("#{submission_id}.variant_call.tsv", "w")
+				variant_call_tsv_f = open("#{excel_path}/#{submission_id}.variant_call.tsv", "w")
 			else
-				variant_call_tsv_f = open("#{submission_id}_#{vc_input_filename}.variant_call.tsv", "w")
+				variant_call_tsv_f = open("#{excel_path}/#{submission_id}_#{vc_input_filename}.variant_call.tsv", "w")
 			end
 
 			variant_call_tsv_f.puts variant_call_tsv_s
@@ -2854,9 +2877,9 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 		if !variant_call_tsv_log_a.empty?
 
 			if vc_input_filename == "tsv"
-				variant_call_tsv_log_f = open("#{submission_id}.variant_call.tsv.log.txt", "w")
+				variant_call_tsv_log_f = open("#{excel_path}/#{submission_id}.variant_call.tsv.log.txt", "w")
 			else
-				variant_call_tsv_log_f = open("#{submission_id}_#{vc_input_filename}.variant_call.tsv.log.txt", "w")
+				variant_call_tsv_log_f = open("#{excel_path}/#{submission_id}_#{vc_input_filename}.variant_call.tsv.log.txt", "w")
 			end
 
 			variant_call_tsv_log_f.puts variant_call_sheet_header_a.join("\t")
@@ -2937,7 +2960,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 	# VCF を Variant Call TSV として出力
 	if !vcf_sv_f.empty?
-		variant_call_tsv_f = open("#{submission_id}_variant_call.tsv", "w")
+		variant_call_tsv_f = open("#{excel_path}/#{submission_id}_variant_call.tsv", "w")
 		variant_call_tsv_f.puts all_variant_call_tsv_s
 		variant_call_tsv_f.close
 	end
@@ -3666,7 +3689,7 @@ end # if submission_h["Submission Type"] == "Structural variations"
 # Excel sheet tsv log
 if !all_variant_call_tsv_log_a.empty? && vc_input_filename != "tsv"
 
-	all_variant_call_tsv_log_f = open("#{submission_id}.variant_call.tsv.log.txt", "w")
+	all_variant_call_tsv_log_f = open("#{excel_path}/#{submission_id}.variant_call.tsv.log.txt", "w")
 
 	all_variant_call_tsv_log_f.puts variant_call_sheet_header_a.join("\t")
 
@@ -3680,7 +3703,7 @@ end
 # Variant Region TSV log
 unless variant_region_tsv_log_a.empty?
 
-	variant_region_tsv_log_f = open("#{submission_id}.variant_region.tsv.log.txt", "w")
+	variant_region_tsv_log_f = open("#{excel_path}/#{submission_id}.variant_region.tsv.log.txt", "w")
 
 	variant_region_tsv_log_f.puts variant_region_sheet_header_a.join("\t")
 
@@ -3692,7 +3715,7 @@ unless variant_region_tsv_log_a.empty?
 end
 
 # VCF log file close
-vcf_log_f.close if FileTest.exist?(vcf_log_f)
+# vcf_log_f.close if FileTest.exist?(vcf_log_f)
 
 #
 # Validation 結果出力
@@ -3867,8 +3890,8 @@ end
 
 	# dbVar xsd validation
 	xsd_results_s = ""
-	if xsd_f && FileTest.exist?("#{submission_id}_dbvar.xml")		
-		o, e, s = Open3.capture3("xmllint --schema dbVar.xsd --noout #{submission_id}_dbvar.xml")
+	if xsd_f && FileTest.exist?("#{excel_path}/#{submission_id}_dbvar.xml")		
+		o, e, s = Open3.capture3("xmllint --schema dbVar.xsd --noout #{excel_path}/#{submission_id}_dbvar.xml")
 
 		xsd_results_s = <<EOS
 JVar-SV XML dbVar xsd validation results
@@ -3986,7 +4009,7 @@ EOS
 end
 
 ## validation 結果を出力
-validation_result_f = open("#{submission_id}_#{submission_type}.log.txt", "w")
+validation_result_f = open("#{excel_path}/#{submission_id}_#{submission_type}.log.txt", "w")
 
 ## Common
 validation_result_f.puts validation_result_s

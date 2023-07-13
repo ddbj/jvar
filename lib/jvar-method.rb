@@ -200,6 +200,9 @@ def vcf_parser(vcf_file, vcf_type)
 	# VCF file open
 	vcf_f = open(vcf_file)
 
+	# directory
+	vcf_path = File.dirname(vcf_file)
+
 	# VCF file for logging
 	vcf_log_f = File.open("#{vcf_file}.log.txt", "w")
 
