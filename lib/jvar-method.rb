@@ -1289,12 +1289,12 @@ def vcf_parser(vcf_file, vcf_type)
 					sv_type = $sv_type_svtype_h[info_h["SVTYPE"]]
 				end
 
-				# GATK-SV INFO CPX_TYPE --> sequence alteration
-				if sv_type == "" && info_h["CPX_TYPE"] && !info_h["CPX_TYPE"].empty?
-					sv_type = "sequence alteration"
-				end
-
 			end # unless sv_type =~ /translocation/
+
+			# GATK-SV INFO CPX_TYPE --> sequence alteration
+			if sv_type == "" && info && info =~ /CPX_TYPE=[^;]+/
+				sv_type = "sequence alteration"
+			end
 
 			# No SVTYPE, invalid SVTYPE, ALT symbolic SV type はここでカバー
 			if sv_type == ""
@@ -1449,12 +1449,7 @@ def vcf_parser(vcf_file, vcf_type)
 			vcf_variant_call_h.store("Mutation Molecule", "")
 
 			# FORMAT data を格納
-			vcf_variant_call_h.store("FORMAT", format_data_a)
-			
-
-			# 除外する SV は格納しない
-			
-
+			vcf_variant_call_h.store("FORMAT", format_data_a)			
 			vcf_variant_call_a.push(vcf_variant_call_h)
 
 		end # if vcf_type == "SV"
