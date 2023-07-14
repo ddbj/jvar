@@ -494,6 +494,7 @@ def vcf_parser(vcf_file, vcf_type)
 	invalid_svtype_c = 0
 	invalid_posrange_c = 0
 	invalid_endrange_c = 0
+	not_supported_c = 0
 
 	# INFO
 	invalid_info_c = 0
@@ -1275,7 +1276,7 @@ def vcf_parser(vcf_file, vcf_type)
 			end # if translocation
 
 			## SV TYPE
-			# 優先順位 [[/]] in ALT > ALT > SVTYPE
+			# 優先順位 [[/]] in ALT > ALT > SVTYPE > if there is GATK-SV INFO CPX_TYPE --> sequence alteration
 			unless sv_type =~ /translocation/ && translocation_f
 
 				# ALT, graphtyper のような <DEL:SVSIZE=129:COVERAGE> を想定して前方一致。より specific な type が後でマッチされるのでより特異的な type が選択される
@@ -1286,6 +1287,11 @@ def vcf_parser(vcf_file, vcf_type)
 				# SVTYPE
 				if sv_type == "" && info_h["SVTYPE"] && $sv_type_svtype_h[info_h["SVTYPE"]]
 					sv_type = $sv_type_svtype_h[info_h["SVTYPE"]]
+				end
+
+				# GATK-SV INFO CPX_TYPE --> sequence alteration
+				if sv_type == "" && info_h["CPX_TYPE"] && !info_h["CPX_TYPE"].empty?
+					sv_type = "sequence alteration"
 				end
 
 			end # unless sv_type =~ /translocation/
@@ -1444,6 +1450,11 @@ def vcf_parser(vcf_file, vcf_type)
 
 			# FORMAT data を格納
 			vcf_variant_call_h.store("FORMAT", format_data_a)
+			
+
+			# 除外する SV は格納しない
+			
+
 			vcf_variant_call_a.push(vcf_variant_call_h)
 
 		end # if vcf_type == "SV"

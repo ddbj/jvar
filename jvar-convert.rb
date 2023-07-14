@@ -1801,7 +1801,6 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 					for ft_value_h in tmp_vcf_variant_call_h["FORMAT"]
 
 						if sample_name_per_sampleset_h[tmp_vcf_variant_call_h["SampleSet ID"]] && biosample_accession_per_sampleset_h[tmp_vcf_variant_call_h["SampleSet ID"]] && sampleset_name_per_sampleset_h[tmp_vcf_variant_call_h["SampleSet ID"]]
-
 							unless (ft_value_h.keys - sample_name_per_sampleset_h[tmp_vcf_variant_call_h["SampleSet ID"]] - biosample_accession_per_sampleset_h[tmp_vcf_variant_call_h["SampleSet ID"]] - sampleset_name_per_sampleset_h[tmp_vcf_variant_call_h["SampleSet ID"]] - defined_samples_a).empty?
 								invalid_sample_ref_vcf_a.push((ft_value_h.keys - sample_name_per_sampleset_h[tmp_vcf_variant_call_h["SampleSet ID"]] - biosample_accession_per_sampleset_h[tmp_vcf_variant_call_h["SampleSet ID"]] - sampleset_name_per_sampleset_h[tmp_vcf_variant_call_h["SampleSet ID"]] - defined_samples_a))
 							end
@@ -2408,7 +2407,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 					# placement_attr_h.store("breakpoint_order", "")
 
 					# 最初の assembly で VCF/variant call tsv 毎に以降は同じと仮定して valid な chromosome list を構築。assembly 混在は最後にチェック
-					if !variant_call["Assembly"].empty? && refseq_assembly == "" && chromosome_per_assembly_a.empty?
+					if variant_call["Assembly"] && !variant_call["Assembly"].empty? && refseq_assembly == "" && chromosome_per_assembly_a.empty?
 
 						## assembly から refseq accession 取得
 						assembly_a.each{|assembly_h|
@@ -2757,6 +2756,9 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 							# sampleset name であれば OK
 							elsif sampleset_name_per_sampleset_h[variant_call["SampleSet ID"]] && sampleset_name_per_sampleset_h[variant_call["SampleSet ID"]] == [sample_key]
 								ref_sampleset_id = variant_call["SampleSet ID"]
+							# defined name
+							elsif defined_samples_a.include?(sample_key)
+								ref_sample_name = sample_key
 							end
 
 							missing_sample_sampleset_ref_a.push(sample_key) if ref_sample_name.empty? && ref_sampleset_id.empty?
@@ -3892,6 +3894,7 @@ end
 	xsd_results_s = ""
 	if xsd_f && FileTest.exist?("#{excel_path}/#{submission_id}_dbvar.xml")		
 		o, e, s = Open3.capture3("xmllint --schema dbVar.xsd --noout #{excel_path}/#{submission_id}_dbvar.xml")
+#sin	o, e, s = Open3.capture3("/usr/local/bin/xmllint --schema dbVar.xsd --noout #{excel_path}/#{submission_id}_dbvar.xml")
 
 		xsd_results_s = <<EOS
 JVar-SV XML dbVar xsd validation results
@@ -4031,16 +4034,16 @@ if submission_type == "SV"
 	puts sv_vc_validation_result_s
 end
 
-# dbVar xsd validation
-if xsd_f && !xsd_results_s.empty? && submission_type == "SV"
-	validation_result_f.puts xsd_results_s
-	puts xsd_results_s
-end
-
 # VCF
 if !vcf_snp_a.empty? || !vcf_sv_f.empty?
 	validation_result_f.puts vcf_validation_result_s
 	puts vcf_validation_result_s
+end
+
+# dbVar xsd validation
+if xsd_f && !xsd_results_s.empty? && submission_type == "SV"
+	validation_result_f.puts xsd_results_s
+	puts xsd_results_s
 end
 
 # Download contig
