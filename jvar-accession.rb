@@ -1,4 +1,4 @@
-#! usr/bin/ruby
+#! /usr/bin/env ruby
 # -*- coding: utf-8 -*-
 
 require 'rubygems'
@@ -10,7 +10,6 @@ require 'jsonl'
 require 'builder'
 require 'nokogiri'
 require 'open3'
-#sin require '/usr/local/bin/lib/jvar-method.rb'
 
 #
 # Bioinformation and DDBJ Center
@@ -55,15 +54,17 @@ raise "Specify a valid submission_id." if submission_id.empty?
 
 ## 設定
 sub_path = "submission"
+#sin sub_path = "/usr/local/bin/submission"
 study_path = "study"
+#sin study_path = "/usr/local/bin/study"
 first_study_acc = 1
 study_acc_prefix = "dstd"
 
 ## SNP or SV
 submission_type = ""
-if FileTest.exist?("#{sub_path}/#{submission_id}/#{submission_id}_dbsnp.tsv")
+if FileTest.exist?("#{sub_path}/#{submission_id}/#{submission_id}_SNP.xlsx")
 	submission_type = "SNP"
-elsif FileTest.exist?("#{sub_path}/#{submission_id}/#{submission_id}_dbvar.xml")
+elsif FileTest.exist?("#{sub_path}/#{submission_id}/#{submission_id}_SV.xlsx")
 	submission_type = "SV"
 end
 
@@ -296,7 +297,7 @@ end
 begin
 	s = Roo::Excelx.new("#{sub_path}/#{submission_id}/#{submission_id}_#{submission_type}.xlsx")
 rescue
-	raise "No such file to open."
+	raise "No JVar metadata file to open."
 end
 
 # sheets
@@ -398,7 +399,9 @@ if submission_type == "SNP"
 
 	## VCF
 	# dbSNP vcf without accessions
-	vcf_a = Dir.glob("#{sub_path}/#{submission_id}/vcf/*vcf")
+	vcf_a = Dir.glob("#{sub_path}/#{submission_id}/#{submission_id}_a*.vcf")
+
+	raise "No VCF file for SNP submission." if vcf_a.empty?
 	
 	for vcf in vcf_a
 		filename = File.basename(vcf)
@@ -562,6 +565,7 @@ if submission_type == "SV"
 	## xsd validation
 	if FileTest.exist?("#{sub_path}/#{submission_id}/accessioned/dstd#{dstd_next}.dbvar.xml")
 		o, e, s = Open3.capture3("xmllint --schema dbVar.xsd --noout #{sub_path}/#{submission_id}/accessioned/dstd#{dstd_next}.dbvar.xml")
+#sin	o, e, s = Open3.capture3("/usr/local/bin/xmllint --schema dbVar.xsd --noout #{sub_path}/#{submission_id}/accessioned/dstd#{dstd_next}.dbvar.xml")
 
 		puts ""
 		puts "dbVar xsd validation results"
