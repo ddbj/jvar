@@ -61,14 +61,14 @@ OptionParser.new{|opt|
 raise "Specify a valid submission_id." if submission_id.empty?
 
 ## 設定
-conf_path = "conf"
-#sin conf_path = "/usr/local/bin/conf"
-sub_path = "submission"
-#sin sub_path = "/usr/local/bin/submission"
+# sin_path = "/usr/local/bin/"
+sin_path = ""
+
+conf_path = "#{sin_path}conf"
+sub_path = "#{sin_path}submission"
 submitter_handle = "JVAR"
 
-ref_download_path = "reference-download"
-#sin ref_download_path = "/usr/local/bin/reference-download"
+ref_download_path = "#{sin_path}reference-download"
 
 $ref_download_h = {}
 Dir.glob("#{ref_download_path}/*fna").each{|dl_fna|
@@ -3893,8 +3893,7 @@ end
 	# dbVar xsd validation
 	xsd_results_s = ""
 	if xsd_f && FileTest.exist?("#{excel_path}/#{submission_id}_dbvar.xml")		
-		o, e, s = Open3.capture3("xmllint --schema dbVar.xsd --noout #{excel_path}/#{submission_id}_dbvar.xml")
-#sin	o, e, s = Open3.capture3("/usr/local/bin/xmllint --schema dbVar.xsd --noout #{excel_path}/#{submission_id}_dbvar.xml")
+		o, e, s = Open3.capture3("#{sin_path}xmllint --schema dbVar.xsd --noout #{excel_path}/#{submission_id}_dbvar.xml")
 
 		xsd_results_s = <<EOS
 JVar-SV XML dbVar xsd validation results

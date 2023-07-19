@@ -21,9 +21,10 @@ require 'roo'
 ###
 ### 設定
 ###
+# $sin_path = "/usr/local/bin/"
+$sin_path = ""
 
-$conf_path = "conf"
-#sin $conf_path = "/usr/local/bin/conf"
+$conf_path = "#{$sin_path}conf"
 
 ###
 ### VCF
@@ -293,7 +294,7 @@ def vcf_parser(vcf_file, vcf_type)
 					end
 				end
 
-			end
+			end # if line =~ /^##INFO/
 
 			# FORMAT tags
 			if line =~ /^##FORMAT/
@@ -766,11 +767,9 @@ def vcf_parser(vcf_file, vcf_type)
 			ref_fasta_extracted = ""
 			
 			if !ref_download_f
-				ref_fasta_extracted = `samtools faidx reference/#{refseq_assembly}.fna #{chr_accession}:#{pos}-#{pos+ref.size-1}`
-#sin			ref_fasta_extracted = `/usr/local/bin/samtools faidx reference/#{refseq_assembly}.fna #{chr_accession}:#{pos}-#{pos+ref.size-1}`
+				ref_fasta_extracted = `#{$sin_path}samtools faidx reference/#{refseq_assembly}.fna #{chr_accession}:#{pos}-#{pos+ref.size-1}`
 			elsif ref_download_f				
-				ref_fasta_extracted = `samtools faidx reference-download/#{chr_accession}.fna #{chr_accession}:#{pos}-#{pos+ref.size-1}`
-#sin			ref_fasta_extracted = `/usr/local/bin/samtools faidx reference-download/#{chr_accession}.fna #{chr_accession}:#{pos}-#{pos+ref.size-1}`
+				ref_fasta_extracted = `#{$sin_path}samtools faidx reference-download/#{chr_accession}.fna #{chr_accession}:#{pos}-#{pos+ref.size-1}`
 			end
 
 			if ref_fasta_extracted =~ /^>.*?\n(.*)$/im				
@@ -1788,16 +1787,19 @@ def pubinfo_pmid(pmid_a)
 
 		if pmid =~ /^\d{1,}$/
 
-			uri = URI("https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&rettype=docsum&retmode=json&id=#{pmid}")
-			response = Net::HTTP.get uri
+			uri = URI.parse("https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&rettype=docsum&retmode=json&id=#{pmid}")
+			response = Net::HTTP.get(uri)		
+
 			pub_h = JSON.parse(response)
 
-			if pub_h["result"] && pub_h["result"][pmid] && pub_h["result"][pmid]["pubdate"] =~ /([12]\d{3})/
-				pub_year = $1
-			end
+			if pub_h["result"][pmid] && !pub_h["result"][pmid]["error"]
+				if pub_h["result"] && pub_h["result"][pmid] && pub_h["result"][pmid]["pubdate"] =~ /([12]\d{3})/
+					pub_year = $1
+				end
 
-			if pub_h["result"] && pub_h["result"][pmid] && pub_h["result"][pmid]["title"]
-				pub_title = pub_h["result"][pmid]["title"]
+				if pub_h["result"] && pub_h["result"][pmid] && pub_h["result"][pmid]["title"]
+					pub_title = pub_h["result"][pmid]["title"]
+				end
 			end
 
 			if !pmid.empty? && !pub_year.empty? && !pub_title.empty?
