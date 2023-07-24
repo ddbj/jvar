@@ -20,13 +20,11 @@ require 'roo'
 
 ## VCF parser components
 # Parse VCF and validate header
-def vcf_parser(vcf_file, vcf_type)
+def vcf_parser(vcf_file, vcf_type, args)
 
 	# sin_path = "/usr/local/bin/"
 	sin_path = ""
 	conf_path = "#{sin_path}conf"
-
-	submitter_handle = "JVAR"
 
 	# Header
 	required_header_tag_a = [
@@ -50,118 +48,118 @@ def vcf_parser(vcf_file, vcf_type)
 
 	# SNP VCF VRT
 	snp_vrt_h = {
-		"1" => "SNV",
-		"2" => "DIV",
-		"3" => "HETEROZYGOUS",
-		"4" => "STR",
-		"5" => "NAMED",
-		"6" => "NO VARIATION",
-		"7" => "MIXED",
-		"8" => "MNV"
+		1 => "SNV",
+		2 => "DIV",
+		3 => "HETEROZYGOUS",
+		4 => "STR",
+		5 => "NAMED",
+		6 => "NO VARIATION",
+		7 => "MIXED",
+		8 => "MNV"
 	}
 
 	# Archive target SNP VCF INFO
 	target_info_tag_snp_h = {
-		"VRT" => "([1-8])",
-		"AN" => "([0-9.]+)",
-		"AC" => "([0-9.]+)",
-		"AF" => "([0-9.]*\.?[0-9]*)",
-		"DESC" => "([^;=]+)",
-		"LINKS" => "([A-Za-z]+:[-A-Za-z0-9]+)"
+		:VRT => "([1-8])",
+		:AN => "([0-9.]+)",
+		:AC => "([0-9.]+)",
+		:AF => "([0-9.]*\.?[0-9]*)",
+		:DESC => "([^;=]+)",
+		:LINKS => "([A-Za-z]+:[-A-Za-z0-9]+)"
 	}
 
 	# Archive target SNP VCF FORMAT
 	target_format_tag_snp_h = {
-		"AN" => "([0-9.]+)",
-		"AC" => "([0-9.]+)",
-		"AF" => "([0-9]*\.?[0-9]*)",
-		"GT" => "([^;=]+)",
-		"GL" => "([^;=]+)",
-		"PL" => "([^;=]+)",
-		"GP" => "([^;=]+)",
-		"PP" => "([^;=]+)"
+		:AN => "([0-9.]+)",
+		:AC => "([0-9.]+)",
+		:AF => "([0-9]*\.?[0-9]*)",
+		:GT => "([^;=]+)",
+		:GL => "([^;=]+)",
+		:PL => "([^;=]+)",
+		:GP => "([^;=]+)",
+		:PP => "([^;=]+)"
 	}
 
 	### For SV VCF parse
 	# SV VCF ALT
 	# より specific な type を下に配置すること
 	sv_type_alt_h = {
-		"DEL" => "deletion",
-		"INS" => "insertion",
-		"DUP" => "duplication",
-		"INV" => "inversion",
-		"CNV" => "copy number variation",
-		"DUP:TANDEM" => "tandem duplication",
-		"INS:NOVEL" => "novel sequence insertion",
-		"INS:ME" => "mobile element insertion",
-		"INS:ME:ALU" => "Alu insertion",
-		"DEL:ME" => "mobile element deletion",
-		"DEL:ME:ALU" => "Alu deletion"
+		:DEL => "deletion",
+		:INS => "insertion",
+		:DUP => "duplication",
+		:INV => "inversion",
+		:CNV => "copy number variation",
+		"DUP:TANDEM".to_sym => "tandem duplication",
+		"INS:NOVEL".to_sym => "novel sequence insertion",
+		"INS:ME".to_sym => "mobile element insertion",
+		"INS:ME:ALU".to_sym => "Alu insertion",
+		"DEL:ME".to_sym => "mobile element deletion",
+		"DEL:ME:ALU".to_sym => "Alu deletion"
 	}
 
 	# SV VCF INFO SVTYPE
 	sv_type_svtype_h = {
-		"DEL" => "deletion",
-		"INS" => "insertion",
-		"DUP" => "duplication",
-		"INV" => "inversion",
-		"CNV" => "copy number variation"
+		:DEL => "deletion",
+		:INS => "insertion",
+		:DUP => "duplication",
+		:INV => "inversion",
+		:CNV => "copy number variation"
 	}
 
 	# SV VCF INFO EVENTYPE 
 	sv_type_event_type_h = {
-		"DEL" => "deletion",
-		"DEL:ME" => "mobile element deletion",
-		"INS" => "insertion",
-		"INS:ME" => "mobile element insertion",
-		"DUP" => "duplication",
-		"DUP:TANDEM" => "tandem duplication",
-		"DUP:DISPERSED" => "duplication",
-		"INV" => "inversion"
+		:DEL => "deletion",
+		"DEL:ME".to_sym => "mobile element deletion",
+		:INS => "insertion",
+		"INS:ME".to_sym => "mobile element insertion",
+		:DUP => "duplication",
+		"DUP:TANDEM".to_sym => "tandem duplication",
+		"DUP:DISPERSED".to_sym => "duplication",
+		:INV => "inversion"
 	}
 
 	# Archive target SV VCF INFO
 	target_info_tag_sv_h = {
-		"SVTYPE" => "([A-Z]+)",
-		"POSrange" => "([0-9.]+),([0-9.]+)",
-		"ENDrange" => "([0-9.]+),([0-9.]+)",
-		"CIPOS" => "([0-9.+-]+),([0-9.+-]+)",
-		"CIEND" => "([0-9.+-]+),([0-9.+-]+)",
-		"END" => "([0-9]+)",
-		"SVLEN" => "(-?[0-9]+)",
-		"AN" => "([0-9.]+)",
-		"AC" => "([0-9.]+)",
-		"AF" => "([0-9.]*\.?[0-9]*)",
-		"CN" => "([0-9.]+)",
-		"refCN" => "([0-9.]+)",
-		"DESC" => "([^;=]+)",
-		"valEXPERIMENT" => "([0-9]+)",
-		"ORIGIN" => "([^;=]+)",
-		"PHENO" => "([^;=]+)",
-		"LINKS" => "([A-Za-z]+:[-A-Za-z0-9]+)",
-		"EVENT" => "([^;=]+)"
+		:SVTYPE => "([A-Z]+)",
+		:POSrange => "([0-9.]+),([0-9.]+)",
+		:ENDrange => "([0-9.]+),([0-9.]+)",
+		:CIPOS => "([0-9.+-]+),([0-9.+-]+)",
+		:CIEND => "([0-9.+-]+),([0-9.+-]+)",
+		:END => "([0-9]+)",
+		:SVLEN => "(-?[0-9]+)",
+		:AN => "([0-9.]+)",
+		:AC => "([0-9.]+)",
+		:AF => "([0-9.]*\.?[0-9]*)",
+		:CN => "([0-9.]+)",
+		:refCN => "([0-9.]+)",
+		:DESC => "([^;=]+)",
+		:valEXPERIMENT => "([0-9]+)",
+		:ORIGIN => "([^;=]+)",
+		:PHENO => "([^;=]+)",
+		:LINKS => "([A-Za-z]+:[-A-Za-z0-9]+)",
+		:EVENT => "([^;=]+)"
 	}
 
 	# Archive target SV VCF FORMAT
 	target_format_tag_sv_h = {
-		"AN" => "([0-9.]+)",
-		"AC" => "([0-9.]+)",
-		"AF" => "([0-9]*\.?[0-9]*)",
-		"CN" => "([0-9.]+)",
-		"refCN" => "([0-9.]+)",
-		"GT" => "([^;=]+)",
-		"GL" => "([^;=]+)",
-		"PL" => "([^;=]+)",
-		"GP" => "([^;=]+)",
-		"PP" => "([^;=]+)",
-		"FT" => "([^;=]+)"
+		:AN => "([0-9.]+)",
+		:AC => "([0-9.]+)",
+		:AF => "([0-9]*\.?[0-9]*)",
+		:CN => "([0-9.]+)",
+		:refCN => "([0-9.]+)",
+		:GT => "([^;=]+)",
+		:GL => "([^;=]+)",
+		:PL => "([^;=]+)",
+		:GP => "([^;=]+)",
+		:PP => "([^;=]+)",
+		:FT => "([^;=]+)"
 	}
 
 	## Header
 	warning_vcf_header_a = []
 	error_vcf_header_a = []
 	error_ignore_vcf_header_a = []
-	error_exchange_vcf_header_a = []
+	error_exchange_vcf_header_a = []	
 
 	## VCF lines
 	vcf_header_a = []
@@ -189,6 +187,9 @@ def vcf_parser(vcf_file, vcf_type)
 	# VCF file for logging
 	vcf_log_f = File.open("#{vcf_file}.log.txt", "w")
 
+	# dbSNP VCF output
+	dbsnp_vcf_f = open(args[:snp_vcf], "w") if vcf_type == "SNP"
+
 	content_f = false
 	header_tag_a = []
 	vrt_tags_h = {}
@@ -207,6 +208,9 @@ def vcf_parser(vcf_file, vcf_type)
 	undefined_ft_key_a = []
 	undefined_info_key_a = []
 
+	# reference
+	refseq_assembly = ""
+
 	# empty line
 	empty_line_c = 0
 
@@ -220,6 +224,9 @@ def vcf_parser(vcf_file, vcf_type)
 
 	## SNP
 	vcf_content_dbsnp_a = []
+
+	## VCF sample references
+	invalid_sample_ref_vcf_a = []
 
 	# SV VCF variant call and region
 	vcf_variant_call_a = []
@@ -297,12 +304,21 @@ def vcf_parser(vcf_file, vcf_type)
 	invalid_ft_c = 0
 	inconsistent_format_c = 0
 
-	id_a = []
-	sites_a = []
+	id_h = {}
+	sites_h = {}
 	pre_chrom = ""
+	pre_chr_name = ""
+	pre_chr_accession = ""
+	pre_chr_length = -1
+	pre_invalid_chr_f = true
+	pre_ref_download_f = false
+
 	pre_pos = -1
 	snp_in_window_c = 0
-	chrom_a = []
+	chrom_h = {}
+
+	# assembly
+	chromosome_per_assembly_a = []
 
 	## Assembly
 	assembly_a = []
@@ -316,30 +332,19 @@ def vcf_parser(vcf_file, vcf_type)
 		sequence_a = JSONL.parse(f)
 	}
 
-	## assembly から refseq accession 取得
-	refseq_assembly = ""
-	assembly_a.each{|assembly_h|
-		refseq_assembly = assembly_h["refseq_assembly"] if assembly_h.values.include?(reference)
-	}
-
-	## refseq assembly から構成配列を取得
-	chromosome_per_assembly_a = []
-
-	sequence_a.each{|sequence_h|
-		if sequence_h["assemblyAccession"] == refseq_assembly
-			chromosome_per_assembly_a.push({"chrName"=>sequence_h["chrName"], "ucscStyleName"=>sequence_h["ucscStyleName"], "refseqAccession"=>sequence_h["refseqAccession"], "genbankAccession"=>sequence_h["genbankAccession"], "role"=>sequence_h["role"], "length"=>sequence_h["length"]})
-		end
-	}
-
 	# dbSNP VCF 
 	# keep: FILTER
 	# keep: pre-defined INFO & FORMAT tags
 	# keep: contig used
 	# drop: other header lines
 
+	# INFO first line
+	first_info_f = true
+	
 	vcf_f.each_line{|line|
 
-		vcf_line_a = line.strip.split("\t")
+		line.strip!
+		vcf_line_a = line.split("\t")
 
 		## first line should be fileformat
 		if line_c == 0
@@ -359,110 +364,140 @@ def vcf_parser(vcf_file, vcf_type)
 		line_c += 1
 
 		# header
-		if line =~ /^##/ && !content_f
-
-			header_tag = ""
-			header_tag_value = ""
+		if line =~ /^#/ && !content_f
 
 			vcf_header_a.push(line.sub(/^##/, "").strip)
 			vcf_header_out_a.push(line.sub(/^##/, "").strip)
 
 			# fileformat and reference
-			if line =~ /^##([^=]*?)=([^=]*?)$/
+			if line =~ /^##reference=(\S+)/
+				reference = $1
 
-				header_tag = $1
-				header_tag_value = $2
+				## assembly から refseq accession 取得
+				assembly_a.each{|assembly_h|
+					refseq_assembly = assembly_h["refseq_assembly"] if assembly_h.has_value?(reference)
+				}
 
-				header_tag_a.push(header_tag)
-
-				fileformat = header_tag_value if header_tag == "fileformat"
-				reference = header_tag_value if header_tag == "reference"
-
-			end
+				## refseq assembly から構成配列を取得
+				sequence_a.each{|sequence_h|
+					if sequence_h["assemblyAccession"] == refseq_assembly
+						chromosome_per_assembly_a.push({"chrName"=>sequence_h["chrName"], "ucscStyleName"=>sequence_h["ucscStyleName"], "refseqAccession"=>sequence_h["refseqAccession"], "genbankAccession"=>sequence_h["genbankAccession"], "role"=>sequence_h["role"], "length"=>sequence_h["length"]})
+					end
+				}
+				
+				if vcf_type == "SNP" # dbSNP VCF
+					dbsnp_vcf_f.puts "##handle=#{$submitter_handle}"
+					dbsnp_vcf_f.puts "##batch_id=#{args[:batch_id]}" if args[:batch_id] && !args[:batch_id].empty?
+					dbsnp_vcf_f.puts "##bioproject_id=#{args[:bioproject_accession]}" if args[:bioproject_accession] && !args[:bioproject_accession].empty?
+					dbsnp_vcf_f.puts "##biosample_id=#{args[:biosample_accessions]}" if args[:biosample_accessions] && !args[:biosample_accessions].empty?
+					dbsnp_vcf_f.puts "##reference=#{refseq_assembly}"
+				end
 
 			# INFO tags
-			if line =~ /^##INFO/
+			elsif line =~ /^##INFO/
 
 				# INFO definition
 				if line =~ /^##INFO=<ID=([^,]+),/
-					if info_def_h.key?($1)
+					if info_def_h.has_key?($1.to_sym)
 						error_vcf_header_a.push(["JV_VCF0044", "INFO tag ID must be unique in VCF. #{$1}"]) 
 					end
-					info_def_h.store($1, line.strip)
+					info_def_h.store($1.to_sym, line.strip)
 				end
 
-				if line =~ /^##INFO.*VRT/ && !content_f
+				if line =~ /^##INFO.*VRT/
 					if line.scan(/([1-8]) *- *([A-Z ]+)/).size > 0
 						for svrt_number, svrt_string in line.scan(/([1-8]) *- *([A-Z ]+)/)
-							vrt_tags_h.store(svrt_number, svrt_string)
+							vrt_tags_h.store(svrt_number.to_i, svrt_string)
 						end
 					end
 				end
+			
+				if vcf_type == "SNP"
+					if first_info_f
+						dbsnp_vcf_f.puts '##INFO=<ID=VRT,Number=1,Type=Integer,Description="Variation type,1 - SNV: single nucleotide variation,2 - DIV: deletion/insertion variation,3 - HETEROZYGOUS: variable, but undefined at nucleotide level,4 - STR: short tandem repeat (microsatellite) variation, 5 - NAMED: insertion/deletion variation of named repetitive element,6 - NO VARIATION: sequence scanned for variation, but none observed,7 - MIXED: cluster contains submissions from 2 or more allelic classes (not used),8 - MNV: multiple nucleotide variation with alleles of common length greater than 1,9 - Exception">'
+						first_info_f = false
+					end
 
-			end # if line =~ /^##INFO/
+					unless line =~ /^##INFO=\<ID=VRT,/ # 元々の VRT 行は含めない
+						dbsnp_vcf_f.puts line
+					end
+				end
 
 			# FORMAT tags
-			if line =~ /^##FORMAT/
+			elsif line =~ /^##FORMAT/
 
 				# FORMAT definition
 				if line =~ /^##FORMAT=<ID=([^,]+),/
-					if format_def_h.key?($1)
+					if format_def_h.has_key?($1.to_sym)
 						error_vcf_header_a.push(["JV_VCF0045", "FORMAT tag ID must be unique in VCF. #{$1}"]) 
 					end
-					format_def_h.store($1, line.strip)
+					format_def_h.store($1.to_sym, line.strip)
 				end
+				
+				dbsnp_vcf_f.puts line if vcf_type == "SNP"
 
-			end
-
-			# contig tags
-			if line =~ /^##contig/
+			# contig tags, dbSNP VCF には含めない
+			elsif line =~ /^##contig/
 
 				# contig definition
 				if line =~ /^##contig=<ID=([^,]+),/
 					contig_def_h.store($1, line.strip)
 				end
 
-			end
+			# content header
+			elsif line =~ /^#CHROM/
+		 		content_f = true
+		 		vcf_column_a = line.sub(/^#/, "").chomp.split("\t")
+
+				## JV_VCF0005: White space characters before/after column header
+				column_whitespaces_a = []
+				for column in vcf_column_a
+					if column.strip != column
+						column_whitespaces_a.push(column)
+					end
+				end
+
+				# column 前後の whitespace 削除
+				unless column_whitespaces_a.empty?
+					warning_vcf_header_a.push(["JV_VCF0005", "White space characters before/after fields are automatically removed. #{column_whitespaces_a.join(",")}"])
+					vcf_log_a.push("#{line.strip}\t# JV_VCF0005 Warning: White space characters before/after fields are automatically removed.")
+					vcf_column_out_a = vcf_column_a.collect{|e| e.strip }
+				else
+					vcf_column_out_a = vcf_column_a
+				end
+
+				## JV_VCF0004: Missing VCF column
+				if vcf_column_out_a.empty?
+					error_vcf_header_a.push(["JV_VCF0004", "Provide missing VCF column."]) unless required_column_a == vcf_column_a[0, 8]
+				else
+					error_vcf_header_a.push(["JV_VCF0004", "Provide missing VCF column."]) unless required_column_a == vcf_column_out_a[0, 8]
+				end
+
+				## sample columns
+				if vcf_column_out_a.empty?				
+					vcf_sample_a = vcf_column_a[9..-1] if vcf_column_a[9..-1]
+				else
+					vcf_sample_a = vcf_column_out_a[9..-1] if vcf_column_out_a[9..-1]
+				end
+
+				# JV_VCF0042: Invalid sample reference in VCF
+				unless (vcf_sample_a - args[:valid_sample_sampleset_refs]).empty?
+					error_vcf_header_a.push(["JV_VCF0042", "Reference a Sample Name of a Sample in the SampleSet or a SampleSet Name in the VCF sample column. #{(vcf_sample_a - args[:valid_sample_sampleset_refs]).sort.uniq.join(",")}"])
+				end
+
+				if vcf_type == "SNP" # dbSNP VCF output
+					args[:sampleset_names].each{|population_id|
+						dbsnp_vcf_f.puts "##population_id=#{population_id}"
+					}
+
+					dbsnp_vcf_f.puts "##{vcf_column_out_a.join("\t")}"
+				end
+
+			else # reference INFO FORMAT FILTER contig #CHROM 以外のヘッダー行
+				dbsnp_vcf_f.puts line if vcf_type == "SNP"
+			end # if reference
 
 		end # if line =~ /^##/ && !content_f
-
-		# content header
-		if line =~ /^#CHROM/
-	 		content_f = true
-	 		vcf_column_a = line.sub(/^#/, "").chomp.split("\t")
-
-			## JV_VCF0005: White space characters before/after column header
-			column_whitespaces_a = []
-			for column in vcf_column_a
-				if column.strip != column
-					column_whitespaces_a.push(column)
-				end
-			end
-
-			# column 前後の whitespace 削除
-			unless column_whitespaces_a.empty?
-				warning_vcf_header_a.push(["JV_VCF0005", "White space characters before/after fields are automatically removed. #{column_whitespaces_a.join(",")}"])
-				vcf_log_a.push("#{line.strip}\t# JV_VCF0005 Warning: White space characters before/after fields are automatically removed.")
-				vcf_column_out_a = vcf_column_a.collect{|e| e.strip }
-			else
-				vcf_column_out_a = vcf_column_a
-			end
-
-			## JV_VCF0004: Missing VCF column
-			if vcf_column_out_a.empty?
-				error_vcf_header_a.push(["JV_VCF0004", "Provide missing VCF column."]) unless required_column_a == vcf_column_a[0, 8]
-			else
-				error_vcf_header_a.push(["JV_VCF0004", "Provide missing VCF column."]) unless required_column_a == vcf_column_out_a[0, 8]
-			end
-
-			## sample columns
-			if vcf_column_out_a.empty?				
-				vcf_sample_a = vcf_column_a[9..-1] if vcf_column_a[9..-1]
-			else
-				vcf_sample_a = vcf_column_out_a[9..-1] if vcf_column_out_a[9..-1]
-			end
-
-	 	end
 
 		# content
 		if content_f && line !~ /^#CHROM/
@@ -510,9 +545,10 @@ def vcf_parser(vcf_file, vcf_type)
 
 			# chrom が変わったら格納
 			if pre_chrom != chrom
-				chrom_a.push(pre_chrom)
 
-				if chrom_a.include?(chrom)
+				chrom_h.store(pre_chrom.to_sym, 1)
+
+				if chrom_h.has_key?(chrom.to_sym)
 					# JV_VCF0026: Same chromosome not grouped
 					vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_VCF0026 Error: Group data from the same chromosome.")
 					chr_not_grouped_c += 1
@@ -546,14 +582,14 @@ def vcf_parser(vcf_file, vcf_type)
 
 			info_h = {}
 			if info && info.scan(/([^;=]+)=([^;=]+)/).size > 0
-				info.scan(/([^;=]+)=([^;=]+)/).each{|key,value|
+				info.scan(/([^;=]+)=([^;=]+)/).each{|key, value|
 					# target INFO tag のみ格納
-					if (vcf_type == "SNP" && target_info_tag_snp_h.keys.include?(key)) || (vcf_type == "SV" && target_info_tag_sv_h.keys.include?(key))
-						info_h.store(key, value.sub(/^"/, "").sub(/"$/, ""))
+					if (vcf_type == "SNP" && target_info_tag_snp_h.has_key?(key.to_sym)) || (vcf_type == "SV" && target_info_tag_sv_h.has_key?(key.to_sym))
+						info_h.store(key.to_sym, value.sub(/^"/, "").sub(/"$/, ""))
 					end
 
 					# header INFO で定義されているかどうか
-					unless info_def_h.keys.include?(key)
+					unless info_def_h.has_key?(key.to_sym)
 						undefined_info_key_a.push(key)
 					end
 				}
@@ -562,16 +598,16 @@ def vcf_parser(vcf_file, vcf_type)
 			# JV_VCF0031: Invalid INFO value format, validate target tag and value
 			invalid_info_a = []
 			if vcf_type == "SNP"
-				for key, regex in target_info_tag_snp_h
-					if info_h[key] && info_h[key] !~ /#{regex}/
-						invalid_info_a.push("#{key}:#{info_h[key]}")
+				for key_sym, regex in target_info_tag_snp_h
+					if info_h[key_sym] && info_h[key_sym] !~ /#{regex}/
+						invalid_info_a.push("#{key_sym}:#{info_h[key_sym]}")
 						invalid_info_c += 1
 					end
 				end
 			elsif vcf_type == "SV"
-				for key, regex in target_info_tag_sv_h
-					if info_h[key] && info_h[key] !~ /#{regex}/
-						invalid_info_a.push("#{key}:#{info_h[key]}")
+				for key_sym, regex in target_info_tag_sv_h
+					if info_h[key_sym] && info_h[key_sym] !~ /#{regex}/
+						invalid_info_a.push("#{key_sym}:#{info_h[key_sym]}")
 						invalid_info_c += 1
 					end
 				end
@@ -584,11 +620,11 @@ def vcf_parser(vcf_file, vcf_type)
 
 			# JV_VCF0021: Duplicated local IDs
 			if id && !id.empty?
-				if id_a.include?(id)
+				if id_h.has_key?(id.to_sym)
 					vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_VCF0021 Error: Local IDs should be unique.")
 					duplicated_id_c += 1
 				end
-				id_a.push(id)
+				id_h.store(id.to_sym, 1)
 			end
 
 			# JV_VCF0036: Multi-allelic ALT allele
@@ -633,10 +669,6 @@ def vcf_parser(vcf_file, vcf_type)
 
 			end
 
-			# keep previous chrom and pos
-			pre_chrom = chrom
-			pre_pos = pos
-
 			# JV_VCF0009: Local ID longer than 64 characters
 			if id.size > 64
 				vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_VCF0009 Error: Provide unique local IDs shorter than 64 characters.")
@@ -668,40 +700,51 @@ def vcf_parser(vcf_file, vcf_type)
 			end
 
 			# reference chromosome
-			invalid_chr_f = true
-			ref_download_f = false
-			for chromosome_per_assembly_h in chromosome_per_assembly_a
+			if chrom == pre_chrom
 
-				## SNP chromosome
-				if chrom && chromosome_per_assembly_h["chrName"] == chrom.sub(/chr/i, "") && chromosome_per_assembly_h["role"] == "assembled-molecule"
-					chr_name = chromosome_per_assembly_h["chrName"]
-					chr_accession = chromosome_per_assembly_h["refseqAccession"]
-					chr_length = chromosome_per_assembly_h["length"]
+				chr_name = pre_chr_name
+				chr_accession = pre_chr_accession
+				chr_length = pre_chr_length
+				invalid_chr_f = pre_invalid_chr_f
+				ref_download_f = pre_ref_download_f
 
-					invalid_chr_f = false
-				elsif chrom && (chromosome_per_assembly_h["refseqAccession"] == chrom || chromosome_per_assembly_h["genbankAccession"] == chrom)
-					chr_name = chrom
-					chr_accession = chrom
-					chr_length = chromosome_per_assembly_h["length"]
+			else
+				invalid_chr_f = true
+				ref_download_f = false
+				for chromosome_per_assembly_h in chromosome_per_assembly_a
 
-					invalid_chr_f = false
-				elsif chrom && chromosome_per_assembly_h["ucscStyleName"].sub(/^chr/i, "") == chrom.sub(/^chr/i, "")
-					chr_name = chromosome_per_assembly_h["ucscStyleName"]
-					chr_accession = chromosome_per_assembly_h["refseqAccession"]
-					chr_length = chromosome_per_assembly_h["length"]
+					## SNP chromosome
+					if chrom && chromosome_per_assembly_h["chrName"] == chrom.sub(/chr/i, "") && chromosome_per_assembly_h["role"] == "assembled-molecule"
+						chr_name = chromosome_per_assembly_h["chrName"]
+						chr_accession = chromosome_per_assembly_h["refseqAccession"]
+						chr_length = chromosome_per_assembly_h["length"]
 
-					invalid_chr_f = false
+						invalid_chr_f = false
+					elsif chrom && (chromosome_per_assembly_h["refseqAccession"] == chrom || chromosome_per_assembly_h["genbankAccession"] == chrom)
+						chr_name = chrom
+						chr_accession = chrom
+						chr_length = chromosome_per_assembly_h["length"]
 
-				elsif chrom && ref_download_h.keys.include?(chrom)
-					chr_name = chrom
-					chr_accession = chrom
-					chr_length = ref_download_h[chrom].to_i if ref_download_h[chrom].to_i
+						invalid_chr_f = false
+					elsif chrom && chromosome_per_assembly_h["ucscStyleName"].sub(/^chr/i, "") == chrom.sub(/^chr/i, "")
+						chr_name = chromosome_per_assembly_h["ucscStyleName"]
+						chr_accession = chromosome_per_assembly_h["refseqAccession"]
+						chr_length = chromosome_per_assembly_h["length"]
 
-					invalid_chr_f = false
-					ref_download_f = true
+						invalid_chr_f = false
+
+					elsif chrom && $ref_download_h.has_key?(chrom.to_sym)
+						chr_name = chrom
+						chr_accession = chrom
+						chr_length = $ref_download_h[chrom.to_sym].to_i if $ref_download_h[chrom.to_sym].to_i
+
+						invalid_chr_f = false
+						ref_download_f = true
+					end
+
 				end
 
-			end
+			end # if chrom == pre_chrom
 
 			# JV_VCF0035: Variant at telomere
 			# VCF spec と dbSNP VCF guideline では telomere 0 or N+1
@@ -715,7 +758,7 @@ def vcf_parser(vcf_file, vcf_type)
 			if invalid_chr_f
 				vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_VCF0017 Error: Chromosome name need to match the INSDC reference assembly.")
 				invalid_chr_c += 1
-			elsif chr_length != -1 && pos > 0 && (pos < chr_length + 1)
+			elsif chr_length != -1 && pos > 0 && (pos < chr_length + 1) && $ref_check_f
 
 				ref_fasta = ""
 				ref_fasta_extracted = ""
@@ -725,10 +768,8 @@ def vcf_parser(vcf_file, vcf_type)
 				elsif ref_download_f				
 					ref_fasta_extracted = `#{sin_path}samtools faidx reference-download/#{chr_accession}.fna #{chr_accession}:#{pos}-#{pos+ref.size-1}`
 				end
-
-				if ref_fasta_extracted =~ /^>.*?\n(.*)$/im				
-					ref_fasta = $1.gsub("\n", "").upcase unless $1.nil?
-				end
+								
+				ref_fasta = ref_fasta_extracted.split("\n").drop(1).join("").upcase if ref_fasta_extracted.split("\n").drop(1).join("").upcase
 
 				# JV_VCF0014: REF allele mismatch with reference
 				unless ref_fasta == ref
@@ -737,6 +778,16 @@ def vcf_parser(vcf_file, vcf_type)
 				end
 
 			end
+
+			## 前の chr を保存して chr が前と異なる場合のみ処理実施
+			## keep previous chrom and pos
+			pre_chrom = chrom
+			pre_pos = pos
+			pre_chr_name = chr_name
+			pre_chr_accession = chr_accession
+			pre_chr_length = chr_length
+			pre_invalid_chr_f = invalid_chr_f
+			pre_ref_download_f = ref_download_f
 
 			### INFO & FORMAT allele, genotype, copy number
 
@@ -760,18 +811,18 @@ def vcf_parser(vcf_file, vcf_type)
 					for key in format.split(":")
 
 						# JV_VCF0040: Undefined FORMAT key
-						unless format_def_h.keys.include?(key)
+						unless format_def_h.has_key?(key.to_sym)
 							undefined_ft_key_a.push(key)
 						end
 
 						# archive target のみ格納
 						if vcf_type == "SNP"
 							target_format_tag_snp_h.keys.each{|target_ft_key|							
-								tmp_format_data_h.store(target_ft_key, sample_value.split(":")[k]) if key == target_ft_key && sample_value.split(":")[k] && sample_value.split(":")[k].gsub(".", "") # per SampleSet this VCF/dataset belongs to.
+								tmp_format_data_h.store("#{target_ft_key}", sample_value.split(":")[k]) if key == "#{target_ft_key}" && sample_value.split(":")[k] && sample_value.split(":")[k].gsub(".", "") # per SampleSet this VCF/dataset belongs to.
 							}
 						elsif vcf_type == "SV"
 							target_format_tag_sv_h.keys.each{|target_ft_key|
-								tmp_format_data_h.store(target_ft_key, sample_value.split(":")[k]) if key == target_ft_key && sample_value.split(":")[k] && sample_value.split(":")[k].gsub(".", "") # per SampleSet this VCF/dataset belongs to.
+								tmp_format_data_h.store("#{target_ft_key}", sample_value.split(":")[k]) if key == "#{target_ft_key}" && sample_value.split(":")[k] && sample_value.split(":")[k].gsub(".", "") # per SampleSet this VCF/dataset belongs to.
 							}
 						end
 
@@ -815,27 +866,27 @@ def vcf_parser(vcf_file, vcf_type)
 
 			## Allele Frequency
 			af = ""
-			if info_h["AN"] && !info_h["AN"].empty? && info_h["AC"] && !info_h["AC"].empty?
+			if info_h["AN".to_sym] && !info_h["AN".to_sym].empty? && info_h["AC".to_sym] && !info_h["AC".to_sym].empty?
 
 				if vcf_type == "SV"
-					vcf_variant_call_h.store("Allele Number", info_h["AN"])
-					vcf_variant_call_h.store("Allele Count", info_h["AC"])
+					vcf_variant_call_h.store("Allele Number", info_h["AN".to_sym])
+					vcf_variant_call_h.store("Allele Count", info_h["AC".to_sym])
 				end
 
 				# JV_C0063: Allele count greater than allele number
 				ac_greater_than_an_f = false
-				if info_h["AC"].to_i > info_h["AN"].to_i
+				if info_h["AC".to_sym].to_i > info_h["AN".to_sym].to_i
 					ac_greater_than_an_c += 1
 					vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_C0063 Error: Allele count is greater than allele number.")				
 					ac_greater_than_an_f = true
 				end
 
 				# AF
-				if info_h["AF"] && !info_h["AF"].empty?
-					vcf_variant_call_h.store("Allele Frequency", info_h["AF"])
+				if info_h["AF".to_sym] && !info_h["AF".to_sym].empty?
+					vcf_variant_call_h.store("Allele Frequency", info_h["AF".to_sym])
 				else
-					if info_h["AC"].to_i.fdiv(info_h["AN"].to_i).floor(6).to_s && !ac_greater_than_an_f
-						af = info_h["AC"].to_i.fdiv(info_h["AN"].to_i).floor(6).to_s
+					if info_h["AC".to_sym].to_i.fdiv(info_h["AN".to_sym].to_i).floor(6).to_s && !ac_greater_than_an_f
+						af = info_h["AC".to_sym].to_i.fdiv(info_h["AN".to_sym].to_i).floor(6).to_s
 						
 						calculated_af_c += 1
 						vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_C0062 Warning: Allele frequency was calculated as allele count/allele number. #{af}")
@@ -885,10 +936,10 @@ def vcf_parser(vcf_file, vcf_type)
 				end
 
 				# VRT 優先順位 VRT > REF ALT 判定
-				if info_h["VRT"] && snp_vrt_h[info_h["VRT"]]
+				if info_h["VRT".to_sym] && info_h["VRT".to_sym].to_i && snp_vrt_h[info_h["VRT".to_sym].to_i]
 
-					vrt_number = info_h["VRT"]
-					vrt = snp_vrt_h[info_h["VRT"]]
+					vrt_number = info_h["VRT".to_sym]
+					vrt = snp_vrt_h[info_h["VRT".to_sym].to_i]
 
 				elsif !ref.empty? && !alt.empty? && !alt.include?(",") && ref.size == 1 && alt.size == 1 && ref != alt					 
 
@@ -924,18 +975,16 @@ def vcf_parser(vcf_file, vcf_type)
 				duplicated_site_f = false
 
 				unless vrt.empty?
-					sites_a.each{|site_a|
-						if site_a[1,5] == [chrom, pos, ref, alt, vrt]
-							duplicated_site_c += 1
-							duplicated_site_f = true
-						end
-					}
+					if sites_h.has_key?("#{id}:#{chrom}:#{pos}:#{ref}:#{alt}:#{vrt}".to_sym)
+						duplicated_site_c += 1
+						duplicated_site_f = true
+					end
 
 					# JV_VCF0011: Duplicated sites
 					vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_VCF0011 Error: Remove duplicated sites.") if duplicated_site_f
 
 					# 重複チェック用に site を格納
-					sites_a.push([id, chrom, pos, ref, alt, vrt])
+					sites_h.store("#{id}:#{chrom}:#{pos}:#{ref}:#{alt}:#{vrt}".to_sym, 1)
 
 				end
 
@@ -997,60 +1046,60 @@ def vcf_parser(vcf_file, vcf_type)
 				svlen = 0
 
 				## Other INFO tags
-				if info_h["DESC"]
+				if info_h["DESC".to_sym]
 					# DESC
-					vcf_variant_call_h.store("Description", info_h["DESC"])
+					vcf_variant_call_h.store("Description", info_h["DESC".to_sym])
 				end
 
-				if info_h["valEXPERIMENT"]
+				if info_h["valEXPERIMENT".to_sym]
 					# valEXPERIMENT
-					vcf_variant_call_h.store("Validation", info_h["valEXPERIMENT"])
+					vcf_variant_call_h.store("Validation", info_h["valEXPERIMENT".to_sym])
 				else
 					vcf_variant_call_h.store("Validation", "")
 				end
 
 				if info_h["ORIGIN"]
 					# ORIGIN
-					vcf_variant_call_h.store("Origin", info_h["ORIGIN"])
+					vcf_variant_call_h.store("Origin", info_h["ORIGIN".to_sym])
 				else
 					vcf_variant_call_h.store("Origin", "")
 				end
 
-				if info_h["PHENO"]
+				if info_h["PHENO".to_sym]
 					# PHENO
-					vcf_variant_call_h.store("Phenotype", info_h["PHENO"])
+					vcf_variant_call_h.store("Phenotype", info_h["PHENO".to_sym])
 				else
 					vcf_variant_call_h.store("Phenotype", "")
 				end
 
-				if info_h["LINKS"]
+				if info_h["LINKS".to_sym]
 					# LINKS
-					vcf_variant_call_h.store("External Links", info_h["LINKS"])
+					vcf_variant_call_h.store("External Links", info_h["LINKS".to_sym])
 				else
 					vcf_variant_call_h.store("External Links", "")
 				end
 
 				## copy number
 				# INFO にある場合は VCF dataset が参照している SampleSet 中のコピー数
-				if info_h["CN"]
+				if info_h["CN".to_sym]
 					# CN
-					vcf_variant_call_h.store("Copy Number", info_h["CN"])
+					vcf_variant_call_h.store("Copy Number", info_h["CN".to_sym])
 				else
 					vcf_variant_call_h.store("Copy Number", "")
 				end
 
 				## reference_copy_number
 				# INFO にある場合は VCF dataset が参照している SampleSet 中のコピー数
-				if info_h["refCN"]
+				if info_h["refCN".to_sym]
 					# refCN
-					vcf_variant_call_h.store("reference_copy_number", info_h["refCN"])
+					vcf_variant_call_h.store("reference_copy_number", info_h["refCN".to_sym])
 				end
 
 				## Genotype
 				# INFO にある場合は VCF dataset が参照している SampleSet 中の genotype
-				if info_h["GT"]
+				if info_h["GT".to_sym]
 					# GT
-					vcf_variant_call_h.store("submitted_genotype", info_h["GT"])
+					vcf_variant_call_h.store("submitted_genotype", info_h["GT".to_sym])
 				end
 
 				### Translocation
@@ -1067,7 +1116,7 @@ def vcf_parser(vcf_file, vcf_type)
 				mutation_molecule = ""
 				mutation_id = ""
 
-				mutation_id = info_h["EVENT"] if info_h["EVENT"] && info_h["EVENT"]
+				mutation_id = info_h["EVENT".to_sym] if info_h["EVENT".to_sym] && info_h["EVENT".to_sym]
 
 				chr_trans_regex = "([A-Za-z0-9_.]+):([0-9]+)"
 				# if translocation
@@ -1238,8 +1287,8 @@ def vcf_parser(vcf_file, vcf_type)
 					}
 					
 					# SVTYPE
-					if sv_type == "" && info_h["SVTYPE"] && sv_type_svtype_h[info_h["SVTYPE"]]
-						sv_type = sv_type_svtype_h[info_h["SVTYPE"]]
+					if sv_type == "" && info_h["SVTYPE".to_sym] && sv_type_svtype_h[info_h["SVTYPE".to_sym]]
+						sv_type = sv_type_svtype_h[info_h["SVTYPE".to_sym]]
 					end
 
 				end # unless sv_type =~ /translocation/
@@ -1260,8 +1309,8 @@ def vcf_parser(vcf_file, vcf_type)
 				vcf_variant_call_h.store("Variant Call Type", sv_type)
 
 				# SVLEN
-				if info_h["SVLEN"] && !info_h["SVLEN"].empty?
-					svlen = info_h["SVLEN"].sub(/^-/, "") if info_h["SVLEN"].sub(/^-/, "")
+				if info_h["SVLEN".to_sym] && !info_h["SVLEN".to_sym].empty?
+					svlen = info_h["SVLEN".to_sym].sub(/^-/, "") if info_h["SVLEN".to_sym].sub(/^-/, "")
 					if sv_type =~ /deletion|insertion/
 						vcf_variant_call_h.store("Insertion Length", svlen)
 					else
@@ -1274,21 +1323,21 @@ def vcf_parser(vcf_file, vcf_type)
 				# START/POS
 				start = pos
 				posrange_f = false
-				if info_h["POSrange"] && info_h["POSrange"].split(",")[0] && info_h["POSrange"].split(",")[1]
-					outer_start = info_h["POSrange"].split(",")[0].to_i unless info_h["POSrange"].split(",")[0] == "."
-					inner_start = info_h["POSrange"].split(",")[1].to_i unless info_h["POSrange"].split(",")[1] == "."
+				if info_h["POSrange".to_sym] && info_h["POSrange".to_sym].split(",")[0] && info_h["POSrange".to_sym].split(",")[1]
+					outer_start = info_h["POSrange".to_sym].split(",")[0].to_i unless info_h["POSrange".to_sym].split(",")[0] == "."
+					inner_start = info_h["POSrange".to_sym].split(",")[1].to_i unless info_h["POSrange".to_sym].split(",")[1] == "."
 					posrange_f = true
 				end
 
 				# END/STOP
-				if info_h["END"] && info_h["END"].to_i
-					stop = info_h["END"].to_i
+				if info_h["END".to_sym] && info_h["END".to_sym].to_i
+					stop = info_h["END".to_sym].to_i
 				end
 
 				endrange_f = false
-				if info_h["ENDrange"] && info_h["ENDrange"].split(",")[0] && info_h["ENDrange"].split(",")[1]
-					inner_stop = info_h["ENDrange"].split(",")[0].to_i unless info_h["ENDrange"].split(",")[0] == "."
-					outer_stop = info_h["ENDrange"].split(",")[1].to_i unless info_h["ENDrange"].split(",")[1] == "."
+				if info_h["ENDrange".to_sym] && info_h["ENDrange".to_sym].split(",")[0] && info_h["ENDrange".to_sym].split(",")[1]
+					inner_stop = info_h["ENDrange".to_sym].split(",")[0].to_i unless info_h["ENDrange".to_sym].split(",")[0] == "."
+					outer_stop = info_h["ENDrange".to_sym].split(",")[1].to_i unless info_h["ENDrange".to_sym].split(",")[1] == "."
 					endrange_f = true
 				end
 
@@ -1355,17 +1404,17 @@ def vcf_parser(vcf_file, vcf_type)
 				## CIPOS CIEND
 				# Start CIPOS
 				cipos_f = false
-				if info_h["CIPOS"] && info_h["CIPOS"].split(",")[0] && info_h["CIPOS"].split(",")[1]
-					ciposleft = info_h["CIPOS"].split(",")[0].sub(/^-/, "") unless info_h["CIPOS"].split(",")[0] == "."
-					ciposright = info_h["CIPOS"].split(",")[1] unless info_h["CIPOS"].split(",")[1] == "."
+				if info_h["CIPOS".to_sym] && info_h["CIPOS".to_sym].split(",")[0] && info_h["CIPOS".to_sym].split(",")[1]
+					ciposleft = info_h["CIPOS".to_sym].split(",")[0].sub(/^-/, "") unless info_h["CIPOS".to_sym].split(",")[0] == "."
+					ciposright = info_h["CIPOS".to_sym].split(",")[1] unless info_h["CIPOS".to_sym].split(",")[1] == "."
 					posrange_f = true
 				end
 
 				# End CIEND
 				ciend_f = false
-				if info_h["CIEND"] && info_h["CIEND"].split(",")[0] && info_h["CIEND"].split(",")[1]
-					ciendleft = info_h["CIEND"].split(",")[0].sub(/^-/, "") unless info_h["CIEND"].split(",")[0] == "."
-					ciendright = info_h["CIEND"].split(",")[1] unless info_h["CIEND"].split(",")[1] == "."
+				if info_h["CIEND".to_sym] && info_h["CIEND".to_sym].split(",")[0] && info_h["CIEND".to_sym].split(",")[1]
+					ciendleft = info_h["CIEND".to_sym].split(",")[0].sub(/^-/, "") unless info_h["CIEND".to_sym].split(",")[0] == "."
+					ciendright = info_h["CIEND".to_sym].split(",")[1] unless info_h["CIEND".to_sym].split(",")[1] == "."
 					ciend_f = true
 				end
 
@@ -1423,16 +1472,20 @@ def vcf_parser(vcf_file, vcf_type)
 
 			end
 
+			# dbSNP VCF content 出力と格納
+			dbsnp_vcf_f.puts vcf_line_a.collect{|e| e.strip}.join("\t")
 			vcf_variant_a.push(vcf_line_a.collect{|e| e.strip}.join("\t"))
 
 		end # if content_f
 
 	} # vcf_f.each_line
 
+	dbsnp_vcf_f.close if vcf_type == "SNP"
+
 	## JV_VCF0001: Missing VCF meta tag
-	unless (required_header_tag_a - header_tag_a).empty?
-		error_vcf_header_a.push(["JV_VCF0001", "Provide missing VCF meta tags. #{(required_header_tag_a - header_tag_a).join(",")}"])
-	end
+	#unless (required_header_tag_a - header_tag_a).empty?
+	#	error_vcf_header_a.push(["JV_VCF0001", "Provide missing VCF meta tags. #{(required_header_tag_a - header_tag_a).join(",")}"])
+	#end
 
 	## JV_VCF0002: Duplicated VCF meta tag
 	duplicated_required_header_tag_a = []

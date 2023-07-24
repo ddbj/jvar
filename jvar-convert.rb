@@ -34,12 +34,18 @@ require './lib/jvar-method.rb'
 ### Options
 submission_id = ""
 xsd_f = false
+$ref_check_f = true
 OptionParser.new{|opt|
 
 	opt.on('-v [VSUB ID]', 'VSUB submission ID'){|v|
 		raise "usage: -v JVar submission ID (VSUB000001)" if v.nil? || !(/^VSUB\d{6}$/ =~ v)
 		submission_id = v
 		puts "JVar Submission ID: #{v}"
+	}
+
+	opt.on('-s', 'skip REF base identity check'){|v|
+		$ref_check_f = false
+		puts "Skip REF base identity check"
 	}
 
 	opt.on('-x', 'dbVar xsd validation'){|v|
@@ -66,7 +72,7 @@ sin_path = ""
 
 conf_path = "#{sin_path}conf"
 sub_path = "#{sin_path}submission"
-submitter_handle = "JVAR"
+$submitter_handle = "JVAR"
 
 ref_download_path = "#{sin_path}reference-download"
 
@@ -87,7 +93,7 @@ Dir.glob("#{ref_download_path}/*fna").each{|dl_fna|
 		end
 
 		if !accession.empty? && !length.empty?
-			$ref_download_h.store(accession, length)
+			$ref_download_h.store(accession.to_sym, length)
 		end
 
 	end
@@ -986,7 +992,7 @@ if submission_h["Submission Type"] == "Short genetic variations"
 	##
 cont_s = <<EOS
 TYPE:\tCONT
-HANDLE:\t#{submitter_handle}
+HANDLE:\t#{$submitter_handle}
 NAME:\tYuichi Kodama
 FAX:
 TEL:
@@ -1037,7 +1043,7 @@ EOS
 
 method_s += <<EOS
 TYPE:\tMETHOD
-HANDLE:\t#{submitter_handle}
+HANDLE:\t#{$submitter_handle}
 ID:\t#{submission_id}_e#{experiment["Experiment ID"]}
 TEMPLATE_TYPE:\tDIPLOID
 METHOD:\t
@@ -1058,7 +1064,7 @@ EOS
 
 population_s += <<EOS
 TYPE:\tPOPULATION
-HANDLE:\t#{submitter_handle}
+HANDLE:\t#{$submitter_handle}
 ID:\t#{sampleset["SampleSet Name"]}
 EOS
 
@@ -1092,7 +1098,7 @@ EOS
 
 assay_s += <<EOS
 TYPE:\tSNPASSAY
-HANDLE:\t#{submitter_handle}
+HANDLE:\t#{$submitter_handle}
 BATCH:\t#{submission_id}_a#{dataset["Dataset ID"]}
 MOLTYPE: Genomic
 METHOD:\t#{submission_id}_e#{dataset["Experiment ID"]}
@@ -1147,20 +1153,18 @@ EOS
 
 			vcf_file_a.push(dataset["VCF Filename"])
 
-=begin
-			r = Ractor.new do
-				arg = Ractor.receive
-				vcf_parser(arg[0], arg[1])
-			end
+			batch_id = ""
+			biosample_accessions = ""
+			valid_sample_sampleset_refs = ""
+			sampleset_names = ""
 
-			r.send(["#{vcf_path}/#{dataset["VCF Filename"]}", "SNP"])
-
-			tmp_error_vcf_header_a, tmp_error_ignore_vcf_header_a, tmp_error_exchange_vcf_header_a, tmp_warning_vcf_header_a, tmp_error_vcf_content_a, tmp_error_ignore_vcf_content_a, tmp_error_exchange_vcf_content_a, tmp_warning_vcf_content_a, tmp_vcf_variant_a, tmp_vcf_sample_a = [], [], [], [], [], [], [], [], [], []
-			tmp_error_vcf_header_a, tmp_error_ignore_vcf_header_a, tmp_error_exchange_vcf_header_a, tmp_warning_vcf_header_a, tmp_error_vcf_content_a, tmp_error_ignore_vcf_content_a, tmp_error_exchange_vcf_content_a, tmp_warning_vcf_content_a, tmp_vcf_variant_a, tmp_vcf_sample_a = r.take
-=end
+			batch_id = vcf_header_dataset_h[dataset["Dataset ID"]]["batch_id"] if vcf_header_dataset_h[dataset["Dataset ID"]]["batch_id"]
+			biosample_accessions = vcf_header_dataset_h[dataset["Dataset ID"]]["biosample_ids"].join(",")
+			valid_sample_sampleset_refs = sample_name_per_sampleset_h[dataset["SampleSet ID"]] + biosample_accession_per_sampleset_h[dataset["SampleSet ID"]] + sampleset_name_per_sampleset_h[dataset["SampleSet ID"]] + defined_samples_a
+			sampleset_names = sampleset_name_per_sampleset_h[dataset["SampleSet ID"]] if sampleset_name_per_sampleset_h[dataset["SampleSet ID"]]
 
 			tmp_error_vcf_header_a, tmp_error_ignore_vcf_header_a, tmp_error_exchange_vcf_header_a, tmp_warning_vcf_header_a, tmp_error_vcf_content_a, tmp_error_ignore_vcf_content_a, tmp_error_exchange_vcf_content_a, tmp_warning_vcf_content_a, tmp_vcf_variant_a, tmp_vcf_sample_a = [], [], [], [], [], [], [], [], [], []
-			tmp_error_vcf_header_a, tmp_error_ignore_vcf_header_a, tmp_error_exchange_vcf_header_a, tmp_warning_vcf_header_a, tmp_error_vcf_content_a, tmp_error_ignore_vcf_content_a, tmp_error_exchange_vcf_content_a, tmp_warning_vcf_content_a, tmp_vcf_variant_a, tmp_vcf_sample_a = vcf_parser("#{vcf_path}/#{dataset["VCF Filename"]}", "SNP")
+			tmp_error_vcf_header_a, tmp_error_ignore_vcf_header_a, tmp_error_exchange_vcf_header_a, tmp_warning_vcf_header_a, tmp_error_vcf_content_a, tmp_error_ignore_vcf_content_a, tmp_error_exchange_vcf_content_a, tmp_warning_vcf_content_a, tmp_vcf_variant_a, tmp_vcf_sample_a = vcf_parser("#{vcf_path}/#{dataset["VCF Filename"]}", "SNP", {:batch_id => batch_id, :bioproject_accession => bioproject_accession, :biosample_accessions => biosample_accessions, :valid_sample_sampleset_refs => valid_sample_sampleset_refs, :sampleset_names => sampleset_names, :snp_vcf => "#{excel_path}/#{submission_id}_a#{dataset["Dataset ID"]}.vcf"})
 
 			# VCF 毎に格納
 			error_vcf_header_h.store(dataset["VCF Filename"], tmp_error_vcf_header_a)
@@ -1172,71 +1176,11 @@ EOS
 			error_exchange_vcf_content_h.store(dataset["VCF Filename"], tmp_error_exchange_vcf_content_a)
 			warning_vcf_content_h.store(dataset["VCF Filename"], tmp_warning_vcf_content_a)
 
-			# JV_VCF0042: Invalid sample reference in VCF			
-			if sample_name_per_sampleset_h[dataset["SampleSet ID"]] && biosample_accession_per_sampleset_h[dataset["SampleSet ID"]] && sampleset_name_per_sampleset_h[dataset["SampleSet ID"]] && !tmp_vcf_sample_a.empty?
-				unless (tmp_vcf_sample_a - sample_name_per_sampleset_h[dataset["SampleSet ID"]] - biosample_accession_per_sampleset_h[dataset["SampleSet ID"]] - sampleset_name_per_sampleset_h[dataset["SampleSet ID"]] - defined_samples_a).empty?
-					invalid_sample_ref_vcf_a.push(tmp_vcf_sample_a - sample_name_per_sampleset_h[dataset["SampleSet ID"]] - biosample_accession_per_sampleset_h[dataset["SampleSet ID"]] - sampleset_name_per_sampleset_h[dataset["SampleSet ID"]] - defined_samples_a)
-				end
-			end
-
-			# dbSNP VCF 出力
-			dbsnp_vcf_f = open("#{excel_path}/#{submission_id}_a#{dataset["Dataset ID"]}.vcf", "w")
-
-			first_info_f = true
-			format_f = false
-			tmp_vcf_variant_a.each{|line_a|
-
-				# submitter handle etc を挿入
-				if line_a =~ /^##reference=/
-					dbsnp_vcf_f.puts "##handle=#{submitter_handle}"
-					dbsnp_vcf_f.puts "##batch_id=#{vcf_header_dataset_h[dataset["Dataset ID"]]["batch_id"]}" if vcf_header_dataset_h[dataset["Dataset ID"]] && vcf_header_dataset_h[dataset["Dataset ID"]]["batch_id"]
-					dbsnp_vcf_f.puts "##bioproject_id=#{bioproject_accession}" unless bioproject_accession.empty?
-					dbsnp_vcf_f.puts "##biosample_id=#{vcf_header_dataset_h[dataset["Dataset ID"]]["biosample_ids"].join(",")}" if vcf_header_dataset_h[dataset["Dataset ID"]] && vcf_header_dataset_h[dataset["Dataset ID"]]["biosample_ids"]
-				end
-
-				# INFO 先頭に VRT 挿入、既存 VRT はスキップ
-				if line_a =~ /^##INFO=/ && first_info_f
-					dbsnp_vcf_f.puts '##INFO=<ID=VRT,Number=1,Type=Integer,Description="Variation type,1 - SNV: single nucleotide variation,2 - DIV: deletion/insertion variation,3 - HETEROZYGOUS: variable, but undefined at nucleotide level,4 - STR: short tandem repeat (microsatellite) variation, 5 - NAMED: insertion/deletion variation of named repetitive element,6 - NO VARIATION: sequence scanned for variation, but none observed,7 - MIXED: cluster contains submissions from 2 or more allelic classes (not used),8 - MNV: multiple nucleotide variation with alleles of common length greater than 1,9 - Exception">'
-					first_info_f = false
-				end
-
-				next if line_a =~ /^##INFO=\<ID=VRT,/
-
-				# contig はスキップ
-				next if line_a =~ /^##contig=\<ID=/
-
-				# CHROM の前に挿入
-				if line_a =~ /^#CHROM/ && sampleset_name_per_sampleset_h[dataset["SampleSet ID"]] && sampleset_name_per_sampleset_h[dataset["SampleSet ID"]].size > 0
-					sampleset_name_per_sampleset_h[dataset["SampleSet ID"]].each{|population_id|
-						dbsnp_vcf_f.puts "##population_id=#{population_id}"
-					}
-				end
-
-				dbsnp_vcf_f.puts line_a
-			}
-
-			dbsnp_vcf_f.close
-
-		end
-
-		# JV_VCF0042: Invalid sample reference in VCF
-		unless invalid_sample_ref_vcf_a.sort.uniq.empty?
-			
-			# JV_VCF0042: Invalid sample reference in VCF
-			if error_vcf_header_h[dataset["VCF Filename"]]
-				if error_vcf_header_h[dataset["VCF Filename"]].size == 0
-					error_vcf_header_h[dataset["VCF Filename"]] = [["JV_VCF0042", "Reference a Sample Name of a Sample in the SampleSet or a SampleSet Name in the VCF sample column. #{invalid_sample_ref_vcf_a.sort.uniq.join(",")}"]]
-				elsif error_vcf_header_h[dataset["VCF Filename"]].size > 0
-					error_vcf_header_h[dataset["VCF Filename"]] = error_vcf_header_h[dataset["VCF Filename"]].push(["JV_VCF0042", "Reference a Sample Name of a Sample in the SampleSet or a SampleSet Name in the VCF sample column. #{invalid_sample_ref_vcf_a.sort.uniq.join(",")}"])
-				end
-			end
-
 		end
 
 	end # for dataset in dataset_a
 
 end # if submission_h["Submission Type"] == "Short genetic variations"
-
 
 ###
 ### Structural variations (SV): Validate excel/VCF and generate dbVar XML
@@ -2025,7 +1969,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 			end
 
 			# JV_SV0099: Invalid dataset reference
-			unless dataset_to_experiment_h.keys.include?(variant_call["Dataset ID"])
+			unless dataset_to_experiment_h.has_key?(variant_call["Dataset ID"])
 				invalid_dataset_id_call_a.push("#{variant_call_id}")
 				variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0099 Error: Provide a valid dataset ID. #{variant_call["Dataset ID"]}")
 			end
@@ -2203,11 +2147,11 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 							from_found_f = false
 
 							# contig が download ref にあるかどうか. download にある = assembly には含まれていない
-							if !variant_call["From Chr"].empty? && $ref_download_h.keys.include?(variant_call["From Chr"]) && !from_found_f
+							if !variant_call["From Chr"].empty? && $ref_download_h.has_key?(variant_call["From Chr"].to_sym) && !from_found_f
 								from_assembly = ""
 								from_chr_name = ""
 								from_chr_accession = ""
-								from_chr_length = $ref_download_h[variant_call["From Chr"]].to_i if $ref_download_h[variant_call["From Chr"]].to_i
+								from_chr_length = $ref_download_h[variant_call["From Chr"].to_sym].to_i if $ref_download_h[variant_call["From Chr"].to_sym].to_i
 								from_contig_accession = variant_call["From Chr"]
 								
 								from_valid_contig_f = true
@@ -2248,7 +2192,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 								
 								end # for chromosome_per_assembly_h in chromosome_per_assembly_a						
 
-							end # if !variant_call["From Chr"].empty? && $ref_download_h.keys.include?(variant_call["From Chr"])
+							end # if !variant_call["From Chr"].empty? && $ref_download_h.has_key?(variant_call["From Chr"])
 
 
 							## JV_SV0072: Invalid chromosome reference, to/from は contig 列がなく一体
@@ -2312,11 +2256,11 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 							to_found_f = false
 
 							# contig が download ref にあるかどうか. download にある = assembly には含まれていない
-							if !variant_call["To Chr"].empty? && $ref_download_h.keys.include?(variant_call["To Chr"]) && !to_found_f
+							if !variant_call["To Chr"].empty? && $ref_download_h.has_key?(variant_call["To Chr"].to_sym) && !to_found_f
 								to_assembly = ""
 								to_chr_name = ""
 								to_chr_accession = ""
-								to_chr_length = $ref_download_h[variant_call["To Chr"]].to_i if $ref_download_h[variant_call["To Chr"]].to_i
+								to_chr_length = $ref_download_h[variant_call["To Chr"].to_sym].to_i if $ref_download_h[variant_call["To Chr"].to_sym].to_i
 								to_contig_accession = variant_call["To Chr"]
 								
 								to_valid_contig_f = true
@@ -2356,7 +2300,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 								
 								end # for chromosome_per_assembly_h in chromosome_per_assembly_a						
 
-							end # if !variant_call["To Chr"].empty? && $ref_download_h.keys.include?(variant_call["To Chr"])
+							end # if !variant_call["To Chr"].empty? && $ref_download_h.has_key?(variant_call["To Chr"])
 
 							## JV_SV0072: Invalid chromosome reference, to/from は contig 列がなく一体
 							if !variant_call["To Chr"].empty? && !to_valid_chr_f && !to_valid_contig_f
@@ -2469,11 +2413,11 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 							found_f = false
 
 							# contig が download ref にあるかどうか. download にある = assembly には含まれていない
-							if !variant_call["Chr"].empty? && $ref_download_h.keys.include?(variant_call["Chr"]) && !found_f
+							if !variant_call["Chr"].empty? && $ref_download_h.has_key?(variant_call["Chr"].to_sym) && !found_f
 								assembly = ""
 								chr_name = ""
 								chr_accession = ""
-								chr_length = $ref_download_h[variant_call["Chr"]].to_i if $ref_download_h[variant_call["Chr"]].to_i
+								chr_length = $ref_download_h[variant_call["Chr"].to_sym].to_i if $ref_download_h[variant_call["Chr"].to_sym].to_i
 								contig_accession = variant_call["Chr"]
 								
 								valid_contig_f = true
@@ -2513,7 +2457,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 								
 								end # for chromosome_per_assembly_h in chromosome_per_assembly_a						
 
-							end # if !variant_call["Chr"].empty? && $ref_download_h.keys.include?(variant_call["Chr"])
+							end # if !variant_call["Chr"].empty? && $ref_download_h.has_key?(variant_call["Chr"])
 
 						## JV_SV0077: Contig accession exists for chromosome accession
 						if !variant_call["Contig"].empty? && !variant_call["Chr"].empty?
@@ -3318,10 +3262,10 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 						contig_accession = chromosome_per_assembly_h["refseqAccession"] # fna は refseqAccession 記載
 						valid_contig_f = true
 					# contig が download ref にあるかどうか. download にある=assembly には含まれていない
-					elsif !variant_region["Contig"].empty? && variant_region["Chr"].empty? && $ref_download_h.keys.include?(variant_region["Contig"])
+					elsif !variant_region["Contig"].empty? && variant_region["Chr"].empty? && $ref_download_h.has_key?(variant_region["Contig"].to_sym)
 						chr_name = ""
 						chr_accession = ""
-						chr_length = $ref_download_h[variant_region["Contig"]].to_i if $ref_download_h[variant_region["Contig"]].to_i
+						chr_length = $ref_download_h[variant_region["Contig"].to_sym].to_i if $ref_download_h[variant_region["Contig"].to_sym].to_i
 						contig_accession = variant_region["Contig"]
 						valid_contig_f = true
 						ref_download_f = true
