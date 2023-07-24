@@ -1722,15 +1722,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 			tmp_vcf_variant_region_a = []
 			tmp_vcf_content_log_a = []
 			
-			tmp_error_vcf_header_a, tmp_error_ignore_vcf_header_a, tmp_error_exchange_vcf_header_a, tmp_warning_vcf_header_a, tmp_error_vcf_content_a, tmp_error_ignore_vcf_content_a, tmp_error_exchange_vcf_content_a, tmp_warning_vcf_content_a, tmp_vcf_variant_call_a, tmp_vcf_variant_region_a, tmp_vcf_content_log_a = vcf_parser("#{vcf_path}/#{vcf_sv_f}", "SV")
-
-			# log を VCF に出力
-			# VCF log error and warning
-#			unless tmp_vcf_content_log_a.empty?
-#				tmp_vcf_content_log_a.each{|log_line|
-#					vcf_log_f.puts log_line
-#				}
-#			end
+			tmp_error_vcf_header_a, tmp_error_ignore_vcf_header_a, tmp_error_exchange_vcf_header_a, tmp_warning_vcf_header_a, tmp_error_vcf_content_a, tmp_error_ignore_vcf_content_a, tmp_error_exchange_vcf_content_a, tmp_warning_vcf_content_a, tmp_vcf_variant_call_a, tmp_vcf_variant_region_a, tmp_vcf_content_log_a = vcf_parser("#{vcf_path}/#{vcf_sv_f}", "SV", {})
 
 			for tmp_vcf_variant_call_h in tmp_vcf_variant_call_a
 

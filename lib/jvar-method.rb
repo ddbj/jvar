@@ -92,9 +92,9 @@ def vcf_parser(vcf_file, vcf_type, args)
 		"DUP:TANDEM".to_sym => "tandem duplication",
 		"INS:NOVEL".to_sym => "novel sequence insertion",
 		"INS:ME".to_sym => "mobile element insertion",
-		"INS:ME:ALU".to_sym => "Alu insertion",
+		"INS:ME:ALU".to_sym => "alu insertion",
 		"DEL:ME".to_sym => "mobile element deletion",
-		"DEL:ME:ALU".to_sym => "Alu deletion"
+		"DEL:ME:ALU".to_sym => "alu deletion"
 	}
 
 	# SV VCF INFO SVTYPE
@@ -480,17 +480,21 @@ def vcf_parser(vcf_file, vcf_type, args)
 					vcf_sample_a = vcf_column_out_a[9..-1] if vcf_column_out_a[9..-1]
 				end
 
-				# JV_VCF0042: Invalid sample reference in VCF
-				unless (vcf_sample_a - args[:valid_sample_sampleset_refs]).empty?
-					error_vcf_header_a.push(["JV_VCF0042", "Reference a Sample Name of a Sample in the SampleSet or a SampleSet Name in the VCF sample column. #{(vcf_sample_a - args[:valid_sample_sampleset_refs]).sort.uniq.join(",")}"])
-				end
+				if vcf_type == "SNP"
+				
+					# JV_VCF0042: Invalid sample reference in VCF
+					unless (vcf_sample_a - args[:valid_sample_sampleset_refs]).empty?
+						error_vcf_header_a.push(["JV_VCF0042", "Reference a Sample Name of a Sample in the SampleSet or a SampleSet Name in the VCF sample column. #{(vcf_sample_a - args[:valid_sample_sampleset_refs]).sort.uniq.join(",")}"])
+					end
 
-				if vcf_type == "SNP" # dbSNP VCF output
-					args[:sampleset_names].each{|population_id|
-						dbsnp_vcf_f.puts "##population_id=#{population_id}"
-					}
+					if vcf_type == "SNP" # dbSNP VCF output
+						args[:sampleset_names].each{|population_id|
+							dbsnp_vcf_f.puts "##population_id=#{population_id}"
+						}
 
-					dbsnp_vcf_f.puts "##{vcf_column_out_a.join("\t")}"
+						dbsnp_vcf_f.puts "##{vcf_column_out_a.join("\t")}"
+					end
+
 				end
 
 			else # reference INFO FORMAT FILTER contig #CHROM 以外のヘッダー行
@@ -818,11 +822,11 @@ def vcf_parser(vcf_file, vcf_type, args)
 						# archive target のみ格納
 						if vcf_type == "SNP"
 							target_format_tag_snp_h.keys.each{|target_ft_key|							
-								tmp_format_data_h.store("#{target_ft_key}", sample_value.split(":")[k]) if key == "#{target_ft_key}" && sample_value.split(":")[k] && sample_value.split(":")[k].gsub(".", "") # per SampleSet this VCF/dataset belongs to.
+								tmp_format_data_h.store(target_ft_key, sample_value.split(":")[k]) if key == "#{target_ft_key}" && sample_value.split(":")[k] && sample_value.split(":")[k].gsub(".", "") # per SampleSet this VCF/dataset belongs to.
 							}
 						elsif vcf_type == "SV"
 							target_format_tag_sv_h.keys.each{|target_ft_key|
-								tmp_format_data_h.store("#{target_ft_key}", sample_value.split(":")[k]) if key == "#{target_ft_key}" && sample_value.split(":")[k] && sample_value.split(":")[k].gsub(".", "") # per SampleSet this VCF/dataset belongs to.
+								tmp_format_data_h.store(target_ft_key, sample_value.split(":")[k]) if key == "#{target_ft_key}" && sample_value.split(":")[k] && sample_value.split(":")[k].gsub(".", "") # per SampleSet this VCF/dataset belongs to.
 							}
 						end
 
@@ -1473,7 +1477,7 @@ def vcf_parser(vcf_file, vcf_type, args)
 			end
 
 			# dbSNP VCF content 出力と格納
-			dbsnp_vcf_f.puts vcf_line_a.collect{|e| e.strip}.join("\t")
+			dbsnp_vcf_f.puts vcf_line_a.collect{|e| e.strip}.join("\t") if vcf_type == "SNP"
 			vcf_variant_a.push(vcf_line_a.collect{|e| e.strip}.join("\t"))
 
 		end # if content_f
