@@ -6,8 +6,7 @@ require 'pp'
 require 'csv'
 require 'fileutils'
 require 'roo'
-require 'set'
-require './conf/jvar-config.rb'
+require './lib/jvar-config.rb'
 
 #
 # Bioinformation and DDBJ Center
@@ -26,7 +25,6 @@ def vcf_parser(vcf_file, vcf_type, args)
 
 	# sin_path = "/usr/local/bin/"
 	sin_path = ""
-	conf_path = "#{sin_path}conf"
 
 	# Header
 	required_header_tag_h = {

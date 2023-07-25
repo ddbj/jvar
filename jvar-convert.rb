@@ -9,9 +9,8 @@ require 'json'
 require 'jsonl'
 require 'builder'
 require 'open3'
-require 'set'
 require './lib/jvar-method.rb'
-require './conf/jvar-config.rb'
+require './lib/jvar-config.rb'
 #sin require '/usr/local/bin/lib/jvar-method.rb'
 
 #
@@ -83,11 +82,9 @@ raise "Specify a valid submission_id." if submission_id.empty?
 ## 設定
 # sin_path = "/usr/local/bin/"
 sin_path = ""
-
-conf_path = "#{sin_path}conf"
 sub_path = "#{sin_path}submission"
-$submitter_handle = "JVAR"
 
+$submitter_handle = "JVAR"
 ref_download_path = "#{sin_path}reference-download"
 
 $ref_download_h = {}
