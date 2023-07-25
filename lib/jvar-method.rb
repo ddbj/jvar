@@ -818,7 +818,7 @@ def vcf_parser(vcf_file, vcf_type, args)
 				s = 0
 				for sample_value in sample_a
 
-					if sample_value.split(":").size != format.split(":").size
+					if sample_value.split(":").size != format.split(":").size && s == 0
 						# JV_VCF0039: Inconsistent FORMAT keys and sample values
 						vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_VCF0039 Warning: Number of FORMAT keys and sample values are different.")
 						inconsistent_format_c += 1
@@ -1800,7 +1800,7 @@ def table_parse(table_input_a, base_number_a, object)
 
 		column_a = []
 		for item_h in parsed_table_a
-			column_a.push(item_h[header_attr].nil? ? "" : item_h[header_attr])
+			column_a.push(item_h[:"#{header_attr}"].nil? ? "" : item_h[:"#{header_attr}"])
 		end
 
 		attr_table_h.store(:"#{header_attr}", column_a)
@@ -1834,7 +1834,7 @@ def pubinfo_pmid(pmid_a)
 
 			pub_h = JSON.parse(response)
 
-			if pub_h["result"][pmid] && !pub_h["result"][pmid]["error"]
+			if pub_h["result"] && pub_h["result"][pmid] && !pub_h["result"][pmid]["error"]
 				if pub_h["result"] && pub_h["result"][pmid] && pub_h["result"][pmid]["pubdate"] =~ /([12]\d{3})/
 					pub_year = $1
 				end

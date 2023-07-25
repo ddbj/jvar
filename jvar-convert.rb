@@ -323,7 +323,6 @@ study_h.store(:vload_id, study_store_h[:vload_id][0].nil? ? "" : study_store_h[:
 ### SampleSet
 ###
 sampleset_a, sampleset_h, sampleset_table_parse_error_a = table_parse(sampleset_sheet_a, [3], "SampleSet")
-
 unless sampleset_table_parse_error_a.empty?
 	error_common_a.push(["JV_C0058", "Provide a required key value. SampleSet: SampleSet Name"])
 end
@@ -1703,19 +1702,18 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 				# JV_VCF0042: Invalid sample reference in VCF
 				unless tmp_vcf_variant_call_h[:FORMAT].empty?
 					for ft_value_h in tmp_vcf_variant_call_h[:FORMAT]
-
-						if sample_name_per_sampleset_h[tmp_vcf_variant_call_h[:"SampleSet ID"]] && biosample_accession_per_sampleset_h[tmp_vcf_variant_call_h[:"SampleSet ID"]] && sampleset_name_per_sampleset_h[tmp_vcf_variant_call_h[:"SampleSet ID"]]
-							unless (ft_value_h.keys - sample_name_per_sampleset_h[tmp_vcf_variant_call_h[:"SampleSet ID"]] - biosample_accession_per_sampleset_h[tmp_vcf_variant_call_h[:"SampleSet ID"]] - sampleset_name_per_sampleset_h[tmp_vcf_variant_call_h[:"SampleSet ID"]] - defined_samples_list_h.keys).empty?
-								invalid_sample_ref_vcf_a.push((ft_value_h.keys - sample_name_per_sampleset_h[tmp_vcf_variant_call_h[:"SampleSet ID"]] - biosample_accession_per_sampleset_h[tmp_vcf_variant_call_h[:"SampleSet ID"]] - sampleset_name_per_sampleset_h[tmp_vcf_variant_call_h[:"SampleSet ID"]] - defined_samples_list_h.keys))
+						if sample_name_per_sampleset_h[tmp_vcf_variant_call_h[:"SampleSet ID"].to_i] && biosample_accession_per_sampleset_h[tmp_vcf_variant_call_h[:"SampleSet ID"].to_i] && sampleset_name_per_sampleset_h[tmp_vcf_variant_call_h[:"SampleSet ID"].to_i]
+							unless (ft_value_h.keys.map{|e| "#{e}"} - sample_name_per_sampleset_h[tmp_vcf_variant_call_h[:"SampleSet ID"].to_i] - biosample_accession_per_sampleset_h[tmp_vcf_variant_call_h[:"SampleSet ID"].to_i] - sampleset_name_per_sampleset_h[tmp_vcf_variant_call_h[:"SampleSet ID"].to_i] - defined_samples_list_h.keys).empty?
+								invalid_sample_ref_vcf_a.push((ft_value_h.keys.map{|e| "#{e}"} - sample_name_per_sampleset_h[tmp_vcf_variant_call_h[:"SampleSet ID"].to_i] - biosample_accession_per_sampleset_h[tmp_vcf_variant_call_h[:"SampleSet ID"].to_i] - sampleset_name_per_sampleset_h[tmp_vcf_variant_call_h[:"SampleSet ID"].to_i] - defined_samples_list_h.keys))
 							end
 
 							# Genotype flag
 							ft_value_h.values.each{|ft_value|
 								ft_value.each{|key_sym, value|
-									sv_genotype_f = true if "#{key_sym}" == "GT"	|| "#{key_sym}" == "CN"
+									sv_genotype_f = true if "#{key_sym}" == "GT" || "#{key_sym}" == "CN"
 								}
 							}
-						
+
 						end
 					end
 				end # unless tmp_vcf_variant_call_h["FORMAT"].empty?
@@ -2651,10 +2649,10 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 							cn = ""
 							if "#{sample_key_sym}".match?(/^SAM[D|E|N]\d{1,}$/) && sample_name_accession_h.key("#{sample_key_sym}")
 								ref_sample_name = sample_name_accession_h.key("#{sample_key_sym}")
-							elsif sample_name_accession_h["#{sample_key_sym}"]
+							elsif sample_name_accession_h[sample_key_sym]
 								ref_sample_name = "#{sample_key_sym}"
 							# sampleset name であれば OK
-							elsif sampleset_name_per_sampleset_h[variant_call[:"SampleSet ID"]] && sampleset_name_per_sampleset_h[variant_call[:"SampleSet ID"]] == ["#{sample_key_sym}"]
+							elsif sampleset_name_per_sampleset_h[variant_call[:"SampleSet ID"].to_i] && sampleset_name_per_sampleset_h[variant_call[:"SampleSet ID"].to_i] == ["#{sample_key_sym}"]
 								ref_sampleset_id = variant_call[:"SampleSet ID"]
 							# defined name
 							elsif defined_samples_list_h.has_key?("#{sample_key_sym}")
@@ -2695,7 +2693,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 								}
 							elsif !ref_sampleset_id.empty?
 								gt_xml.GENOTYPE(genotype_attr_h){|genotype_e|
-									genotype_e.SAMPLESET(:sampleset_id => ref_sampleset_id)
+									genotype_e.SAMPLES	ET(:sampleset_id => ref_sampleset_id)
 									genotype_e.ALLELE(:allele_copy_number => cn) unless cn.empty?
 								}
 							end
