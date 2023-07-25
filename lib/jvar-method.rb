@@ -357,7 +357,7 @@ def vcf_parser(vcf_file, vcf_type, args)
 			if line.start_with?("#")
 
 				# fileformat and reference
-				if line =~ /^##reference=(\S+)/
+				if line =~ /^##reference=(\S+)/ && refseq_assembly.empty?
 					
 					reference = $1
 					required_header_tag_h["reference"] += 1

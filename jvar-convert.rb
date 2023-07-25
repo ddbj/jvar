@@ -82,6 +82,7 @@ raise "Specify a valid submission_id." if submission_id.empty?
 ## 設定
 # sin_path = "/usr/local/bin/"
 sin_path = ""
+
 sub_path = "#{sin_path}submission"
 
 $submitter_handle = "JVAR"
@@ -1059,9 +1060,11 @@ EOS
 
 		assay_s += dataset[:"Number of Chromosomes Sampled"].empty? ? "" : "SAMPLESIZE:\t#{dataset[:"Number of Chromosomes Sampled"]}\n"
 		assay_s += "ORGANISM:\tHomo sapiens\n"
-		assay_s += dataset[:"SampleSet ID"].empty? ? "" : "POPULATION:\t#{submission_id}_ss#{dataset[:"SampleSet ID"]}\n"
+		assay_s += dataset[:"SampleSet ID"].empty? ? "" : "POPULATION:\t#{dataset[:"SampleSet ID"]}\n"
 		assay_s += dataset[:"Linkout URL"].empty? ? "" : "LINKOUT_URL:\t#{dataset[:"Linkout URL"]}\n"
 		assay_s += dataset[:"Dataset Description"].empty? ? "" : "COMMENT:\t#{dataset[:"Dataset Description"]}\n"
+
+
 
 		assay_s += "||\n"
 
@@ -2690,7 +2693,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 								}
 							elsif !ref_sampleset_id.empty?
 								gt_xml.GENOTYPE(genotype_attr_h){|genotype_e|
-									genotype_e.SAMPLES	ET(:sampleset_id => ref_sampleset_id)
+									genotype_e.SAMPLESET(:sampleset_id => ref_sampleset_id)
 									genotype_e.ALLELE(:allele_copy_number => cn) unless cn.empty?
 								}
 							end
