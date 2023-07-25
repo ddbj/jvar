@@ -1,5 +1,0 @@
-{
-  "Archives": ["AE", "dbGaP", "dbSNP", "dbSNP-batch", "DDBJ", "DGV", "EGA", "ENA", "GENBANK", "GENE", "GEO", "SRA", "TRACE", "GEA", "JGA"],
-  "Phenotypes": ["HP", "MedGen", "MeSH", "OMIM", "SNOMED", "UMLS"],
-  "Other Resources": ["CORIELL", "BioProj", "BioSD", "PubMed", "GeneReviews"]
-}

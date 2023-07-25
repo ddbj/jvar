@@ -9,7 +9,9 @@ require 'json'
 require 'jsonl'
 require 'builder'
 require 'open3'
+require 'set'
 require './lib/jvar-method.rb'
+require './conf/jvar-config.rb'
 #sin require '/usr/local/bin/lib/jvar-method.rb'
 
 #
@@ -35,6 +37,8 @@ require './lib/jvar-method.rb'
 submission_id = ""
 xsd_f = false
 $ref_check_f = true
+$info_regex_f = true
+$format_regex_f = true
 OptionParser.new{|opt|
 
 	opt.on('-v [VSUB ID]', 'VSUB submission ID'){|v|
@@ -46,6 +50,16 @@ OptionParser.new{|opt|
 	opt.on('-s', 'skip REF base identity check'){|v|
 		$ref_check_f = false
 		puts "Skip REF base identity check"
+	}
+
+	opt.on('-i', 'skip INFO regex check'){|v|
+		$info_regex_f = false
+		puts "Skip INFO regex check"
+	}
+
+	opt.on('-f', 'skip FORMAT regex check'){|v|
+		$format_regex_f = false
+		puts "Skip FORMAT regex check"
 	}
 
 	opt.on('-x', 'dbVar xsd validation'){|v|
@@ -93,7 +107,7 @@ Dir.glob("#{ref_download_path}/*fna").each{|dl_fna|
 		end
 
 		if !accession.empty? && !length.empty?
-			$ref_download_h.store(accession.to_sym, length)
+			$ref_download_h.store(accession, length)
 		end
 
 	end
@@ -156,7 +170,7 @@ total_variant_call_h = {}
 ### Function
 def clean_number(num)
 
-	if num.is_a?(Float) && /\.0$/ =~ num.to_s
+	if num.is_a?(Float) && num.to_s.match?(/\.0$/)
 		return num.to_i
 	else
 		return num
@@ -172,61 +186,24 @@ end
 instruction = '<?xml version="1.0" encoding="UTF-8"?>'
 
 ## XREF
-xref_db_h = {}
-open("#{conf_path}/xref.json"){|f|
-	xref_db_h = JSON.load(f)
-}
+xref_db_phenotypes_regex = $xref_db_h[:Phenotypes].join("|")
+xref_db_all_regex = $xref_db_h.values.join("|")
 
-xref_db_phenotypes_regex = xref_db_h["Phenotypes"].join("|")
-xref_db_all_regex = xref_db_h.values.join("|")
-
-## Variant Call, Region Types mappings
-vtype_h = {}
-open("#{conf_path}/variant_type.json"){|f|
-	vtype_h = JSON.load(f)
-}
-
-## Inappropriate combination of method and analysis types
-inapp_method_analysis_types_a = []
-open("#{conf_path}/inappropriate_experiment_analysis_types.json"){|f|
-	inapp_method_analysis_types_a = JSON.load(f)
-}
-
-## Assembly
-assembly_a = []
-open("#{conf_path}/ref_assembly.jsonl"){|f|
-	assembly_a = JSONL.parse(f)
-}
-
+## assembly from NCBI Dataset
 allowed_assembly_a = []
-assembly_a.each{|assembly_h|
+$assembly_a.each{|assembly_h|
 	allowed_assembly_a.push(assembly_h.values)
 }
 allowed_assembly_a = allowed_assembly_a.flatten
 
-## chromosomes
-sequence_a = []
-open("#{conf_path}/ref_sequence_report.jsonl"){|f|
-	sequence_a = JSONL.parse(f)
-}
-
 ## Globally defined samples (e.g. Hapmap, 1000 Genomes, https://www.internationalgenome.org/data-portal/sample)
-defined_samples_h = {}
-open("#{conf_path}/defined_samples.json"){|f|
-	defined_samples_h = JSON.load(f)
-}
-
-defined_samples_a = []
-for defined_sample_name, defined_sample_h in defined_samples_h
-
-	defined_samples_a.push(defined_sample_h["sample_name"]) if defined_sample_h["sample_name"] && !defined_sample_h["sample_name"].empty?
-	defined_samples_a.push(defined_sample_h["biosample_accession"]) if defined_sample_h["biosample_accession"] && !defined_sample_h["biosample_accession"].empty?
-	defined_samples_a.push(defined_sample_h["population_code"]) if defined_sample_h["population_code"] && !defined_sample_h["population_code"].empty?
-	defined_samples_a.push(defined_sample_h["superpopulation_code"]) if defined_sample_h["superpopulation_code"] && !defined_sample_h["superpopulation_code"].empty?
-
+defined_samples_list_h = {}
+for defined_sample_name, defined_sample_h in $defined_samples_h
+	defined_samples_list_h.store(defined_sample_h[:sample_name], 0) if defined_sample_h[:sample_name] && !defined_sample_h[:sample_name].empty?
+	defined_samples_list_h.store(defined_sample_h[:biosample_accession], 0) if defined_sample_h[:biosample_accession] && !defined_sample_h[:biosample_accession].empty?
+	defined_samples_list_h.store(defined_sample_h[:population_code], 0) if defined_sample_h[:population_code] && !defined_sample_h[:population_code].empty?
+	defined_samples_list_h.store(defined_sample_h[:superpopulation_code], 0) if defined_sample_h[:superpopulation_code] && !defined_sample_h[:superpopulation_code].empty?
 end
-
-defined_samples_a = defined_samples_a.sort.uniq
 
 ### Read the JVar submission excel file
 
@@ -274,13 +251,13 @@ for object in object_a
 		line_trimmed_a = line_a.reverse.drop_while(&:nil?).map(&:to_s).drop_while(&:empty?).reverse.map{|v| v.strip}
 
 		# コメント行と空のアレイをスキップ
-		next if line_trimmed_a[0] =~ /^##/ || line_trimmed_a.empty?
+		next if line_trimmed_a[0].nil? || line_trimmed_a.empty? || line_trimmed_a[0].start_with?("##")
 
 		case object
 
 		when "Study" then
 			study_sheet_a.push(line_trimmed_a)
-			study_store_h.store(line_trimmed_a[0], line_trimmed_a[1..-1])
+			study_store_h.store(:"#{line_trimmed_a[0]}", line_trimmed_a[1..-1])
 		when "SampleSet" then
 			sampleset_sheet_a.push(line_trimmed_a)
 		when "Sample" then
@@ -308,39 +285,39 @@ submission_h = Hash.new
 study_h = Hash.new
 
 ## Submission
-submission_h.store("Submission Type", study_store_h["Submission Type"][0])
+submission_h.store(:"Submission Type", study_store_h[:"Submission Type"][0])
 
-submission_h.store("Hold/Release", study_store_h["Hold/Release"][0])
+submission_h.store(:"Hold/Release", study_store_h[:"Hold/Release"][0])
 
 submitter_a = []
-study_store_h["Submitter Last Name"].size.times{|i|
+study_store_h[:"Submitter Last Name"].size.times{|i|
 	submitter_each_h = {}
-	submitter_each_h.store("Submitter Last Name", study_store_h["Submitter Last Name"][i].nil? ? "" : study_store_h["Submitter Last Name"][i])
-	submitter_each_h.store("Submitter Middle Name", study_store_h["Submitter Middle Name"][i].nil? ? "" : study_store_h["Submitter Middle Name"][i])
-	submitter_each_h.store("Submitter First Name", study_store_h["Submitter First Name"][i].nil? ? "" : study_store_h["Submitter First Name"][i])
-	submitter_each_h.store("Submitter Email", study_store_h["Submitter Email"][i].nil? ? "" : study_store_h["Submitter Email"][i])
-	submitter_each_h.store("Submitter Affiliation", study_store_h["Submitter Affiliation"][i].nil? ? "" : study_store_h["Submitter Affiliation"][i])
+	submitter_each_h.store(:"Submitter Last Name", study_store_h[:"Submitter Last Name"][i].nil? ? "" : study_store_h[:"Submitter Last Name"][i])
+	submitter_each_h.store(:"Submitter Middle Name", study_store_h[:"Submitter Middle Name"][i].nil? ? "" : study_store_h[:"Submitter Middle Name"][i])
+	submitter_each_h.store(:"Submitter First Name", study_store_h[:"Submitter First Name"][i].nil? ? "" : study_store_h[:"Submitter First Name"][i])
+	submitter_each_h.store(:"Submitter Email", study_store_h[:"Submitter Email"][i].nil? ? "" : study_store_h[:"Submitter Email"][i])
+	submitter_each_h.store(:"Submitter Affiliation", study_store_h[:"Submitter Affiliation"][i].nil? ? "" : study_store_h[:"Submitter Affiliation"][i])
 	submitter_a.push(submitter_each_h)
 }
 
-submission_h.store("Submitter", submitter_a)
-submission_h.store("Submission Date", study_store_h["Submission Date"][0].nil? ? "" : study_store_h["Submission Date"][0])
-submission_h.store("Public Release Date", study_store_h["Public Release Date"][0].nil? ? "" : study_store_h["Public Release Date"][0])
-submission_h.store("Last Update Date", study_store_h["Last Update Date"][0].nil? ? "" : study_store_h["Last Update Date"][0])
-submission_h.store("vload_id", study_store_h["vload_id"][0].nil? ? "" : study_store_h["vload_id"][0])
+submission_h.store(:Submitter, submitter_a)
+submission_h.store(:"Submission Date", study_store_h[:"Submission Date"][0].nil? ? "" : study_store_h[:"Submission Date"][0])
+submission_h.store(:"Public Release Date", study_store_h[:"Public Release Date"][0].nil? ? "" : study_store_h[:"Public Release Date"][0])
+submission_h.store(:"Last Update Date", study_store_h[:"Last Update Date"][0].nil? ? "" : study_store_h[:"Last Update Date"][0])
+submission_h.store(:vload_id, study_store_h[:vload_id][0].nil? ? "" : study_store_h[:vload_id][0])
 
 ## Study
-study_h.store("Submission Type", study_store_h["Submission Type"][0])
-study_h.store("Study Title", study_store_h["Study Title"][0].nil? ? "" : study_store_h["Study Title"][0])
-study_h.store("Study Description", study_store_h["Study Description"][0].nil? ? "" : study_store_h["Study Description"][0])
-study_h.store("Study Type", study_store_h["Study Type"][0].nil? ? "" : study_store_h["Study Type"][0])
-study_h.store("PubMed ID", study_store_h["PubMed ID"].empty? ? "" : study_store_h["PubMed ID"])
-study_h.store("Publication DOI", study_store_h["Publication DOI"][0].nil? ? "" : study_store_h["Publication DOI"][0])
-study_h.store("BioProject Accession", study_store_h["BioProject Accession"][0].nil? ? "" : study_store_h["BioProject Accession"][0])
-study_h.store("Study URL", study_store_h["Study URL"][0].nil? ? "" : study_store_h["Study URL"][0])
-study_h.store("Related Study", study_store_h["Related Study"][0].nil? ? "" : study_store_h["Related Study"][0])
-study_h.store("Study ID", study_store_h["Study ID"][0].nil? ? "" : study_store_h["Study ID"][0])
-study_h.store("vload_id", study_store_h["vload_id"][0].nil? ? "" : study_store_h["vload_id"][0])
+study_h.store(:"Submission Type", study_store_h[:"Submission Type"][0])
+study_h.store(:"Study Title", study_store_h[:"Study Title"][0].nil? ? "" : study_store_h[:"Study Title"][0])
+study_h.store(:"Study Description", study_store_h[:"Study Description"][0].nil? ? "" : study_store_h[:"Study Description"][0])
+study_h.store(:"Study Type", study_store_h[:"Study Type"][0].nil? ? "" : study_store_h[:"Study Type"][0])
+study_h.store(:"PubMed ID", study_store_h[:"PubMed ID"].empty? ? "" : study_store_h[:"PubMed ID"])
+study_h.store(:"Publication DOI", study_store_h[:"Publication DOI"][0].nil? ? "" : study_store_h[:"Publication DOI"][0])
+study_h.store(:"BioProject Accession", study_store_h[:"BioProject Accession"][0].nil? ? "" : study_store_h[:"BioProject Accession"][0])
+study_h.store(:"Study URL", study_store_h[:"Study URL"][0].nil? ? "" : study_store_h[:"Study URL"][0])
+study_h.store(:"Related Study", study_store_h[:"Related Study"][0].nil? ? "" : study_store_h[:"Related Study"][0])
+study_h.store(:"Study ID", study_store_h[:"Study ID"][0].nil? ? "" : study_store_h[:"Study ID"][0])
+study_h.store(:vload_id, study_store_h[:vload_id][0].nil? ? "" : study_store_h[:vload_id][0])
 
 ###
 ### SampleSet
@@ -438,28 +415,28 @@ non_merging_experiment_id_a = []
 experiment_id_method_category_h = {}
 for experiment_pre in experiment_pre_a
 
-	experiment_id_a.push(experiment_pre["Experiment ID"]) unless experiment_pre["Experiment ID"].empty?
+	experiment_id_a.push(experiment_pre[:"Experiment ID"].to_i) unless experiment_pre[:"Experiment ID"].empty?
 
 	# merge 以外で METHOD を作成
-	if experiment_pre["Method Type"] != "Merging" && experiment_pre["Analysis Type"] != "Merging"
+	if experiment_pre[:"Method Type"] != "Merging" && experiment_pre[:"Analysis Type"] != "Merging"
 
-		non_merging_experiment_id_a.push(experiment_pre["Experiment ID"])
+		non_merging_experiment_id_a.push(experiment_pre[:"Experiment ID"].to_i)
 
 		## Method category
-		experiment_pre["Method Type"]
+		# experiment_pre[:"Method Type"]
 
 		#experiment_id_method_category_h.store(experiment_pre["Experiment ID"], )
 
 		## JV_C0048: Merged Experiment exist for non-Merging method and analysis types
-		error_ignore_common_a.push(["JV_C0048", "Merged Experiment must only exist in an experiment with Method Type=Merging and Analysis Type=Merging Experiment ID: #{experiment_pre["Experiment ID"]}"]) unless experiment_pre["Merged Experiment IDs"].empty?
+		error_ignore_common_a.push(["JV_C0048", "Merged Experiment must only exist in an experiment with Method Type=Merging and Analysis Type=Merging Experiment ID: #{experiment_pre[:"Experiment ID"]}"]) unless experiment_pre[:"Merged Experiment IDs"].empty?
 
 		method_a = []
-		experiment_pre.each{|key, value|
-			method_a.push("#{key}:#{value}") if !value.empty? && !["Merged Experiment IDs", "Experiment ID", "row"].include?(key)
+		experiment_pre.each{|key_sym, value|
+			method_a.push("#{key_sym}:#{value}") if !value.empty? && !["Merged Experiment IDs", "Experiment ID", "row"].include?("#{key_sym}")
 		}
 
 		method = method_a.join("\n")
-		experiment_pre.store("METHOD", method)
+		experiment_pre.store(:METHOD, method)
 		experiment_a.push(experiment_pre)
 
 	end
@@ -473,38 +450,37 @@ error_common_a.push(["JV_C0053", "Experiment ID must be unique within the study.
 for experiment_pre in experiment_pre_a
 
 	# merge 対象 experiment を結合
-	if experiment_pre["Method Type"] == "Merging" || experiment_pre["Analysis Type"] == "Merging"
+	if experiment_pre[:"Method Type"] == "Merging" || experiment_pre[:"Analysis Type"] == "Merging"
 		combined_method_a = ["Following multiple methods were performed."]
 		combined_method_s = ""
 
 		eid_count = 0
-		experiment_pre["Merged Experiment IDs"].split(/ *, */).each{|eid|
+		experiment_pre[:"Merged Experiment IDs"].split(/ *, */).each{|eid|
 
 			eid_count += 1
 
 			## JV_C0047: Invalid Merged Experiment ID reference
-			if !non_merging_experiment_id_a.include?(eid)
+			if !non_merging_experiment_id_a.include?(eid.to_i)
 				error_ignore_common_a.push(["JV_C0047", "Merged Experiment/Experiment ID must refer to a valid experiment with the same Experiment Type. Experiment ID: #{eid}"])
 			end
 
 			for experiment in experiment_a
-				if experiment["Experiment ID"] == eid
-					combined_method_a.push(experiment["METHOD"])
+				if experiment[:"Experiment ID"] == eid.to_i
+					combined_method_a.push(experiment[:METHOD])
 
 					## JV_C0047: Invalid Merged Experiment ID reference
-					error_ignore_common_a.push(["JV_C0047", "Merged Experiment/Experiment ID must refer to a valid experiment with the same Experiment Type. Experiment ID: #{eid}"]) if experiment["Experiment Type"] != experiment_pre["Experiment Type"]
-
+					error_ignore_common_a.push(["JV_C0047", "Merged Experiment/Experiment ID must refer to a valid experiment with the same Experiment Type. Experiment ID: #{eid}"]) if experiment[:"Experiment Type"] != experiment_pre[:"Experiment Type"]
 				end
 			end
 
 		}
 
 		## JV_C0049: Missing merged Experiment for Merging method and analysis types
-		error_ignore_common_a.push(["JV_C0049", "When Method Type=Merging and Analysis Type=Merging, there must be multiple merged experiment. Merged Experiment IDs: #{experiment_pre["Merged Experiment IDs"]}"]) unless eid_count > 1
+		error_ignore_common_a.push(["JV_C0049", "When Method Type=Merging and Analysis Type=Merging, there must be multiple merged experiment. Merged Experiment IDs: #{experiment_pre[:"Merged Experiment IDs"]}"]) unless eid_count > 1
 
 		combined_method_s = combined_method_a.join("\n\n")
 
-		experiment_pre.store("METHOD", combined_method_s)
+		experiment_pre.store(:METHOD, combined_method_s)
 		experiment_a.push(experiment_pre)
 
 	end
@@ -514,61 +490,49 @@ end
 ## JV_C0004: Invalid Submission Type
 submission_type_a = ["Short genetic variations", "Structural variations"]
 
-unless submission_type_a.include?(submission_h["Submission Type"])
+unless submission_type_a.include?(submission_h[:"Submission Type"])
 	error_common_a.push(["JV_C0004", 'A submission type must be either "Short genetic variations" or "Structural variations"'])
 else
-	if submission_h["Submission Type"] == "Short genetic variations"
+	if submission_h[:"Submission Type"] == "Short genetic variations"
 		submission_type = "SNP"
-	elsif submission_h["Submission Type"] == "Structural variations"
+	elsif submission_h[:"Submission Type"] == "Structural variations"
 		submission_type = "SV"
 	end
 end
 
-## JV_C0009: Missing required field
-required_fields_error_h = {}
-open("#{conf_path}/required_fields_error.json"){|f|
-	required_fields_error_h = JSON.load(f)
-}
-
-## CV
-cv_h = {}
-open("#{conf_path}/cv.json"){|f|
-	cv_h = JSON.load(f)
-}
-
 # 必須エラーチェック
 # CV チェック
-for object in required_fields_error_h.keys
+for object in $required_fields_error_h.keys
 
 	case object
 
 	when "Study" then
 
 		# Submission
-		submission_h.each{|key, value|
+		submission_h.each{|key_sym, value|
 
 			# 必須
 			if value == "Submitter"
-				required_fields_error_h[object].each{|field|
-					value.each{|submitter_key, submitter_value|
-						if submitter_key == field
-							error_common_a.push(["JV_C0009", "#{object} has missing mandatory field(s) #{submitter_key}."]) if submitter_value.nil? || submitter_value.empty?
+				$required_fields_error_h[object].each{|field|
+					value.each{|submitter_key_sym, submitter_value|
+						if "#{submitter_key_sym}" == field
+							error_common_a.push(["JV_C0009", "#{object} has missing mandatory field(s) #{submitter_key_sym}."]) if submitter_value.nil? || submitter_value.empty?
 						end
 					}
 				}
 			else
 
 				# 必須
-				required_fields_error_h[object].each{|field|
-					if key == field
-						error_common_a.push(["JV_C0009", "#{object} has missing mandatory field(s) #{key}."]) if value.nil? || value.empty?
+				$required_fields_error_h[object].each{|field|
+					if "#{key_sym}" == field
+						error_common_a.push(["JV_C0009", "#{object} has missing mandatory field(s) #{key_sym}."]) if value.nil? || value.empty?
 					end
 				}
 
 				# CV
-				if value && !value.empty? && cv_h[object] && cv_h[object][key] && !cv_h[object][key].include?(value)
+				if value && !value.to_s.empty? && $cv_h[object] && $cv_h[object]["#{key_sym}"] && !$cv_h[object]["#{key_sym}"].include?(value)
 					## JV_C0057: Invalid value for controlled terms
-					error_ignore_common_a.push(["JV_C0057", "Value is not in controlled terms. #{object} #{key}:#{value}"])
+					error_ignore_common_a.push(["JV_C0057", "Value is not in controlled terms. #{object} #{key_sym}:#{value}"])
 				end
 
 			end
@@ -576,18 +540,18 @@ for object in required_fields_error_h.keys
 		}
 
 		# Study
-		study_h.each{|key, value|
+		study_h.each{|key_sym, value|
 
-			required_fields_error_h[object].each{|field|
-				if key == field
-					error_common_a.push(["JV_C0009", "#{object} has missing mandatory field(s) #{key}."]) if value.nil? || value.empty?
+			$required_fields_error_h[object].each{|field|
+				if "#{key_sym}" == field
+					error_common_a.push(["JV_C0009", "#{object} has missing mandatory field(s) #{key_sym}."]) if value.nil? || value.empty?
 				end
 			}
 
 			# CV
-			if value && !value.empty? && cv_h[object] && cv_h[object][key] && !cv_h[object][key].include?(value)
+			if value && !value.empty? && $cv_h[object] && $cv_h[object]["#{key_sym}"] && !$cv_h[object]["#{key_sym}"].include?(value)
 				## JV_C0057: Invalid value for controlled terms
-				error_ignore_common_a.push(["JV_C0057", "Value is not in controlled terms. #{object} #{key}:#{value}"])
+				error_ignore_common_a.push(["JV_C0057", "Value is not in controlled terms. #{object} #{key_sym}:#{value}"])
 			end
 
 		}
@@ -595,19 +559,19 @@ for object in required_fields_error_h.keys
 	when "SampleSet" then
 
 		for sampleset in sampleset_a
-			required_fields_error_h[object].each{|field|
-				sampleset.each{|key, value|
+			$required_fields_error_h[object].each{|field|
+				sampleset.each{|key_sym, value|
 					if key == field
-						error_common_a.push(["JV_C0009", "#{object} has missing mandatory field(s) #{key}."]) if value.nil? || value.empty?
+						error_common_a.push(["JV_C0009", "#{object} has missing mandatory field(s) #{key_sym}."]) if value.nil? || value.empty?
 					end
 				} # sampleset.each{|key, value|
-			} # required_fields_error_h[object].each{|field|
+			} # $required_fields_error_h[object].each{|field|
 
-			sampleset.each{|key, value|
+			sampleset.each{|key_sym, value|
 				# CV
-				if value && !value.empty? && cv_h[object] && cv_h[object][key] && !cv_h[object][key].include?(value)
+				if value && !value.empty? && $cv_h[object] && $cv_h[object]["#{key_sym}"] && !$cv_h[object]["#{key_sym}"].include?(value)
 					## JV_C0057: Invalid value for controlled terms
-					error_ignore_common_a.push(["JV_C0057", "Value is not in controlled terms. #{object} #{key}:#{value}"])
+					error_ignore_common_a.push(["JV_C0057", "Value is not in controlled terms. #{object} #{key_sym}:#{value}"])
 				end
 			}
 
@@ -616,17 +580,17 @@ for object in required_fields_error_h.keys
 	when "Sample" then
 
 		for sample in sample_a
-			required_fields_error_h[object].each{|field|
+			$required_fields_error_h[object].each{|field|
 				sample.each{|key, value|
 					if key == field
 						error_common_a.push(["JV_C0009", "#{object} has missing mandatory field(s) #{key}."]) if value.nil? || value.empty?
 					end
 				} # sample.each{|key, value|
-			} # required_fields_error_h[object].each{|field|
+			} # $required_fields_error_h[object].each{|field|
 
 			sample.each{|key, value|
 				# CV
-				if value && !value.empty? && cv_h[object] && cv_h[object][key] && !cv_h[object][key].include?(value)
+				if value && !value.empty? && $cv_h[object] && $cv_h[object][key] && !$cv_h[object][key].include?(value)
 					## JV_C0057: Invalid value for controlled terms
 					error_ignore_common_a.push(["JV_C0057", "Value is not in controlled terms. #{object} #{key}:#{value}"])
 				end
@@ -637,21 +601,21 @@ for object in required_fields_error_h.keys
 	when "Experiment" then
 
 		for experiment in experiment_a
-			unless experiment["Method Type"] == "Merging"
-				required_fields_error_h[object].each{|field|
-					experiment.each{|key, value|
-						if key == field
-							error_common_a.push(["JV_C0009", "#{object} has missing mandatory field(s) #{key}."]) if value.nil? || value.empty?
+			unless experiment[:"Method Type"] == "Merging"
+				$required_fields_error_h[object].each{|field|
+					experiment.each{|key_sym, value|
+						if "#{key_sym}" == field
+							error_common_a.push(["JV_C0009", "#{object} has missing mandatory field(s) #{key_sym}."]) if value.nil? || value.empty?
 						end
 					} # experiment.each{|key, value|
-				} # required_fields_error_h[object].each{|field|
+				} # $required_fields_error_h[object].each{|field|
 			end
 
-			experiment.each{|key, value|
+			experiment.each{|key_sym, value|
 				# CV
-				if value && !value.empty? && cv_h[object] && cv_h[object][key] && !cv_h[object][key].include?(value)
+				if value && !value.empty? && $cv_h[object] && $cv_h[object]["#{key_sym}"] && !$cv_h[object]["#{key_sym}"].include?(value)
 					## JV_C0057: Invalid value for controlled terms
-					error_ignore_common_a.push(["JV_C0057", "Value is not in controlled terms. #{object} #{key}:#{value}"])
+					error_ignore_common_a.push(["JV_C0057", "Value is not in controlled terms. #{object} #{key_sym}:#{value}"])
 				end
 			}
 
@@ -660,19 +624,19 @@ for object in required_fields_error_h.keys
 	when "Dataset" then
 
 		for dataset in dataset_a
-			required_fields_error_h[object].each{|field|
-				dataset.each{|key, value|
+			$required_fields_error_h[object].each{|field|
+				dataset.each{|key_sym, value|
 					if key == field
-						error_common_a.push(["JV_C0009", "#{object} has missing mandatory field(s) #{key}."]) if value.nil? || value.empty?
+						error_common_a.push(["JV_C0009", "#{object} has missing mandatory field(s) #{key_sym}."]) if value.nil? || value.empty?
 					end
 				} # dataset.each{|key, value|
-			} # required_fields_error_h[object].each{|field|
+			} # $required_fields_error_h[object].each{|field|
 
-			dataset.each{|key, value|
+			dataset.each{|key_sym, value|
 				# CV
-				if value && !value.empty? && cv_h[object] && cv_h[object][key] && !cv_h[object][key].include?(value)
+				if value && !value.empty? && $cv_h[object] && $cv_h[object]["#{key_sym}"] && !$cv_h[object]["#{key_sym}"].include?(value)
 					## JV_C0057: Invalid value for controlled terms
-					error_ignore_common_a.push(["JV_C0057", "Value is not in controlled terms. #{object} #{key}:#{value}"])
+					error_ignore_common_a.push(["JV_C0057", "Value is not in controlled terms. #{object} #{key_sym}:#{value}"])
 				end
 			}
 
@@ -680,37 +644,30 @@ for object in required_fields_error_h.keys
 
 	end # case
 
-end # for object in required_fields_error_h.keys
-
-## 必須チェック エラー ignore
-## JV_C0010: Missing required field
-required_fields_error_ignore_h = {}
-open("#{conf_path}/required_fields_error_ignore.json"){|f|
-	required_fields_error_ignore_h = JSON.load(f)
-}
+end # for object in $required_fields_error_h.keys
 
 # 必須エラー ignore チェック
-for object in required_fields_error_ignore_h.keys
+for object in $required_fields_error_ignore_h.keys
 
 	case object
 
 	when "Study" then
 
 		# Submission
-		submission_h.each{|key, value|
+		submission_h.each{|key_sym, value|
 
 			if value == "Submitter"
-				required_fields_error_ignore_h[object].each{|field|
-					value.each{|submitter_key, submitter_value|
-						if submitter_key == field
-							error_ignore_common_a.push(["JV_C0010", "#{object} has missing mandatory field(s) #{submitter_key}."]) if submitter_value.nil? || submitter_value.empty?
+				$required_fields_error_ignore_h[object].each{|field|
+					value.each{|submitter_key_sym, submitter_value|
+						if "#{submitter_key_sym}" == field
+							error_ignore_common_a.push(["JV_C0010", "#{object} has missing mandatory field(s) #{submitter_key_sym}."]) if submitter_value.nil? || submitter_value.empty?
 						end
 					}
 				}
 			else
-				required_fields_error_ignore_h[object].each{|field|
-					if key == field
-						error_ignore_common_a.push(["JV_C0010", "#{object} has missing mandatory field(s) #{key}."]) if value.nil? || value.empty?
+				$required_fields_error_ignore_h[object].each{|field|
+					if key_sym == field
+						error_ignore_common_a.push(["JV_C0010", "#{object} has missing mandatory field(s) #{key_sym}."]) if value.nil? || value.empty?
 					end
 				}
 			end
@@ -718,11 +675,11 @@ for object in required_fields_error_ignore_h.keys
 		}
 
 		# Study
-		study_h.each{|key, value|
+		study_h.each{|key_sym, value|
 
-			required_fields_error_ignore_h[object].each{|field|
-				if key == field
-					error_common_a.push(["JV_C0009", "#{object} has missing mandatory field(s) #{key}."]) if value.nil? || value.empty?
+			$required_fields_error_ignore_h[object].each{|field|
+				if "#{key_sym}" == field
+					error_common_a.push(["JV_C0009", "#{object} has missing mandatory field(s) #{key_sym}."]) if value.nil? || value.empty?
 				end
 			}
 
@@ -731,51 +688,51 @@ for object in required_fields_error_ignore_h.keys
 	when "SampleSet" then
 
 		for sampleset in sampleset_a
-			required_fields_error_ignore_h[object].each{|field|
-				sampleset.each{|key, value|
-					if key == field
-						error_ignore_common_a.push(["JV_C0010", "#{object} has missing mandatory field(s) #{key}."]) if value.nil? || value.empty?
+			$required_fields_error_ignore_h[object].each{|field|
+				sampleset.each{|key_sym, value|
+					if "#{key_sym}" == field
+						error_ignore_common_a.push(["JV_C0010", "#{object} has missing mandatory field(s) #{key_sym}."]) if value.nil? || value.empty?
 					end
 				} # sampleset.each{|key, value|
-			} # required_fields_error_ignore_h
+			} # $required_fields_error_ignore_h
 		end
 
 	when "Sample" then
 
 		for sample in sample_a
-			required_fields_error_ignore_h[object].each{|field|
-				sample.each{|key, value|
-					if key == field
-						error_ignore_common_a.push(["JV_C0010", "#{object} has missing mandatory field(s) #{key}."]) if value.nil? || value.empty?
+			$required_fields_error_ignore_h[object].each{|field|
+				sample.each{|key_sym, value|
+					if "#{key_sym}" == field
+						error_ignore_common_a.push(["JV_C0010", "#{object} has missing mandatory field(s) #{key_sym}."]) if value.nil? || value.empty?
 					end
 				} # sample.each{|key, value|
-			} # required_fields_error_ignore_h
+			} # $required_fields_error_ignore_h
 		end
 
 	when "Experiment" then
 
 		for experiment in experiment_a
-			unless experiment["Method Type"] == "Merging"
-				required_fields_error_ignore_h[object].each{|field|
-					experiment.each{|key, value|
-						if key == field
-							error_ignore_common_a.push(["JV_C0010", "#{object} has missing mandatory field(s) #{key}."]) if value.nil? || value.empty?
+			unless experiment[:"Method Type"] == "Merging"
+				$required_fields_error_ignore_h[object].each{|field|
+					experiment.each{|key_sym, value|
+						if "#{key_sym}" == field
+							error_ignore_common_a.push(["JV_C0010", "#{object} has missing mandatory field(s) #{key_sym}."]) if value.nil? || value.empty?
 						end
 					} # sampleset.each{|key, value|
-				} # required_fields_error_ignore_h
-			end # unless experiment["Method Type"] == "Merging"
+				} # $required_fields_error_ignore_h
+			end # unless experiment[:"Method Type"] == "Merging"
 		end
 
 	when "Dataset" then
 
 		for dataset in dataset_a
-			required_fields_error_ignore_h[object].each{|field|
-				dataset.each{|key, value|
-					if key == field
-						error_ignore_common_a.push(["JV_C0010", "#{object} has missing mandatory field(s) #{key}."]) if value.nil? || value.empty?
+			$required_fields_error_ignore_h[object].each{|field|
+				dataset.each{|key_sym, value|
+					if "#{key_sym}" == field
+						error_ignore_common_a.push(["JV_C0010", "#{object} has missing mandatory field(s) #{key_sym}."]) if value.nil? || value.empty?
 					end
 				} # dataset.each{|key, value|
-			} # required_fields_error_ignore_h
+			} # $required_fields_error_ignore_h
 		end
 
 	end
@@ -783,20 +740,20 @@ for object in required_fields_error_ignore_h.keys
 end
 
 ## JV_C0011: Invalid Study ID format
-if !study_h["Study ID"].empty? && study_h["Study ID"] !~ /^[A-Za-z]+2\d{3}[a-z]?$/
+if !study_h[:"Study ID"].empty? && !study_h[:"Study ID"].match?(/^[A-Za-z]+2\d{3}[a-z]?$/)
 	warning_common_a.push(["JV_C0011", "Study ID is not formatted as AuthorYear"])
 end
 
 ## JV_C0016: Invalid BioProject accession
-if !study_h["BioProject Accession"].empty? && study_h["BioProject Accession"] !~ /^PRJDB\d{1,}$/
+if !study_h[:"BioProject Accession"].empty? && !study_h[:"BioProject Accession"].match?(/^PRJDB\d{1,}$/)
 	warning_common_a.push(["JV_C0016", "BioProject accession must be a valid accession in BioProject"])
 else
-	bioproject_accession = study_h["BioProject Accession"]
+	bioproject_accession = study_h[:"BioProject Accession"]
 end
 
 ## JV_C0018: Invalid PubMed ID
-if !study_h["PubMed ID"].empty?
-	pub_s, error_ignore_method_a = pubinfo_pmid(study_h["PubMed ID"])
+if !study_h[:"PubMed ID"].empty?
+	pub_s, error_ignore_method_a = pubinfo_pmid(study_h[:"PubMed ID"])
 	error_ignore_common_a =  error_ignore_common_a + error_ignore_method_a unless error_ignore_method_a.empty?
 end
 
@@ -804,7 +761,7 @@ end
 # subject id と性別を格納
 subject_id_a = []
 for sample in sample_a
-	subject_id_a.push(sample["Subject ID"]) unless sample["Subject ID"].empty?
+	subject_id_a.push(sample[:"Subject ID"]) unless sample[:"Subject ID"].empty?
 end
 
 ## JV_C0029 Duplicated Subject ID
@@ -822,22 +779,22 @@ sampleset_id_sex_h = {}
 sampleset_name_per_sampleset_h = {}
 for sampleset in sampleset_a
 
-	sampleset_id = sampleset["SampleSet ID"]
-	unless sampleset["SampleSet ID"].empty?
-		sampleset_id_a.push(sampleset["SampleSet ID"])
+	sampleset_id = sampleset[:"SampleSet ID"].to_i
+	unless sampleset[:"SampleSet ID"].empty?
+		sampleset_id_a.push(sampleset_id)
 	end
 
-	unless sampleset["SampleSet Name"].empty?
-		sampleset_name_a.push(sampleset["SampleSet Name"])
-		sampleset_name_per_sampleset_h.store(sampleset_id, [sampleset["SampleSet Name"]])
+	unless sampleset[:"SampleSet Name"].empty?
+		sampleset_name_a.push(sampleset[:"SampleSet Name"])
+		sampleset_name_per_sampleset_h.store(sampleset_id, [sampleset[:"SampleSet Name"]])
 	end
 
-	unless sampleset["SampleSet Size"].empty?
-		sampleset_id_size_h.store(sampleset_id, sampleset["SampleSet Size"])
+	unless sampleset[:"SampleSet Size"].empty?
+		sampleset_id_size_h.store(sampleset_id, sampleset[:"SampleSet Size"])
 	end
 
-	unless sampleset["SampleSet Sex"].empty?
-		sampleset_id_sex_h.store(sampleset["SampleSet ID"], sampleset["SampleSet Sex"])
+	unless sampleset[:"SampleSet Sex"].empty?
+		sampleset_id_sex_h.store(sampleset_id, sampleset[:"SampleSet Sex"])
 	end
 
 end
@@ -853,81 +810,81 @@ sample_name_per_sampleset_h = {}
 sample_sampleset_id_a = []
 for sample in sample_a
 
-	unless sample["Sample Name"].empty?
-		sample_name_a.push(sample["Sample Name"])
+	unless sample[:"Sample Name"].empty?
+		sample_name_a.push(sample[:"Sample Name"])
 	end
 
 	# sample name to biosample accession
-	if !sample["Sample Name"].empty? && !sample["BioSample Accession"].empty?
+	if !sample[:"Sample Name"].empty? && !sample[:"BioSample Accession"].empty?
 		
-		sample_name_accession_h.store(sample["Sample Name"], sample["BioSample Accession"])
-		biosample_accession_a.push(sample["BioSample Accession"])
-		sample_sampleset_id_a.push(sample["SampleSet ID"])
+		sample_name_accession_h.store(:"#{sample[:"Sample Name"]}", sample[:"BioSample Accession"])
+		biosample_accession_a.push(sample[:"BioSample Accession"])
+		sample_sampleset_id_a.push(sample[:"SampleSet ID"].to_i)
 
 		# SampleSet ID and BioSample accession
-		unless sampleset_biosample_acc_h[sample["SampleSet ID"]]
-			sampleset_biosample_acc_h[sample["SampleSet ID"]] = [sample["BioSample Accession"]]
+		unless sampleset_biosample_acc_h[sample[:"SampleSet ID"]]
+			sampleset_biosample_acc_h[sample[:"SampleSet ID"].to_i] = [sample[:"BioSample Accession"]]
 		else
-			sampleset_biosample_acc_h[sample["SampleSet ID"]].push(sample["BioSample Accession"])			
+			sampleset_biosample_acc_h[sample[:"SampleSet ID"].to_i].push(sample[:"BioSample Accession"])			
 		end
 	end
 
 	## Maternal ID
-	if !sample["Subject Maternal ID"].empty?
-		unless subject_id_a.include?(sample["Subject Maternal ID"])
+	if !sample[:"Subject Maternal ID"].empty?
+		unless subject_id_a.include?(sample[:"Subject Maternal ID"])
 			## JV_C0020 Invalid Maternal ID
-			error_ignore_common_a.push(["JV_C0020", "Subject Maternal ID must reference a subject in the same study #{sample["Subject Maternal ID"]}"])
+			error_ignore_common_a.push(["JV_C0020", "Subject Maternal ID must reference a subject in the same study #{sample[:"Subject Maternal ID"]}"])
 		else
 			sample_a.each{|sample_2|
 				## JV_C0021 Non-female Maternal ID
-				error_ignore_common_a.push(["JV_C0021", "Subject Maternal ID must reference a subject which is Female #{sample["Subject Maternal ID"]}"]) if sample_2["Subject ID"] == sample["Subject Maternal ID"] && sample_2["Subject Sex"] != "Female"
+				error_ignore_common_a.push(["JV_C0021", "Subject Maternal ID must reference a subject which is Female #{sample[:"Subject Maternal ID"]}"]) if sample_2[:"Subject ID"] == sample[:"Subject Maternal ID"] && sample_2[:"Subject Sex"] != "Female"
 			}
 			## JV_C0027 Subject is its own mother
-			error_ignore_common_a.push(["JV_C0027", "Subject is its own mother #{sample["Subject Maternal ID"]}"]) if sample["Subject ID"] == sample["Subject Maternal ID"]
+			error_ignore_common_a.push(["JV_C0027", "Subject is its own mother #{sample[:"Subject Maternal ID"]}"]) if sample[:"Subject ID"] == sample[:"Subject Maternal ID"]
 		end
 	end
 
 	## Paternal ID
-	if !sample["Subject Paternal ID"].empty?
-		unless subject_id_a.include?(sample["Subject Paternal ID"])
+	if !sample[:"Subject Paternal ID"].empty?
+		unless subject_id_a.include?(sample[:"Subject Paternal ID"])
 			## JV_C0024 Invalid Paternal ID
-			error_ignore_common_a.push(["JV_C0024", "Subject Paternal ID must reference a subject in the same study #{sample["Subject Paternal ID"]}"])
+			error_ignore_common_a.push(["JV_C0024", "Subject Paternal ID must reference a subject in the same study #{sample[:"Subject Paternal ID"]}"])
 		else
 			sample_a.each{|sample_2|
 				## JV_C0025 Non-male Paternal ID
-				error_ignore_common_a.push(["JV_C0025", "Subject Paternal ID must reference a subject which is Male #{sample["Subject Paternal ID"]}"]) if sample_2["Subject ID"] == sample["Subject Paternal ID"] && sample_2["Subject Sex"] != "Male"
+				error_ignore_common_a.push(["JV_C0025", "Subject Paternal ID must reference a subject which is Male #{sample[:"Subject Paternal ID"]}"]) if sample_2[:"Subject ID"] == sample[:"Subject Paternal ID"] && sample_2[:"Subject Sex"] != "Male"
 			}
 			## JV_C0026 Subject is its own father
-			error_ignore_common_a.push(["JV_C0026", "Subject cannot be its own father #{sample["Subject Paternal ID"]}"]) if sample["Subject ID"] == sample["Subject Paternal ID"]
+			error_ignore_common_a.push(["JV_C0026", "Subject cannot be its own father #{sample[:"Subject Paternal ID"]}"]) if sample[:"Subject ID"] == sample[:"Subject Paternal ID"]
 		end
 	end
 
 	## Sex consistency check
-	if ["Male", "Unknown"].include?(sample["Subject Sex"])
+	if ["Male", "Unknown"].include?(sample[:"Subject Sex"])
 		for sampleset in sampleset_a
 			## JV_C0040 Subject Sex (Male, Unknown) in SampleSet Sex (Female)
-			error_ignore_common_a.push(["JV_C0040", "Subject Sex (Male, Unknown) in SampleSet Sex (Female) #{sample["Subject ID"]}"]) if sample["SampleSet ID"] == sampleset["SampleSet ID"] && sampleset["SampleSet Sex"] == "Female"
+			error_ignore_common_a.push(["JV_C0040", "Subject Sex (Male, Unknown) in SampleSet Sex (Female) #{sample[:"Subject ID"]}"]) if sample[:"SampleSet ID"] == sampleset[:"SampleSet ID"] && sampleset[:"SampleSet Sex"] == "Female"
 		end
 	end
 
-	if ["Female", "Unknown"].include?(sample["Subject Sex"])
+	if ["Female", "Unknown"].include?(sample[:"Subject Sex"])
 		for sampleset in sampleset_a
 			## JV_C0041 Subject Sex (Female, Unknown) in SampleSet Sex (Male)
-			error_ignore_common_a.push(["JV_C0041", "If sample has subject with Subject Sex=Female or Unknown, it must not belong to a SampleSet with SampleSet Sex=Male #{sample["Subject ID"]}"]) if sample["SampleSet ID"] == sampleset["SampleSet ID"] && sampleset["SampleSet Sex"] == "Male"
+			error_ignore_common_a.push(["JV_C0041", "If sample has subject with Subject Sex=Female or Unknown, it must not belong to a SampleSet with SampleSet Sex=Male #{sample[:"Subject ID"]}"]) if sample[:"SampleSet ID"] == sampleset[:"SampleSet ID"] && sampleset[:"SampleSet Sex"] == "Male"
 		end
 	end
 
 	# sample reference validation per vcf file
-	if biosample_accession_per_sampleset_h[sample["SampleSet ID"]]
-		biosample_accession_per_sampleset_h[sample["SampleSet ID"]].push(sample["BioSample Accession"]) if sample["BioSample Accession"] && !sample["BioSample Accession"].empty?
+	if biosample_accession_per_sampleset_h[sample[:"SampleSet ID"].to_i]
+		biosample_accession_per_sampleset_h[sample[:"SampleSet ID"].to_i].push(sample[:"BioSample Accession"]) if sample[:"BioSample Accession"] && !sample[:"BioSample Accession"].empty?
 	else
-		biosample_accession_per_sampleset_h.store(sample["SampleSet ID"], [sample["BioSample Accession"]]) if sample["BioSample Accession"] && !sample["BioSample Accession"].empty?
+		biosample_accession_per_sampleset_h.store(sample[:"SampleSet ID"].to_i, [sample[:"BioSample Accession"]]) if sample[:"BioSample Accession"] && !sample[:"BioSample Accession"].empty?
 	end
 
-	if sample_name_per_sampleset_h[sample["SampleSet ID"]]
-		sample_name_per_sampleset_h[sample["SampleSet ID"]].push(sample["Sample Name"]) if sample["Sample Name"] && !sample["Sample Name"].empty?
+	if sample_name_per_sampleset_h[sample[:"SampleSet ID"].to_i]
+		sample_name_per_sampleset_h[sample[:"SampleSet ID"].to_i].push(sample[:"Sample Name"]) if sample[:"Sample Name"] && !sample[:"Sample Name"].empty?
 	else
-		sample_name_per_sampleset_h.store(sample["SampleSet ID"], [sample["Sample Name"]]) if sample["Sample Name"] && !sample["Sample Name"].empty?
+		sample_name_per_sampleset_h.store(sample[:"SampleSet ID"].to_i, [sample[:"Sample Name"]]) if sample[:"Sample Name"] && !sample[:"Sample Name"].empty?
 	end
 
 end
@@ -985,7 +942,7 @@ assay_s = ""
 # dataset id and SNP VCF filepath
 vcf_snp_a = []
 
-if submission_h["Submission Type"] == "Short genetic variations"
+if submission_h[:"Submission Type"] == "Short genetic variations"
 
 	##
 	## CONT
@@ -1007,8 +964,8 @@ EOS
 	## PUB
 	##
 	pub_s = ""
-	if !study_h["PubMed ID"].empty?
-		pub_s = pubinfo_pmid(study_h["PubMed ID"])
+	if !study_h[:"PubMed ID"].empty?
+		pub_s = pubinfo_pmid(study_h[:"PubMed ID"])
 	end
 
 	##
@@ -1020,13 +977,13 @@ EOS
 	merging_experiment_id_for_method_a = []
 	merging_experiment_target_id_a = []
 	experiment_a.each{|experiment|
-		if experiment["Method Type"] == "Merging"
-			merging_experiment_id_for_method_a.push(experiment["Experiment ID"])
-			experiment["Merged Experiment IDs"].split(/ *, */).each{|target_id|
-				merging_experiment_target_id_a.push(target_id)
+		if experiment[:"Method Type"] == "Merging"
+			merging_experiment_id_for_method_a.push(experiment[:"Experiment ID"].to_i)
+			experiment[:"Merged Experiment IDs"].split(/ *, */).each{|target_id|
+				merging_experiment_target_id_a.push(target_id.to_i)
 			}
 		else
-			non_merging_experiment_id_a.push(experiment["Experiment ID"])
+			non_merging_experiment_id_a.push(experiment[:"Experiment ID"].to_i)
 		end
 	}
 
@@ -1039,15 +996,15 @@ EOS
 
 	for experiment in experiment_a
 
-		if experiment_id_for_method_a.include?(experiment["Experiment ID"])
+		if experiment_id_for_method_a.include?(experiment[:"Experiment ID"].to_i)
 
 method_s += <<EOS
 TYPE:\tMETHOD
 HANDLE:\t#{$submitter_handle}
-ID:\t#{submission_id}_e#{experiment["Experiment ID"]}
+ID:\t#{submission_id}_e#{experiment[:"Experiment ID"]}
 TEMPLATE_TYPE:\tDIPLOID
 METHOD:\t
-#{experiment["METHOD"]}
+#{experiment[:"METHOD"]}
 ||
 EOS
 
@@ -1060,21 +1017,21 @@ EOS
 	##
 	for sampleset in sampleset_a
 
-		if !sampleset["SampleSet Name"].empty?
+		if !sampleset[:"SampleSet Name"].empty?
 
 population_s += <<EOS
 TYPE:\tPOPULATION
 HANDLE:\t#{$submitter_handle}
-ID:\t#{sampleset["SampleSet Name"]}
+ID:\t#{sampleset[:"SampleSet Name"]}
 EOS
 
-		population_s += sampleset["SampleSet Population"].empty? ? "POPULATION:\t\n" : "POPULATION:\t#{sampleset["SampleSet Population"]}\n"
-		population_s += sampleset["SampleSet Size"].empty? ? "" : "Size:#{sampleset["SampleSet Size"]}\n"
-		population_s += sampleset["SampleSet Type"].empty? ? "" : "Type:#{sampleset["SampleSet Type"]}\n"
-		population_s += sampleset["SampleSet Name"].empty? ? "" : "Name:#{sampleset["SampleSet Name"]}\n"
-		population_s += sampleset["SampleSet Description"].empty? ? "" : "Description:#{sampleset["SampleSet Description"]}\n"
-		population_s += sampleset["SampleSet Phenotype"].empty? ? "" : "Phenotype:#{sampleset["SampleSet Phenotype"]}\n"
-		population_s += sampleset["SampleSet Sex"].empty? ? "" : "Sex:#{sampleset["SampleSet Sex"]}\n"
+		population_s += sampleset[:"SampleSet Population"].empty? ? "POPULATION:\t\n" : "POPULATION:\t#{sampleset[:"SampleSet Population"]}\n"
+		population_s += sampleset[:"SampleSet Size"].empty? ? "" : "Size:#{sampleset[:"SampleSet Size"]}\n"
+		population_s += sampleset[:"SampleSet Type"].empty? ? "" : "Type:#{sampleset[:"SampleSet Type"]}\n"
+		population_s += sampleset[:"SampleSet Name"].empty? ? "" : "Name:#{sampleset[:"SampleSet Name"]}\n"
+		population_s += sampleset[:"SampleSet Description"].empty? ? "" : "Description:#{sampleset[:"SampleSet Description"]}\n"
+		population_s += sampleset[:"SampleSet Phenotype"].empty? ? "" : "Phenotype:#{sampleset[:"SampleSet Phenotype"]}\n"
+		population_s += sampleset[:"SampleSet Sex"].empty? ? "" : "Sex:#{sampleset[:"SampleSet Sex"]}\n"
 
 		population_s += "||\n"
 
@@ -1089,30 +1046,30 @@ EOS
 	for dataset in dataset_a
 
 		# JV_VCFP008: Missing short genetic variants
-		error_snp_a.push(["JV_VCFP008", "Provide short genetic variants in VCF."]) if dataset["VCF Filename"].empty?
+		error_snp_a.push(["JV_VCFP008", "Provide short genetic variants in VCF."]) if dataset[:"VCF Filename"].empty?
 
-		if !dataset["Experiment ID"].empty? && !dataset["VCF Filename"].empty?
+		if !dataset[:"Experiment ID"].empty? && !dataset[:"VCF Filename"].empty?
 
 			# Dataset ID and VCF filepath
-			vcf_snp_a.push([dataset["Dataset ID"], dataset["VCF Filename"]])
+			vcf_snp_a.push([dataset[:"Dataset ID"], dataset[:"VCF Filename"]])
 
 assay_s += <<EOS
 TYPE:\tSNPASSAY
 HANDLE:\t#{$submitter_handle}
-BATCH:\t#{submission_id}_a#{dataset["Dataset ID"]}
+BATCH:\t#{submission_id}_a#{dataset[:"Dataset ID"]}
 MOLTYPE: Genomic
-METHOD:\t#{submission_id}_e#{dataset["Experiment ID"]}
+METHOD:\t#{submission_id}_e#{dataset[:"Experiment ID"]}
 EOS
 
-		assay_s += dataset["Number of Chromosomes Sampled"].empty? ? "" : "SAMPLESIZE:\t#{dataset["Number of Chromosomes Sampled"]}\n"
+		assay_s += dataset[:"Number of Chromosomes Sampled"].empty? ? "" : "SAMPLESIZE:\t#{dataset[:"Number of Chromosomes Sampled"]}\n"
 		assay_s += "ORGANISM:\tHomo sapiens\n"
-		assay_s += dataset["SampleSet ID"].empty? ? "" : "POPULATION:\t#{submission_id}_ss#{dataset["SampleSet ID"]}\n"
-		assay_s += dataset["Linkout URL"].empty? ? "" : "LINKOUT_URL:\t#{dataset["Linkout URL"]}\n"
-		assay_s += dataset["Dataset Description"].empty? ? "" : "COMMENT:\t#{dataset["Dataset Description"]}\n"
+		assay_s += dataset[:"SampleSet ID"].empty? ? "" : "POPULATION:\t#{submission_id}_ss#{dataset[:"SampleSet ID"]}\n"
+		assay_s += dataset[:"Linkout URL"].empty? ? "" : "LINKOUT_URL:\t#{dataset[:"Linkout URL"]}\n"
+		assay_s += dataset[:"Dataset Description"].empty? ? "" : "COMMENT:\t#{dataset[:"Dataset Description"]}\n"
 
 		assay_s += "||\n"
 
-		vcf_header_dataset_h.store(dataset["Dataset ID"], {"batch_id" => "#{submission_id}_a#{dataset["Dataset ID"]}", "biosample_ids" => sampleset_biosample_acc_h[dataset["SampleSet ID"]]? sampleset_biosample_acc_h[dataset["SampleSet ID"]] : ""})
+		vcf_header_dataset_h.store(dataset[:"Dataset ID"].to_i, {:batch_id => "#{submission_id}_a#{dataset[:"Dataset ID"]}", :biosample_ids => sampleset_biosample_acc_h[dataset[:"SampleSet ID"].to_i]? sampleset_biosample_acc_h[dataset[:"SampleSet ID"].to_i] : ""})
 
 		end # if !sampleset["SampleSet Name"].empty?
 
@@ -1149,32 +1106,32 @@ EOS
 		tmp_vcf_variant_region_a = []
 		tmp_vcf_content_log_a = []
 
-		if !dataset["Experiment ID"].empty? && !dataset["VCF Filename"].empty?
+		if !dataset[:"Experiment ID"].nil? && !dataset[:"VCF Filename"].empty?
 
-			vcf_file_a.push(dataset["VCF Filename"])
+			vcf_file_a.push(dataset[:"VCF Filename"])
 
 			batch_id = ""
 			biosample_accessions = ""
 			valid_sample_sampleset_refs = ""
 			sampleset_names = ""
+ 
+			batch_id = vcf_header_dataset_h[dataset[:"Dataset ID"].to_i][:batch_id] if vcf_header_dataset_h[dataset[:"Dataset ID"].to_i][:batch_id]
+			biosample_accessions = vcf_header_dataset_h[dataset[:"Dataset ID"].to_i][:biosample_ids].join(",") if vcf_header_dataset_h[dataset[:"Dataset ID"].to_i][:biosample_ids] && !vcf_header_dataset_h[dataset[:"Dataset ID"].to_i][:biosample_ids].empty?
+			valid_sample_sampleset_refs = sample_name_per_sampleset_h[dataset[:"SampleSet ID"].to_i] + biosample_accession_per_sampleset_h[dataset[:"SampleSet ID"].to_i] + sampleset_name_per_sampleset_h[dataset[:"SampleSet ID"].to_i] + defined_samples_list_h.keys
+			sampleset_names = sampleset_name_per_sampleset_h[dataset[:"SampleSet ID"].to_i] if sampleset_name_per_sampleset_h[dataset[:"SampleSet ID"].to_i]
 
-			batch_id = vcf_header_dataset_h[dataset["Dataset ID"]]["batch_id"] if vcf_header_dataset_h[dataset["Dataset ID"]]["batch_id"]
-			biosample_accessions = vcf_header_dataset_h[dataset["Dataset ID"]]["biosample_ids"].join(",")
-			valid_sample_sampleset_refs = sample_name_per_sampleset_h[dataset["SampleSet ID"]] + biosample_accession_per_sampleset_h[dataset["SampleSet ID"]] + sampleset_name_per_sampleset_h[dataset["SampleSet ID"]] + defined_samples_a
-			sampleset_names = sampleset_name_per_sampleset_h[dataset["SampleSet ID"]] if sampleset_name_per_sampleset_h[dataset["SampleSet ID"]]
-
-			tmp_error_vcf_header_a, tmp_error_ignore_vcf_header_a, tmp_error_exchange_vcf_header_a, tmp_warning_vcf_header_a, tmp_error_vcf_content_a, tmp_error_ignore_vcf_content_a, tmp_error_exchange_vcf_content_a, tmp_warning_vcf_content_a, tmp_vcf_variant_a, tmp_vcf_sample_a = [], [], [], [], [], [], [], [], [], []
-			tmp_error_vcf_header_a, tmp_error_ignore_vcf_header_a, tmp_error_exchange_vcf_header_a, tmp_warning_vcf_header_a, tmp_error_vcf_content_a, tmp_error_ignore_vcf_content_a, tmp_error_exchange_vcf_content_a, tmp_warning_vcf_content_a, tmp_vcf_variant_a, tmp_vcf_sample_a = vcf_parser("#{vcf_path}/#{dataset["VCF Filename"]}", "SNP", {:batch_id => batch_id, :bioproject_accession => bioproject_accession, :biosample_accessions => biosample_accessions, :valid_sample_sampleset_refs => valid_sample_sampleset_refs, :sampleset_names => sampleset_names, :snp_vcf => "#{excel_path}/#{submission_id}_a#{dataset["Dataset ID"]}.vcf"})
+			tmp_error_vcf_header_a, tmp_error_ignore_vcf_header_a, tmp_error_exchange_vcf_header_a, tmp_warning_vcf_header_a, tmp_error_vcf_content_a, tmp_error_ignore_vcf_content_a, tmp_error_exchange_vcf_content_a, tmp_warning_vcf_content_a = [], [], [], [], [], [], [], []
+			tmp_error_vcf_header_a, tmp_error_ignore_vcf_header_a, tmp_error_exchange_vcf_header_a, tmp_warning_vcf_header_a, tmp_error_vcf_content_a, tmp_error_ignore_vcf_content_a, tmp_error_exchange_vcf_content_a, tmp_warning_vcf_content_a = vcf_parser("#{vcf_path}/#{dataset[:"VCF Filename"]}", "SNP", {:batch_id => batch_id, :bioproject_accession => bioproject_accession, :biosample_accessions => biosample_accessions, :valid_sample_sampleset_refs => valid_sample_sampleset_refs, :sampleset_names => sampleset_names, :snp_vcf => "#{excel_path}/#{submission_id}_a#{dataset[:"Dataset ID"]}.vcf"})
 
 			# VCF 毎に格納
-			error_vcf_header_h.store(dataset["VCF Filename"], tmp_error_vcf_header_a)
-			error_ignore_vcf_header_h.store(dataset["VCF Filename"], tmp_error_ignore_vcf_header_a)
-			error_exchange_vcf_header_h.store(dataset["VCF Filename"], tmp_error_exchange_vcf_header_a)
-			warning_vcf_header_h.store(dataset["VCF Filename"], tmp_warning_vcf_header_a)
-			error_vcf_content_h.store(dataset["VCF Filename"], tmp_error_vcf_content_a)
-			error_ignore_vcf_content_h.store(dataset["VCF Filename"], tmp_error_ignore_vcf_content_a)
-			error_exchange_vcf_content_h.store(dataset["VCF Filename"], tmp_error_exchange_vcf_content_a)
-			warning_vcf_content_h.store(dataset["VCF Filename"], tmp_warning_vcf_content_a)
+			error_vcf_header_h.store(dataset[:"VCF Filename"], tmp_error_vcf_header_a)
+			error_ignore_vcf_header_h.store(dataset[:"VCF Filename"], tmp_error_ignore_vcf_header_a)
+			error_exchange_vcf_header_h.store(dataset[:"VCF Filename"], tmp_error_exchange_vcf_header_a)
+			warning_vcf_header_h.store(dataset[:"VCF Filename"], tmp_warning_vcf_header_a)
+			error_vcf_content_h.store(dataset[:"VCF Filename"], tmp_error_vcf_content_a)
+			error_ignore_vcf_content_h.store(dataset[:"VCF Filename"], tmp_error_ignore_vcf_content_a)
+			error_exchange_vcf_content_h.store(dataset[:"VCF Filename"], tmp_error_exchange_vcf_content_a)
+			warning_vcf_content_h.store(dataset[:"VCF Filename"], tmp_warning_vcf_content_a)
 
 		end
 
@@ -1192,7 +1149,7 @@ variant_region_tsv_log_a = []
 variant_call_from_vcf_f = false
 variant_region_from_vcf_f = false
 
-if submission_h["Submission Type"] == "Structural variations"
+if submission_h[:"Submission Type"] == "Structural variations"
 
 # dbVar XML
 xml = Builder::XmlMarkup.new(:indent=>4)
@@ -1202,16 +1159,16 @@ xml_f.puts instruction
 
 # Output dbVar XML
 submission_attr_h = {}
-submission_attr_h.store("xmlns:xsi", "http://www.w3.org/2001/XMLSchema-instance")
-submission_attr_h.store("xsi:noNamespaceSchemaLocation", "https://www.ncbi.nlm.nih.gov/data_specs/schema/other/dbvar/dbVar.xsd")
-submission_attr_h.store("study_id", study_h["Study ID"])
-submission_attr_h.store("dbvar_schema_version", "3.0.0")
+submission_attr_h.store(:"xmlns:xsi", "http://www.w3.org/2001/XMLSchema-instance")
+submission_attr_h.store(:"xsi:noNamespaceSchemaLocation", "https://www.ncbi.nlm.nih.gov/data_specs/schema/other/dbvar/dbVar.xsd")
+submission_attr_h.store(:study_id, study_h["Study ID"])
+submission_attr_h.store(:dbvar_schema_version, "3.0.0")
 
-unless study_h["vload_id"].empty?
-	submission_attr_h.store("vload_id", study_h["vload_id"])
+unless study_h[:vload_id].empty?
+	submission_attr_h.store(:vload_id, study_h[:vload_id])
 else
 
-	submission_attr_h.store("vload_id", "")
+	submission_attr_h.store(:vload_id, "")
 
 	## JV_SV0003: Missing vload_id
 	error_ignore_sv_a.push(["JV_SV0003", "vload_id is missing. JVar will fill in this value."])
@@ -1221,23 +1178,23 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 	## CONTACT
 	first_contact = true
-	for submitter_h in submission_h["Submitter"]
+	for submitter_h in submission_h[:"Submitter"]
 
 		# CONTACT attributes
 		contact_attr_h = {}
 		if first_contact
-			contact_attr_h.store("contact_role", "Submitter")
+			contact_attr_h.store(:contact_role, "Submitter")
 		else
-			contact_attr_h.store("contact_role", "Other")
+			contact_attr_h.store(:contact_role, "Other")
 		end
 
-		contact_attr_h.store("first_name", submitter_h["Submitter First Name"]) unless submitter_h["Submitter First Name"].empty?
-		contact_attr_h.store("last_name", submitter_h["Submitter Last Name"]) unless submitter_h["Submitter Last Name"].empty?
-		contact_attr_h.store("affiliation_name", submitter_h["Submitter Affiliation"]) unless submitter_h["Submitter Affiliation"].empty?
-		contact_attr_h.store("contact_email", submitter_h["Submitter Email"]) unless submitter_h["Submitter Email"].empty?
-		# contact_attr_h.store("contact_phone", "")
-		# contact_attr_h.store("affiliation_address", "")
-		# contact_attr_h.store("affiliation_url", "")
+		contact_attr_h.store(:first_name, submitter_h[:"Submitter First Name"]) unless submitter_h[:"Submitter First Name"].empty?
+		contact_attr_h.store(:last_name, submitter_h[:"Submitter Last Name"]) unless submitter_h[:"Submitter Last Name"].empty?
+		contact_attr_h.store(:affiliation_name, submitter_h[:"Submitter Affiliation"]) unless submitter_h[:"Submitter Affiliation"].empty?
+		contact_attr_h.store(:contact_email, submitter_h[:"Submitter Email"]) unless submitter_h[:"Submitter Email"].empty?
+		# contact_attr_h.store(:contact_phone, "")
+		# contact_attr_h.store(:affiliation_address, "")
+		# contact_attr_h.store(:affiliation_url, "")
 
 		submission.CONTACT(contact_attr_h)
 
@@ -1247,22 +1204,22 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 	## STUDY
 	hold_date = ""
-	hold_date = "2040-01-01" if submission_h["Hold/Release"] == "Hold"
+	hold_date = "2040-01-01" if submission_h[:"Hold/Release"] == "Hold"
 
 	# STUDY attributes
 	study_attr_h = {}
-	study_attr_h.store("study_type", study_h["Study Type"]) unless study_h["Study Type"].empty?
+	study_attr_h.store(:study_type, study_h[:"Study Type"]) unless study_h[:"Study Type"].empty?
 	
-	unless study_h["BioProject Accession"].empty?
-		study_attr_h.store("bioproject_accession", study_h["BioProject Accession"])
+	unless study_h[:"BioProject Accession"].empty?
+		study_attr_h.store(:bioproject_accession, study_h[:"BioProject Accession"])
 	end
 	
-	study_attr_h.store("hold_date", hold_date) unless hold_date.empty?
-	study_attr_h.store("study_accession", "")
+	study_attr_h.store(:hold_date, hold_date) unless hold_date.empty?
+	study_attr_h.store(:study_accession, "")
 
 	submission.STUDY(study_attr_h){|study|
-		study.DESCRIPTION(study_h["Study Description"])
-		study.ORGANISM("taxonomy_id" => "9606")
+		study.DESCRIPTION(study_h[:"Study Description"])
+		study.ORGANISM(:taxonomy_id => "9606")
 	}
 
 	## SUBJECT
@@ -1270,38 +1227,38 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 	for sample in sample_a
 
 		# 重複している subject ID はスキップ。結果として最初のものが採用される
-		next if subject_id_a.include?(sample["Subject ID"])
-		subject_id_a.push(sample["Subject ID"])
+		next if subject_id_a.include?(sample[:"Subject ID"])
+		subject_id_a.push(sample[:"Subject ID"])
 
 		# SUBJECT attributes
 		subject_attr_h = {}
-		subject_attr_h.store("subject_id", sample["Subject ID"]) unless sample["Subject ID"].empty?
-		subject_attr_h.store("subject_taxonomy_id", "9606")
-		subject_attr_h.store("subject_maternal_id", sample["Subject Maternal ID"]) unless sample["Subject Maternal ID"].empty?
-		subject_attr_h.store("subject_paternal_id", sample["Subject Paternal ID"]) unless sample["Subject Paternal ID"].empty?
-		subject_attr_h.store("subject_sex", sample["Subject Sex"]) unless sample["Subject Sex"].empty?
-		subject_attr_h.store("subject_collection", sample["Subject Collection"]) unless sample["Subject Collection"].empty?
-		subject_attr_h.store("subject_karyotype", sample["Subject Karyotype"]) unless sample["Subject Karyotype"].empty?
-		subject_attr_h.store("subject_population", sample["Subject Population"]) unless sample["Subject Population"].empty?
-		subject_attr_h.store("subject_age", sample["Subject Age"]) unless sample["Subject Age"].empty?
-		subject_attr_h.store("subject_age_units", sample["Subject Age Units"]) unless sample["Subject Age Units"].empty?
+		subject_attr_h.store(:subject_id, sample[:"Subject ID"]) unless sample[:"Subject ID"].empty?
+		subject_attr_h.store(:subject_taxonomy_id, "9606")
+		subject_attr_h.store(:subject_maternal_id, sample[:"Subject Maternal ID"]) unless sample[:"Subject Maternal ID"].empty?
+		subject_attr_h.store(:subject_paternal_id, sample[:"Subject Paternal ID"]) unless sample[:"Subject Paternal ID"].empty?
+		subject_attr_h.store(:subject_sex, sample[:"Subject Sex"]) unless sample[:"Subject Sex"].empty?
+		subject_attr_h.store(:subject_collection, sample[:"Subject Collection"]) unless sample[:"Subject Collection"].empty?
+		subject_attr_h.store(:subject_karyotype, sample[:"Subject Karyotype"]) unless sample[:"Subject Karyotype"].empty?
+		subject_attr_h.store(:subject_population, sample[:"Subject Population"]) unless sample[:"Subject Population"].empty?
+		subject_attr_h.store(:subject_age, sample[:"Subject Age"]) unless sample[:"Subject Age"].empty?
+		subject_attr_h.store(:subject_age_units, sample[:"Subject Age Units"]) unless sample[:"Subject Age Units"].empty?
 
 		submission.SUBJECT(subject_attr_h){|subject|
 
-			unless sample["Subject Phenotype"].empty?
-				if sample["Subject Phenotype"].scan(/(#{xref_db_phenotypes_regex}) *: *([-A-Za-z0-9]+)/).size > 0
+			unless sample[:"Subject Phenotype"].empty?
+				if sample[:"Subject Phenotype"].scan(/(#{xref_db_phenotypes_regex}) *: *([-A-Za-z0-9]+)/).size > 0
 					subject.PHENOTYPE{|phenotype|
-						for db, id in sample["Subject Phenotype"].scan(/(#{xref_db_phenotypes_regex}) *: *([-A-Za-z0-9]+)/)
-							phenotype.LINK("db" => db, "id" => id)
+						for db, id in sample[:"Subject Phenotype"].scan(/(#{xref_db_phenotypes_regex}) *: *([-A-Za-z0-9]+)/)
+							phenotype.LINK(:db => db, :id => id)
 						end # for db, id in sample["Subject Phenotype"].scan(/(#{xref_db_regex}) *: *([-A-Za-z0-9]+)/)
 					}
 				else
 					subject.PHENOTYPE{|phenotype|
-						phenotype.DESCRIPTION(sample["Subject Phenotype"])
+						phenotype.DESCRIPTION(sample[:"Subject Phenotype"])
 					}
 
 					## JV_SV0007: Invalid subject phenotype link
-					warning_sv_a.push(["JV_SV0007", "Subject phenotype link must reference a valid medical vocabulary ID. Subject ID: #{subject_id}: #{sample["Subject Phenotype"]}"])
+					warning_sv_a.push(["JV_SV0007", "Subject phenotype link must reference a valid medical vocabulary ID. Subject ID: #{subject_id}: #{sample[:"Subject Phenotype"]}"])
 
 				end
 			end # unless sample["Subject Phenotype"].empty?
@@ -1319,55 +1276,55 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 		# SAMPLESET attributes
 		sampleset_attr_h = {}
 
-		sampleset_id = sampleset["SampleSet ID"]
-		unless sampleset["SampleSet ID"].empty?
-			sampleset_attr_h.store("sampleset_id", sampleset["SampleSet ID"])
-			sampleset_id_a.push(sampleset["SampleSet ID"])
+		sampleset_id = sampleset[:"SampleSet ID"].to_i
+		unless sampleset_id.nil?
+			sampleset_attr_h.store(:sampleset_id, sampleset_id)
+			sampleset_id_a.push(sampleset_id)
 		end
 
-		unless sampleset["SampleSet Name"].empty?
-			sampleset_name_a.push(sampleset["SampleSet Name"])
-			sampleset_attr_h.store("sampleset_name", sampleset["SampleSet Name"])
+		unless sampleset[:"SampleSet Name"].empty?
+			sampleset_name_a.push(sampleset[:"SampleSet Name"])
+			sampleset_attr_h.store(:sampleset_name, sampleset[:"SampleSet Name"])
 		end
 
-		unless sampleset["SampleSet Size"].empty?
-			sampleset_id_size_h.store(sampleset_id, sampleset["SampleSet Size"])
-			sampleset_attr_h.store("sampleset_size", sampleset["SampleSet Size"])
+		unless sampleset[:"SampleSet Size"].empty?
+			sampleset_id_size_h.store(sampleset_id, sampleset[:"SampleSet Size"])
+			sampleset_attr_h.store(:sampleset_size, sampleset[:"SampleSet Size"])
 		end
 
-		unless sampleset["SampleSet Type"].empty?
-			sampleset_attr_h.store("sampleset_type", sampleset["SampleSet Type"])
+		unless sampleset[:"SampleSet Type"].empty?
+			sampleset_attr_h.store(:sampleset_type, sampleset[:"SampleSet Type"])
 		else
 			## JV_SV0096: Missing SampleSet Type for Study Type
-			error_ignore_sv_a.push(["JV_SV0096", 'Must have SampleSet Type if Study Type is "Case-Control" or "Tumor vs. Matched-Normal"']) if ["Case-Control", "Tumor vs. Matched-Normal"].include?(study_h["Study Type"])
+			error_ignore_sv_a.push(["JV_SV0096", 'Must have SampleSet Type if Study Type is "Case-Control" or "Tumor vs. Matched-Normal"']) if ["Case-Control", "Tumor vs. Matched-Normal"].include?(study_h[:"Study Type"])
 		end
 
-		unless sampleset["SampleSet Sex"].empty?
-			sampleset_attr_h.store("sampleset_sex", sampleset["SampleSet Sex"])
-			sampleset_id_sex_h.store(sampleset["SampleSet ID"], sampleset["SampleSet Sex"])
+		unless sampleset[:"SampleSet Sex"].empty?
+			sampleset_attr_h.store(:sampleset_sex, sampleset[:"SampleSet Sex"])
+			sampleset_id_sex_h.store(sampleset_id, sampleset[:"SampleSet Sex"])
 		end
 
-		sampleset_attr_h.store("sampleset_population", sampleset["SampleSet Population"]) unless sampleset["SampleSet Population"].empty?
+		sampleset_attr_h.store(:sampleset_population, sampleset[:"SampleSet Population"]) unless sampleset[:"SampleSet Population"].empty?
 
 		submission.SAMPLESET(sampleset_attr_h){|sampleset_e|
 
-			sampleset_e.DESCRIPTION(sampleset["SampleSet Description"])
-			sampleset_e.ORGANISM("taxonomy_id" => "9606")
+			sampleset_e.DESCRIPTION(sampleset[:"SampleSet Description"])
+			sampleset_e.ORGANISM(:taxonomy_id => "9606")
 
-			unless sampleset["SampleSet Phenotype"].empty?
-				if sampleset["SampleSet Phenotype"].scan(/(#{xref_db_phenotypes_regex}) *: *([-A-Za-z0-9]+)/).size > 0
+			unless sampleset[:"SampleSet Phenotype"].empty?
+				if sampleset[:"SampleSet Phenotype"].scan(/(#{xref_db_phenotypes_regex}) *: *([-A-Za-z0-9]+)/).size > 0
 					sampleset_e.PHENOTYPE{|phenotype|
-						for db, id in sampleset["SampleSet Phenotype"].scan(/(#{xref_db_phenotypes_regex}) *: *([-A-Za-z0-9]+)/)
-							phenotype.LINK("db" => db, "id" => id)
+						for db, id in sampleset[:"SampleSet Phenotype"].scan(/(#{xref_db_phenotypes_regex}) *: *([-A-Za-z0-9]+)/)
+							phenotype.LINK(:db => db, :id => id)
 						end # for db, id in sampleset["SampleSet Phenotype"].scan(/(#{xref_db_regex}) *: *([-A-Za-z0-9]+)/)
 					}
 				else
 					sampleset_e.PHENOTYPE{|phenotype|
-						phenotype.DESCRIPTION(sampleset["SampleSet Description"])
+						phenotype.DESCRIPTION(sampleset[:"SampleSet Description"])
 					}
 
 					## JV_SV0008: Invalid SampleSet phenotype link
-					warning_sv_a.push(["JV_SV0008", "SampleSet phenotype link must reference a valid medical vocabulary ID. SampleSet ID: #{sampleset_id}: #{sampleset["SampleSet Phenotype"]}"])
+					warning_sv_a.push(["JV_SV0008", "SampleSet phenotype link must reference a valid medical vocabulary ID. SampleSet ID: #{sampleset_id}: #{sampleset[:"SampleSet Phenotype"]}"])
 
 				end
 			end # unless sampleset["SampleSet Phenotype"].empty?
@@ -1381,53 +1338,53 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 		# SAMPLE attributes
 		sample_attr_h = {}
-		sample_attr_h.store("sample_id", sample["Sample Name"]) unless sample["Sample Name"].empty?
-		sample_attr_h.store("sample_cell_type", sample["Sample Cell Type"]) unless sample["Sample Cell Type"].empty?
-		sample_attr_h.store("subject_id", sample["Subject ID"]) unless sample["Subject ID"].empty?
-		sample_attr_h.store("sample_attribute", sample["Sample Attribute"]) unless sample["Sample Attribute"].empty?
-		sample_attr_h.store("sample_karyotype", sample["Sample Karyotype"]) unless sample["Sample Karyotype"].empty?
+		sample_attr_h.store(:sample_id, sample[:"Sample Name"]) unless sample[:"Sample Name"].empty?
+		sample_attr_h.store(:sample_cell_type, sample[:"Sample Cell Type"]) unless sample[:"Sample Cell Type"].empty?
+		sample_attr_h.store(:subject_id, sample[:"Subject ID"]) unless sample[:"Subject ID"].empty?
+		sample_attr_h.store(:sample_attribute, sample[:"Sample Attribute"]) unless sample[:"Sample Attribute"].empty?
+		sample_attr_h.store(:sample_karyotype, sample[:"Sample Karyotype"]) unless sample[:"Sample Karyotype"].empty?
 
-		unless sample["Sample Name"].empty?
-			sample_name_a.push(sample["Sample Name"])
+		unless sample[:"Sample Name"].empty?
+			sample_name_a.push(sample[:"Sample Name"])
 		end
 
-		unless sample["BioSample Accession"].empty?
+		unless sample[:"BioSample Accession"].empty?
 
-			unless sample["BioSample Accession"] =~ /^SAMD\d{8}$|^SAME\d{1,}$|^SAMN\d{8}$/
+			unless sample[:"BioSample Accession"].match?(/^SAMD\d{8}$|^SAME\d{1,}$|^SAMN\d{8}$/)
 				## JV_C0042: Invalid BioSample accession
-				error_common_a.push(["JV_C0042", "BioSample accession must be a valid BioSample accession. #{sample["BioSample Accession"]}"])
+				error_common_a.push(["JV_C0042", "BioSample accession must be a valid BioSample accession. #{sample[:"BioSample Accession"]}"])
 			end
 
-			sample_attr_h.store("biosample_accession", sample["BioSample Accession"])
-			biosample_accession_a.push(sample["BioSample Accession"])
+			sample_attr_h.store(:biosample_accession, sample[:"BioSample Accession"])
+			biosample_accession_a.push(sample[:"BioSample Accession"])
 
 		end
 
-			unless sample["SampleSet ID"].empty?
+			unless sample[:"SampleSet ID"].empty?
 
 				submission.SAMPLE(sample_attr_h){|sample_e|
-					sample_e.SAMPLESET("sampleset_id" => sample["SampleSet ID"])
+					sample_e.SAMPLESET(:sampleset_id => sample[:"SampleSet ID"])
 				} 
 
-				unless sampleset_id_a.include?(sample["SampleSet ID"])
+				unless sampleset_id_a.include?(sample[:"SampleSet ID"].to_i)
 					## JV_C0039: Invalid SampleSet ID
-					error_common_a.push(["JV_C0039", "SampleSet ID must reference a valid sampleset in the study. Invalid SampleSet ID: #{sample["SampleSet ID"]}"])
+					error_common_a.push(["JV_C0039", "SampleSet ID must reference a valid sampleset in the study. Invalid SampleSet ID: #{sample[:"SampleSet ID"]}"])
 				end
 
 			end
 
 		# Links
-		if sample["Sample Resource"].scan(/(#{xref_db_all_regex}) *: *([-A-Za-z0-9]+)/).size > 0
-			for db, id in sample["Sample Resource"].scan(/(#{xref_db_all_regex}) *: *([-A-Za-z0-9]+)/)
+		if sample[:"Sample Resource"].scan(/(#{xref_db_all_regex}) *: *([-A-Za-z0-9]+)/).size > 0
+			for db, id in sample[:"Sample Resource"].scan(/(#{xref_db_all_regex}) *: *([-A-Za-z0-9]+)/)
 
 				submission.SAMPLE(sample_attr_h){|sample_e|
-					sample_e.LINK("db" => db, "id" => id)
+					sample_e.LINK(:db => db, :id => id)
 				}
 
-			end # for db, id in sample["Sample Resource"].scan(/(#{xref_db_all_regex}) *: *([-A-Za-z0-9]+)/)
-		elsif !sample["Sample Resource"].empty?
+			end # for db, id in sample[:"Sample Resource"].scan(/(#{xref_db_all_regex}) *: *([-A-Za-z0-9]+)/)
+		elsif !sample[:"Sample Resource"].empty?
 			## JV_SV0009: Invalid Sample link
-			warning_sv_a.push(["JV_SV0009", "Sample link must reference a valid external db:id #{sample["Sample Resource"]}"])
+			warning_sv_a.push(["JV_SV0009", "Sample link must reference a valid external db:id #{sample[:"Sample Resource"]}"])
 		end
 
 	end
@@ -1438,16 +1395,15 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 	merging_experiment_id_for_method_a = []
 	merging_experiment_target_id_a = []
 	experiment_a.each{|experiment|
-		if experiment["Method Type"] == "Merging"
-			merging_experiment_id_for_method_a.push(experiment["Experiment ID"])
-			experiment["Merged Experiment IDs"].split(/ *, */).each{|target_id|
-				merging_experiment_target_id_a.push(target_id)
+		if experiment[:"Method Type"] == "Merging"
+			merging_experiment_id_for_method_a.push(experiment[:"Experiment ID"])
+			experiment[:"Merged Experiment IDs"].split(/ *, */).each{|target_id|
+				merging_experiment_target_id_a.push(target_id.to_i)
 			}
 		else
-			non_merging_experiment_id_a.push(experiment["Experiment ID"])
+			non_merging_experiment_id_a.push(experiment[:"Experiment ID"])
 		end
 	}
-
 
 	## EXPERIMENT
 	experiment_type_h = {}
@@ -1455,139 +1411,139 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 		# EXPERIMENT attributes
 		experiment_attr_h = {}
-		experiment_attr_h.store("experiment_id", experiment["Experiment ID"]) unless experiment["Experiment ID"].empty?
+		experiment_attr_h.store(:experiment_id, experiment[:"Experiment ID"]) unless experiment[:"Experiment ID"].nil?
 
 		# Experiment Resolution
-		unless experiment["Experiment Resolution"].empty?
+		unless experiment[:"Experiment Resolution"].empty?
 
-			experiment_attr_h.store("experiment_resolution", experiment["Experiment Resolution"])
+			experiment_attr_h.store(:experiment_resolution, experiment[:"Experiment Resolution"])
 
 			## JV_SV0011: Invalid Experiment Resolution
-			unless experiment["Experiment Resolution"] =~ /[-<>=~. 0-9BbPp]+/
-				error_ignore_sv_a.push(["JV_SV0011", "Experiment Resolution must only contain numbers or 'bp' or any of these characters: '<>=~- .' #{experiment["Experiment Resolution"]}"])
+			unless experiment[:"Experiment Resolution"].match?(/[-<>=~. 0-9BbPp]+/)
+				error_ignore_sv_a.push(["JV_SV0011", "Experiment Resolution must only contain numbers or 'bp' or any of these characters: '<>=~- .' #{experiment[:"Experiment Resolution"]}"])
 			end
 
 			## JV_SV0019: Experiment Resolution is not 'bp' for Sequencing
-			if experiment["Method Type"] == "Sequencing" && ["de novo and local sequence assembly", "de novo sequence assembly", "Local sequence assembly", "Sequence alignment", "SNP genotyping analysis", "Split read and paired-end mapping", "Split read mapping"].include?(experiment["Analysis Type"])
-				warning_sv_a.push(["JV_SV0019", "Warning if Method Type='Sequencing' and Analysis Type=de novo sequence assembly, de novo and local sequence assembly, Local sequence assembly, Sequence alignment, Split read mapping, and Experiment Resolution is not 'bp'"]) unless experiment["Experiment Resolution"] =~ /\d{1,}\.\d{1,}|BP/i
+			if experiment[:"Method Type"] == "Sequencing" && ["de novo and local sequence assembly", "de novo sequence assembly", "Local sequence assembly", "Sequence alignment", "SNP genotyping analysis", "Split read and paired-end mapping", "Split read mapping"].include?(experiment[:"Analysis Type"])
+				warning_sv_a.push(["JV_SV0019", "Warning if Method Type='Sequencing' and Analysis Type=de novo sequence assembly, de novo and local sequence assembly, Local sequence assembly, Sequence alignment, Split read mapping, and Experiment Resolution is not 'bp'"]) unless experiment[:"Experiment Resolution"].match?(/\d{1,}\.\d{1,}|BP/i)
 			end
 
 			## JV_SV0020: Experiment Resolution>40 for Sequencing
-			if experiment["Method Type"] == "Sequencing" && ["One end anchored assembly", "Read depth"].include?(experiment["Analysis Type"])
-				if (experiment["Experiment Resolution"] =~ /(\d{1,}\.\d{1,})/ && $1.to_f > 40) || (experiment["Experiment Resolution"] =~ /(\d{1,}) *BP/i && $1.to_f > 40000)
+			if experiment[:"Method Type"] == "Sequencing" && ["One end anchored assembly", "Read depth"].include?(experiment[:"Analysis Type"])
+				if (experiment[:"Experiment Resolution"].match?(/(\d{1,}\.\d{1,})/) && $1.to_f > 40) || (experiment[:"Experiment Resolution"].match?(/(\d{1,}) *BP/i) && $1.to_f > 40000)
 					warning_sv_a.push(["JV_SV0020", "Warning if Method Type='Sequencing' and Analysis Type=One end anchored assembly, Read depth, and Experiment Resolution > 40"])
 				end
 			end
 
 			## JV_SV0021: Experiment Resolution>5 for Optical mapping
-			if experiment["Method Type"] == "Optical mapping" && experiment["Analysis Type"] == "Optical mapping"
-				if (experiment["Experiment Resolution"] =~ /(\d{1,}\.\d{1,})/ && $1.to_f > 5) || (experiment["Experiment Resolution"] =~ /(\d{1,}) *BP/i && $1.to_f > 5000)
+			if experiment[:"Method Type"] == "Optical mapping" && experiment[:"Analysis Type"] == "Optical mapping"
+				if (experiment[:"Experiment Resolution"].match?(/(\d{1,}\.\d{1,})/) && $1.to_f > 5) || (experiment[:"Experiment Resolution"].match?(/(\d{1,}) *BP/i) && $1.to_f > 5000)
 					warning_sv_a.push(["JV_SV0021", "Warning if Method Type='Optical mapping' and Analysis Type=Optical mapping and Experiment Resolution > 5"])
 				end
 			end
 
 			## JV_SV0022: Experiment Resolution>40 for Paired-end Sequencing
-			if experiment["Method Type"] == "Sequencing" && experiment["Analysis Type"] == "Paired-end mapping"
-				if (experiment["Experiment Resolution"] =~ /(\d{1,}\.\d{1,})/ && $1.to_f > 40) || (experiment["Experiment Resolution"] =~ /(\d{1,}) *BP/i && $1.to_f > 40000)
+			if experiment[:"Method Type"] == "Sequencing" && experiment[:"Analysis Type"] == "Paired-end mapping"
+				if (experiment[:"Experiment Resolution"].match?(/(\d{1,}\.\d{1,})/) && $1.to_f > 40) || (experiment[:"Experiment Resolution"].match?(/(\d{1,}) *BP/i) && $1.to_f > 40000)
 					warning_sv_a.push(["JV_SV0022", "Warning if Method Type='Sequencing' and Analysis Type=Paired-end mapping and Experiment Resolution > 40"])
 				end
 			end
 
 			## JV_SV0023: Experiment Resolution<100 for BAC aCGH or FISH
-			if ["BAC aCGH", "FISH"].include?(experiment["Method Type"])
-				if (experiment["Experiment Resolution"] =~ /(\d{1,}\.\d{1,})/ && $1.to_f < 100)
+			if ["BAC aCGH", "FISH"].include?(experiment[:"Method Type"])
+				if (experiment[:"Experiment Resolution"].match?(/(\d{1,}\.\d{1,})/) && $1.to_f < 100)
 					warning_sv_a.push(["JV_SV0023", "Warning if Method Type=BAC aCGH or FISH and Experiment Resolution < 100"])
 				end
 			end
 
 			## JV_SV0024: Experiment Resolution>=100 for Oligo aCGH or SNP array
-			if ["Oligo aCGH", "SNP array"].include?(experiment["Method Type"])
-				if (experiment["Experiment Resolution"] =~ /(\d{1,}\.\d{1,})/ && $1.to_f >= 100)
+			if ["Oligo aCGH", "SNP array"].include?(experiment[:"Method Type"])
+				if (experiment[:"Experiment Resolution"].match?(/(\d{1,}\.\d{1,})/) && $1.to_f >= 100)
 					warning_sv_a.push(["JV_SV0024", "Warning if Method Type=Oligo aCGH, or SNP array and Experiment Resolution >= 100"])
 				end
 			end
 
 			## JV_SV0027: Experiment Resolution is 'bp' for Sequencing Method Type
-			if experiment["Method Type"] == "Sequencing" && experiment["Experiment Resolution"] =~ /(\d{1,}) *BP/i
-				unless ["de novo sequence assembly", "de novo and local sequence assembly", "Local sequence assembly", "Sequence alignment", "Split read mapping", "Split read and paired-end mapping"].include?(experiment["Analysis Type"])
+			if experiment[:"Method Type"] == "Sequencing" && experiment[:"Experiment Resolution"].match?(/(\d{1,}) *BP/i)
+				unless ["de novo sequence assembly", "de novo and local sequence assembly", "Local sequence assembly", "Sequence alignment", "Split read mapping", "Split read and paired-end mapping"].include?(experiment[:"Analysis Type"])
 					warning_sv_a.push(["JV_SV0027", "Warning if Method Type=Sequencing and Experiment Resolution is 'bp' and Analysis Type IS NOT de novo sequence assembly, de novo and local sequence assembly, Local sequence assembly, Sequence alignment, Split read mapping, Split read and paired-end mapping"])
 				end
 			end
 
-		end # unless experiment["Experiment Resolution"].empty?
+		end # unless experiment[:"Experiment Resolution"].empty?
 
 		# 他オブジェクトでのチェック用に格納
-		experiment_type_h.store(experiment["Experiment ID"], {"Experiment Type" => experiment["Experiment Type"], "Method Type" => experiment["Method Type"], "Analysis Type" => experiment["Analysis Type"]})
+		experiment_type_h.store(experiment[:"Experiment ID"], {:"Experiment Type" => experiment[:"Experiment Type"], :"Method Type" => experiment[:"Method Type"], :"Analysis Type" => experiment[:"Analysis Type"]})
 
 		## JV_SV0025: Inappropriate combination of Method Type and Analysis Type
-		for inapp_type_h in inapp_method_analysis_types_a
-			if inapp_type_h["Method Type"].include?(experiment["Method Type"]) && !inapp_type_h["Analysis Type"].include?(experiment["Analysis Type"])
-				warning_sv_a.push(["JV_SV0025", "Warning if Method Type=Sequencing and Analysis Type is not: de novo and local sequence assembly, de novo sequence assembly, Local sequence assembly, One end anchored assembly, Paired-end mapping, Read depth, Sequence alignment, Split read mapping, Genotyping, Read depth and paired-end mapping, Split read and paired-end mapping"]) if ["Sequencing"].include?(experiment["Method Type"])
-				warning_sv_a.push(["JV_SV0025", "Warning if Method Type is: Digital array, Gene expression array, MAPH, qPCR, ROMA, RT-PCR, and Analysis Type is not Probe signal intensity"]) if ["Digital array", "Gene expression array", "MAPH", "qPCR", "ROMA", "RT-PCR"].include?(experiment["Method Type"])
-				warning_sv_a.push(["JV_SV0025", "Warning if Method Type is: BAC aCGH, MLPA, Oligo aCGH and Analysis Type is not: Probe signal intensity, Genotyping"]) if ["BAC aCGH", "MLPA", "Oligo aCGH"].include?(experiment["Method Type"])
-				warning_sv_a.push(["JV_SV0025", "Warning if Method Type is SNP array and Analysis Type is not: SNP genotyping analysis, Probe signal intensity, Other, Genotyping"]) if ["SNP array"].include?(experiment["Method Type"])
-				warning_sv_a.push(["JV_SV0025", "Warning if Method Type is Curated and Analysis Type is not Curated or Manual observation"]) if ["Curated"].include?(experiment["Method Type"])
-				warning_sv_a.push(["JV_SV0025", "Warning if Method Type is FISH or Karyotyping and Analysis Type is not: Probe signal intensity, Manual observation, Other, Genotyping"]) if ["FISH", "Karyotyping"].include?(experiment["Method Type"])
-				warning_sv_a.push(["JV_SV0025", "Warning if Method Type is Multiple complete digestion and Analysis Type is not MCD analysis"]) if ["Multiple complete digestion"].include?(experiment["Method Type"])
-				warning_sv_a.push(["JV_SV0025", "Warning if Method Type is Optical mapping and Analysis Type is not Optical mapping"]) if ["Optical mapping"].include?(experiment["Method Type"])
-				warning_sv_a.push(["JV_SV0025", "Warning if Method Type is PCR and Analysis Type is not: Manual observation, Other, Genotyping"]) if ["PCR"].include?(experiment["Method Type"])
-				warning_sv_a.push(["JV_SV0025", "Warning if Method Type is Merging and Analysis Type is not Merging, or Reference Type is not Other (or the value from Reference Type of the merged experiments if they are all the same), or Reference Value is not Merged experiments (or the value from Reference Value of the merged experiments if they are all the same)"]) if ["Merging"].include?(experiment["Method Type"])
-				warning_sv_a.push(["JV_SV0025", "Warning if Method Type=MassSpec and Analysis Type is not Other"]) if ["MassSpec"].include?(experiment["Method Type"])
-				warning_sv_a.push(["JV_SV0025", "Warning if Method Type=Southern or Western and Analysis Type is not Manual observation"]) if ["Southern", "Western"].include?(experiment["Method Type"])
+		for inapp_type_h in $inapp_method_analysis_types_a
+			if inapp_type_h[:"Method Type"].include?(experiment[:"Method Type"]) && !inapp_type_h[:"Analysis Type"].include?(experiment[:"Analysis Type"])
+				warning_sv_a.push(["JV_SV0025", "Warning if Method Type=Sequencing and Analysis Type is not: de novo and local sequence assembly, de novo sequence assembly, Local sequence assembly, One end anchored assembly, Paired-end mapping, Read depth, Sequence alignment, Split read mapping, Genotyping, Read depth and paired-end mapping, Split read and paired-end mapping"]) if ["Sequencing"].include?(experiment[:"Method Type"])
+				warning_sv_a.push(["JV_SV0025", "Warning if Method Type is: Digital array, Gene expression array, MAPH, qPCR, ROMA, RT-PCR, and Analysis Type is not Probe signal intensity"]) if ["Digital array", "Gene expression array", "MAPH", "qPCR", "ROMA", "RT-PCR"].include?(experiment[:"Method Type"])
+				warning_sv_a.push(["JV_SV0025", "Warning if Method Type is: BAC aCGH, MLPA, Oligo aCGH and Analysis Type is not: Probe signal intensity, Genotyping"]) if ["BAC aCGH", "MLPA", "Oligo aCGH"].include?(experiment[:"Method Type"])
+				warning_sv_a.push(["JV_SV0025", "Warning if Method Type is SNP array and Analysis Type is not: SNP genotyping analysis, Probe signal intensity, Other, Genotyping"]) if ["SNP array"].include?(experiment[:"Method Type"])
+				warning_sv_a.push(["JV_SV0025", "Warning if Method Type is Curated and Analysis Type is not Curated or Manual observation"]) if ["Curated"].include?(experiment[:"Method Type"])
+				warning_sv_a.push(["JV_SV0025", "Warning if Method Type is FISH or Karyotyping and Analysis Type is not: Probe signal intensity, Manual observation, Other, Genotyping"]) if ["FISH", "Karyotyping"].include?(experiment[:"Method Type"])
+				warning_sv_a.push(["JV_SV0025", "Warning if Method Type is Multiple complete digestion and Analysis Type is not MCD analysis"]) if ["Multiple complete digestion"].include?(experiment[:"Method Type"])
+				warning_sv_a.push(["JV_SV0025", "Warning if Method Type is Optical mapping and Analysis Type is not Optical mapping"]) if ["Optical mapping"].include?(experiment[:"Method Type"])
+				warning_sv_a.push(["JV_SV0025", "Warning if Method Type is PCR and Analysis Type is not: Manual observation, Other, Genotyping"]) if ["PCR"].include?(experiment[:"Method Type"])
+				warning_sv_a.push(["JV_SV0025", "Warning if Method Type is Merging and Analysis Type is not Merging, or Reference Type is not Other (or the value from Reference Type of the merged experiments if they are all the same), or Reference Value is not Merged experiments (or the value from Reference Value of the merged experiments if they are all the same)"]) if ["Merging"].include?(experiment[:"Method Type"])
+				warning_sv_a.push(["JV_SV0025", "Warning if Method Type=MassSpec and Analysis Type is not Other"]) if ["MassSpec"].include?(experiment[:"Method Type"])
+				warning_sv_a.push(["JV_SV0025", "Warning if Method Type=Southern or Western and Analysis Type is not Manual observation"]) if ["Southern", "Western"].include?(experiment[:"Method Type"])
 			end
 		end
 
-		experiment_attr_h.store("experiment_type", experiment["Experiment Type"]) unless experiment["Experiment Type"].empty?
+		experiment_attr_h.store(:experiment_type, experiment[:"Experiment Type"]) unless experiment[:"Experiment Type"].empty?
 
 		submission.EXPERIMENT(experiment_attr_h){|experiment_e|
-			if !experiment["Method Type"].empty?
-				experiment_e.METHOD("method_type" => experiment["Method Type"]){|method_e|
-					method_e.DESCRIPTION(experiment["Method Description"]) if !experiment["Method Description"].empty?
+			if !experiment[:"Method Type"].empty?
+				experiment_e.METHOD(:method_type => experiment[:"Method Type"]){|method_e|
+					method_e.DESCRIPTION(experiment[:"Method Description"]) if !experiment[:"Method Description"].empty?
 				}
 			end
 
 		# if not merging
-		if experiment["Method Type"] != "Merging" && experiment["Analysis Type"] != "Merging"
+		if experiment[:"Method Type"] != "Merging" && experiment[:"Analysis Type"] != "Merging"
 
 			## JV_C0046: Missing Description for Other analysis type
-			error_ignore_common_a.push(["JV_C0046", "Description is required if Analysis Type='Other'"]) if experiment["Analysis Type"] == "Other" && experiment["Analysis Description"].empty?
+			error_ignore_common_a.push(["JV_C0046", "Description is required if Analysis Type='Other'"]) if experiment[:"Analysis Type"] == "Other" && experiment[:"Analysis Description"].empty?
 
-			case experiment["Experiment Type"]
+			case experiment[:"Experiment Type"]
 
 			when "Discovery"
 
 			# DISCOVERY_ANALYSIS attributes
 			discovery_analysis_attr_h = {}
-			discovery_analysis_attr_h.store("analysis_type", experiment["Analysis Type"]) unless experiment["Analysis Type"].empty?
-			discovery_analysis_attr_h.store("reference_type", experiment["Reference Type"]) unless experiment["Reference Type"].empty?
-			discovery_analysis_attr_h.store("reference_value", experiment["Reference Value"]) unless experiment["Reference Value"].empty?
+			discovery_analysis_attr_h.store(:analysis_type, experiment[:"Analysis Type"]) unless experiment[:"Analysis Type"].empty?
+			discovery_analysis_attr_h.store(:reference_type, experiment[:"Reference Type"]) unless experiment[:"Reference Type"].empty?
+			discovery_analysis_attr_h.store(:reference_value, experiment[:"Reference Value"]) unless experiment[:"Reference Value"].empty?
 
 			experiment_e.DISCOVERY_ANALYSIS(discovery_analysis_attr_h){|discovery_analysis|
-				discovery_analysis.DESCRIPTION(experiment["Analysis Description"]) if !experiment["Analysis Description"].empty?
+				discovery_analysis.DESCRIPTION(experiment[:"Analysis Description"]) if !experiment[:"Analysis Description"].empty?
 			}
 
 			when "Validation"
 
 			# VALIDATION_ANALYSIS attributes
 			validation_analysis_attr_h = {}
-			validation_analysis_attr_h.store("analysis_type", experiment["Analysis Type"]) unless experiment["Analysis Type"].empty?
-			validation_analysis_attr_h.store("reference_type", experiment["Reference Type"]) unless experiment["Reference Type"].empty?
-			validation_analysis_attr_h.store("reference_value", experiment["Reference Value"]) unless experiment["Reference Value"].empty?
+			validation_analysis_attr_h.store(:analysis_type, experiment[:"Analysis Type"]) unless experiment[:"Analysis Type"].empty?
+			validation_analysis_attr_h.store(:reference_type, experiment[:"Reference Type"]) unless experiment[:"Reference Type"].empty?
+			validation_analysis_attr_h.store(:reference_value, experiment[:"Reference Value"]) unless experiment[:"Reference Value"].empty?
 
 			experiment_e.VALIDATION_ANALYSIS(validation_analysis_attr_h){|validation_analysis|
-				validation_analysis.DESCRIPTION(experiment["Analysis Description"]) if !experiment["Analysis Description"].empty?
+				validation_analysis.DESCRIPTION(experiment[:"Analysis Description"]) if !experiment[:"Analysis Description"].empty?
 			}
 
 			when "Genotyping"
 
 			# GENOTYPING_ANALYSIS attributes
 			genotype_analysis_attr_h = {}
-			genotype_analysis_attr_h.store("analysis_type", experiment["Analysis Type"]) unless experiment["Analysis Type"].empty?
-			genotype_analysis_attr_h.store("reference_type", experiment["Reference Type"]) unless experiment["Reference Type"].empty?
-			genotype_analysis_attr_h.store("reference_value", experiment["Reference Value"]) unless experiment["Reference Value"].empty?
+			genotype_analysis_attr_h.store(:analysis_type, experiment[:"Analysis Type"]) unless experiment[:"Analysis Type"].empty?
+			genotype_analysis_attr_h.store(:reference_type, experiment[:"Reference Type"]) unless experiment[:"Reference Type"].empty?
+			genotype_analysis_attr_h.store(:reference_value, experiment[:"Reference Value"]) unless experiment[:"Reference Value"].empty?
 
 			experiment_e.GENOTYPING_ANALYSIS(genotype_analysis_attr_h){|genotyping_analysis|
-				genotyping_analysis.DESCRIPTION(experiment["Analysis Description"]) if !experiment["Analysis Description"].empty?
+				genotyping_analysis.DESCRIPTION(experiment[:"Analysis Description"]) if !experiment[:"Analysis Description"].empty?
 			}
 
 			end
@@ -1595,66 +1551,66 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 		end # if not merging
 
 		# JV_C0043: Invalid Reference Assembly 
-		if !experiment["Reference Type"].empty? && !experiment["Reference Value"].empty? && experiment["Reference Type"] == "Assembly"
+		if !experiment[:"Reference Type"].empty? && !experiment[:"Reference Value"].empty? && experiment[:"Reference Type"] == "Assembly"
 			## assembly から refseq accession 取得
-			unless allowed_assembly_a.include?(experiment["Reference Value"])
-				error_common_a.push(["JV_C0043", "Reference Value must refer to a valid Assembly if Reference Type=\"Assembly\". Experiment ID: #{experiment["Experiment ID"]}, #{experiment["Reference Value"]}"])
+			unless allowed_assembly_a.include?(experiment[:"Reference Value"])
+				error_common_a.push(["JV_C0043", "Reference Value must refer to a valid Assembly if Reference Type=\"Assembly\". Experiment ID: #{experiment["Experiment ID"]}, #{experiment[:"Reference Value"]}"])
 			end
 		end
 
 		## JV_C0044: Invalid Reference SampleSet
-		error_common_a.push(["JV_C0044", "Reference Value must refer to a valid SampleSet if Reference Type=\"SampleSet\". Invalid SampleSet ID reference: #{experiment["Reference Value"]}"]) if experiment["Reference Type"] == "Sampleset" && !sampleset_id_a.include?(experiment["Reference Value"])
+		error_common_a.push(["JV_C0044", "Reference Value must refer to a valid SampleSet if Reference Type=\"SampleSet\". Invalid SampleSet ID reference: #{experiment[:"Reference Value"]}"]) if experiment[:"Reference Type"] == "Sampleset" && !sampleset_id_a.include?(experiment[:"Reference Value"])
 
 		## JV_C0045: Invalid Reference Sample
-		error_common_a.push(["JV_C0045", "Reference Value must refer to a valid BioSample accession if Reference Type=\"Sample\". Invalid BioSample reference: #{experiment["Reference Value"]}"]) if experiment["Reference Type"] == "Sample" && !biosample_accession_a.include?(experiment["Reference Value"])
+		error_common_a.push(["JV_C0045", "Reference Value must refer to a valid BioSample accession if Reference Type=\"Sample\". Invalid BioSample reference: #{experiment[:"Reference Value"]}"]) if experiment[:"Reference Type"] == "Sample" && !biosample_accession_a.include?(experiment[:"Reference Value"])
 
 		# Detection
 
 		# DETECTION attributes
 		detection_attr_h = {}
-		detection_attr_h.store("detection_method", experiment["Detection Method"]) unless experiment["Detection Method"].empty?
+		detection_attr_h.store(:detection_method, experiment[:"Detection Method"]) unless experiment[:"Detection Method"].empty?
 
-		if !experiment["Detection Method"].empty? || !experiment["Detection Description"].empty?
+		if !experiment[:"Detection Method"].empty? || !experiment[:"Detection Description"].empty?
 			experiment_e.DETECTION(detection_attr_h){|detection|
-				detection.DESCRIPTION(experiment["Detection Description"]) if !experiment["Detection Description"].empty?
+				detection.DESCRIPTION(experiment[:"Detection Description"]) if !experiment[:"Detection Description"].empty?
 			}
 		end
 
 		# Platform
-		if !experiment["Method Platform"].empty?
-			experiment_e.PLATFORM("platform_name" => experiment["Method Platform"])
+		if !experiment[:"Method Platform"].empty?
+			experiment_e.PLATFORM(:platform_name => experiment[:"Method Platform"])
 		end
 
 		# Platform
-		if experiment["Method Platform"].scan(/(#{xref_db_all_regex}) *: *([-A-Za-z0-9]+)/).size > 0
-			for db, id in experiment["Method Platform"].scan(/(#{xref_db_all_regex}) *: *([-A-Za-z0-9]+)/)
+		if experiment[:"Method Platform"].scan(/(#{xref_db_all_regex}) *: *([-A-Za-z0-9]+)/).size > 0
+			for db, id in experiment[:"Method Platform"].scan(/(#{xref_db_all_regex}) *: *([-A-Za-z0-9]+)/)
 				experiment_e.PLATFORM{|platform_e|
-					platform_e.LINK("db" => db, "id" => id)
+					platform_e.LINK(:db => db, :id => id)
 
 					## JV_SV0026: Invalid Platform link
 					warning_sv_a.push(["JV_SV0026", "Warning if Platform link is not to AE, GEO, GEA, SRA, ENA. DB: #{db}"]) unless ["AE", "GEO", "GEA", "SRA", "ENA"].include?(db)
 				}
-			end # for db, id in experiment["Method Platform"].scan(/(#{xref_db_all_regex}) *: *([-A-Za-z0-9]+)/)
-		elsif !experiment["Method Platform"].empty?
-			experiment_e.PLATFORM("platform_name" => experiment["Method Platform"])
+			end # for db, id in experiment[:"Method Platform"].scan(/(#{xref_db_all_regex}) *: *([-A-Za-z0-9]+)/)
+		elsif !experiment[:"Method Platform"].empty?
+			experiment_e.PLATFORM(:platform_name => experiment[:"Method Platform"])
 
 			## JV_SV0013: Invlalid Platform link
 			# warning_sv_a.push(["JV_SV0013", "Platform link must refer to a valid db:id"])
 		end
 
 		# Links
-		if experiment["External Links"].scan(/(#{xref_db_all_regex}) *: *([-A-Za-z0-9]+)/).size > 0
-			for db, id in experiment["External Links"].scan(/(#{xref_db_all_regex}) *: *([-A-Za-z0-9]+)/)
+		if experiment[:"External Links"].scan(/(#{xref_db_all_regex}) *: *([-A-Za-z0-9]+)/).size > 0
+			for db, id in experiment[:"External Links"].scan(/(#{xref_db_all_regex}) *: *([-A-Za-z0-9]+)/)
 				experiment_e.LINK{|link|
-					link.DB_ID("db" => db, "id" => id)
+					link.DB_ID(:db => db, :id => id)
 				}
-			end # for db, id in experiment["External Links"].scan(/(#{xref_db_all_regex}) *: *([-A-Za-z0-9]+)/)
-		elsif !experiment["External Links"].empty?
+			end # for db, id in experiment[:"External Links"].scan(/(#{xref_db_all_regex}) *: *([-A-Za-z0-9]+)/)
+		elsif !experiment[:"External Links"].empty?
 			experiment_e.LINK{|link|
-				link.URL("url" => experiment["External Links"])
+				link.URL(:url => experiment[:"External Links"])
 
 				## JV_SV0015: Invalid Experiment link URL
-				warning_sv_a.push(["JV_SV0015", "Experiment link URL must be valid"]) unless experiment["External Links"] =~ /https?/
+				warning_sv_a.push(["JV_SV0015", "Experiment link URL must be valid"]) unless experiment[:"External Links"].match?(/https?/)
 			}
 
 			## JV_SV0013: Invlalid Platform link
@@ -1663,10 +1619,10 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 		end
 
 		# Merge
-		if experiment["Merged Experiment IDs"].split(/ *, */).size > 0
-			experiment["Merged Experiment IDs"].split(/ *, */).each{|eid|
+		unless experiment[:"Merged Experiment IDs"].split(/ *, */).empty?
+			experiment[:"Merged Experiment IDs"].split(/ *, */).each{|eid|
 				if non_merging_experiment_id_a.include?(eid)
-					experiment_e.MERGED_EXPERIMENT("merged_experiment_id" => eid)
+					experiment_e.MERGED_EXPERIMENT(:merged_experiment_id => "#{eid}")
 				end
 			}
 		end
@@ -1687,12 +1643,12 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 	error_vcf_header_a, error_ignore_vcf_header_a, error_exchange_vcf_header_a, warning_vcf_header_a, error_vcf_content_a, error_ignore_vcf_content_a, error_exchange_vcf_content_a, warning_vcf_content_a, vcf_variant_call_a, vcf_variant_region_a, vcf_content_log_a = [], [], [], [], [], [], [], [], [], []
 	for dataset in dataset_a
 
-		dataset_to_experiment_h.store(dataset["Dataset ID"], dataset["Experiment ID"])
-		dataset_to_sampleset_h.store(dataset["Dataset ID"], dataset["SampleSet ID"])
+		dataset_to_experiment_h.store(dataset[:"Dataset ID"].to_i, dataset[:"Experiment ID"].to_i)
+		dataset_to_sampleset_h.store(dataset[:"Dataset ID"].to_i, dataset[:"SampleSet ID"].to_i)
 
 		# VCF と variant call sheet 両方ある場合は sheet を優先。VCF 登録で region 作成時の処理
-		if !dataset["VCF Filename"].empty? && variant_call_a.empty?
-			vcf_sv_f = dataset["VCF Filename"]
+		if !dataset[:"VCF Filename"].empty? && variant_call_a.empty?
+			vcf_sv_f = dataset[:"VCF Filename"]
 		else
 			if variant_call_a.empty?
 				# JV_VCFS0008: Missing structural variants
@@ -1726,37 +1682,37 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 			for tmp_vcf_variant_call_h in tmp_vcf_variant_call_a
 
-				unless dataset["Dataset ID"].empty?
-					tmp_vcf_variant_call_h.store("Dataset ID", dataset["Dataset ID"])
+				unless dataset[:"Dataset ID"].nil?
+					tmp_vcf_variant_call_h.store(:"Dataset ID", dataset[:"Dataset ID"])
 				else
-					tmp_vcf_variant_call_h.store("Dataset ID", "")
+					tmp_vcf_variant_call_h.store(:"Dataset ID", "")
 				end
 
-				unless dataset["Experiment ID"].empty?
-					tmp_vcf_variant_call_h.store("Experiment ID", dataset["Experiment ID"])
+				unless dataset[:"Experiment ID"].nil?
+					tmp_vcf_variant_call_h.store(:"Experiment ID", dataset[:"Experiment ID"])
 				else
-					tmp_vcf_variant_call_h.store("Experiment ID", "")
+					tmp_vcf_variant_call_h.store(:"Experiment ID", "")
 				end
 
-				unless dataset["SampleSet ID"].empty?
-					tmp_vcf_variant_call_h.store("SampleSet ID", dataset["SampleSet ID"])
+				unless dataset[:"SampleSet ID"].nil?
+					tmp_vcf_variant_call_h.store(:"SampleSet ID", dataset[:"SampleSet ID"])
 				else
-					tmp_vcf_variant_call_h.store("SampleSet ID", "")
+					tmp_vcf_variant_call_h.store(:"SampleSet ID", "")
 				end
 
 				# JV_VCF0042: Invalid sample reference in VCF
-				unless tmp_vcf_variant_call_h["FORMAT"].empty?
-					for ft_value_h in tmp_vcf_variant_call_h["FORMAT"]
+				unless tmp_vcf_variant_call_h[:FORMAT].empty?
+					for ft_value_h in tmp_vcf_variant_call_h[:FORMAT]
 
-						if sample_name_per_sampleset_h[tmp_vcf_variant_call_h["SampleSet ID"]] && biosample_accession_per_sampleset_h[tmp_vcf_variant_call_h["SampleSet ID"]] && sampleset_name_per_sampleset_h[tmp_vcf_variant_call_h["SampleSet ID"]]
-							unless (ft_value_h.keys - sample_name_per_sampleset_h[tmp_vcf_variant_call_h["SampleSet ID"]] - biosample_accession_per_sampleset_h[tmp_vcf_variant_call_h["SampleSet ID"]] - sampleset_name_per_sampleset_h[tmp_vcf_variant_call_h["SampleSet ID"]] - defined_samples_a).empty?
-								invalid_sample_ref_vcf_a.push((ft_value_h.keys - sample_name_per_sampleset_h[tmp_vcf_variant_call_h["SampleSet ID"]] - biosample_accession_per_sampleset_h[tmp_vcf_variant_call_h["SampleSet ID"]] - sampleset_name_per_sampleset_h[tmp_vcf_variant_call_h["SampleSet ID"]] - defined_samples_a))
+						if sample_name_per_sampleset_h[tmp_vcf_variant_call_h[:"SampleSet ID"]] && biosample_accession_per_sampleset_h[tmp_vcf_variant_call_h[:"SampleSet ID"]] && sampleset_name_per_sampleset_h[tmp_vcf_variant_call_h[:"SampleSet ID"]]
+							unless (ft_value_h.keys - sample_name_per_sampleset_h[tmp_vcf_variant_call_h[:"SampleSet ID"]] - biosample_accession_per_sampleset_h[tmp_vcf_variant_call_h[:"SampleSet ID"]] - sampleset_name_per_sampleset_h[tmp_vcf_variant_call_h[:"SampleSet ID"]] - defined_samples_list_h.keys).empty?
+								invalid_sample_ref_vcf_a.push((ft_value_h.keys - sample_name_per_sampleset_h[tmp_vcf_variant_call_h[:"SampleSet ID"]] - biosample_accession_per_sampleset_h[tmp_vcf_variant_call_h[:"SampleSet ID"]] - sampleset_name_per_sampleset_h[tmp_vcf_variant_call_h[:"SampleSet ID"]] - defined_samples_list_h.keys))
 							end
 
 							# Genotype flag
 							ft_value_h.values.each{|ft_value|
-								ft_value.each{|key, value|
-									sv_genotype_f = true if key == "GT"	|| key == "CN"
+								ft_value.each{|key_sym, value|
+									sv_genotype_f = true if "#{key_sym}" == "GT"	|| "#{key_sym}" == "CN"
 								}
 							}
 						
@@ -1765,15 +1721,15 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 				end # unless tmp_vcf_variant_call_h["FORMAT"].empty?
 
 				# row に VCF を row にしたものを格納
-				unless tmp_vcf_variant_call_h["row"]
+				unless tmp_vcf_variant_call_h[:row]
 					# VCF variant call に tsv 用の row 格納
 					row_a = []
 					for item in variant_call_sheet_header_a
 						# sheet header 項目名が無いものは "" を格納
-						row_a.push(tmp_vcf_variant_call_h[item] ? tmp_vcf_variant_call_h[item] : "")
+						row_a.push(tmp_vcf_variant_call_h[:"#{item}"] ? tmp_vcf_variant_call_h[:"#{item}"] : "")
 					end
 
-					tmp_vcf_variant_call_h.store("row", row_a)
+					tmp_vcf_variant_call_h.store(:row, row_a)
 				end
 
 			end # for tmp_vcf_variant_call_h in tmp_vcf_variant_call_a
@@ -1823,13 +1779,9 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 	#
 	
 	# vcf を跨った variant call 全体の設定
-	validation_result_a = []
-	open("#{conf_path}/validation_result.json"){|f|
-		validation_result_a = JSON.load(f)
-	}
-	validation_result_regex = validation_result_a.join("|")
+	validation_result_regex = "Fail|Pass|Inconclusive"
 
-	variant_call_id_a = []
+	variant_call_id_h = {}
 	object = "Variant Call"
 	all_variant_call_tsv_s = ""
 
@@ -1927,200 +1879,200 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 			variant_call_id = ""
 			variant_call_type = ""
-			unless variant_call["Variant Call ID"].empty?
+			unless variant_call[:"Variant Call ID"].empty?
 
-				variant_call_id = variant_call["Variant Call ID"]
-				variant_call_attr_h.store("variant_call_id", variant_call_id)
+				variant_call_id = variant_call[:"Variant Call ID"]
+				variant_call_attr_h.store(:variant_call_id, variant_call_id)
 
-				if variant_call_id_a.include?(variant_call_id)
+				if variant_call_id_h.has_key?(:"#{variant_call_id}")
 					# JV_SV0030: Duplicated Variant Call ID
 					duplicated_variant_call_id_a.push(variant_call_id)
-					variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0030 Error: Variant Call ID must be unique.")				
+					variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_SV0030 Error: Variant Call ID must be unique.")
 				end
 
 				# VCF を跨った study (submission) 単位のチェック
-				variant_call_id_a.push(variant_call_id)
+				variant_call_id_h.store(:"#{variant_call_id}", 0)
 
 			end
 
-			variant_call_attr_h.store("variant_call_accession", "")
+			variant_call_attr_h.store(:variant_call_accession, "")
 
 			# CV
-			variant_call.each{|key, value|
-				if value && !value.empty? && cv_h[object] && cv_h[object][key] && !cv_h[object][key].include?(value)
+			variant_call.each{|key_sym, value|
+				if value && !value.empty? && $cv_h[object] && $cv_h[object]["#{key_sym}"] && !$cv_h[object]["#{key_sym}"].include?(value)
 					## JV_C0057: Invalid value for controlled terms
-					invalid_value_for_cv_call_a.push("#{variant_call_id} #{key}:#{value}")
-					variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_C0057 Error: Invalid value for controlled terms. #{key}:#{value}")
+					invalid_value_for_cv_call_a.push("#{variant_call_id} #{key_sym}:#{value}")
+					variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_C0057 Error: Invalid value for controlled terms. #{key_sym}:#{value}")
 				end
 			}
 
-			unless variant_call["Variant Call Type"].empty? && vtype_h["Variant Call Type"][variant_call["Variant Call Type"]]
-				variant_call_type = vtype_h["Variant Call Type"][variant_call["Variant Call Type"]]
-				variant_call_attr_h.store("variant_call_type", variant_call_type)
-				variant_call_id_type_h.store(variant_call_id, variant_call_type)
+			if !variant_call[:"Variant Call Type"].empty? && $vtype_h[:"Variant Call Type"][:"#{variant_call[:"Variant Call Type"]}"]
+				variant_call_type = $vtype_h[:"Variant Call Type"][:"#{variant_call[:"Variant Call Type"]}"]
+				variant_call_attr_h.store(:variant_call_type, variant_call_type)
+				variant_call_id_type_h.store(:"#{variant_call_id}", variant_call_type)
 			end
 
 			# JV_SV0099: Invalid dataset reference
-			unless dataset_to_experiment_h.has_key?(variant_call["Dataset ID"])
-				invalid_dataset_id_call_a.push("#{variant_call_id}")
-				variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0099 Error: Provide a valid dataset ID. #{variant_call["Dataset ID"]}")
+			unless dataset_to_experiment_h.has_key?(variant_call[:"Dataset ID"].to_i)
+				invalid_dataset_id_call_a.push(variant_call_id)
+				variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_SV0099 Error: Provide a valid dataset ID. #{variant_call[:"Dataset ID"]}")
 			end
 
-			variant_call_attr_h.store("variant_call_type_SO_id", "")
-			variant_call_attr_h.store("clinical_source", "")
-			variant_call_attr_h.store("clinical_significance", "")
-			variant_call_attr_h.store("insertion_length", variant_call["Insertion Length"]) unless !variant_call["Insertion Length"] && variant_call["Insertion Length"].empty?
-			variant_call_attr_h.store("zygosity", variant_call["Zygosity"]) unless variant_call["Zygosity"].empty?
-			variant_call_attr_h.store("origin", variant_call["Origin"]) unless variant_call["Origin"].empty?
-			variant_call_attr_h.store("copy_number", variant_call["Copy Number"]) unless variant_call["Copy Number"].empty?
-			variant_call_attr_h.store("reference_copy_number", "")
-			# variant_call_attr_h.store("support_count", "")
-			# variant_call_attr_h.store("log2_value", "")
-			# variant_call_attr_h.store("is_low_quality", "")
+			variant_call_attr_h.store(:variant_call_type_SO_id, "")
+			variant_call_attr_h.store(:clinical_source, "")
+			variant_call_attr_h.store(:clinical_significance, "")
+			variant_call_attr_h.store(:insertion_length, variant_call[:"Insertion Length"]) unless !variant_call[:"Insertion Length"] && variant_call[:"Insertion Length"].empty?
+			variant_call_attr_h.store(:zygosity, variant_call[:Zygosity]) unless variant_call[:Zygosity].empty?
+			variant_call_attr_h.store(:origin, variant_call[:Origin]) unless variant_call[:Origin].empty?
+			variant_call_attr_h.store(:copy_number, variant_call[:"Copy Number"]) unless variant_call[:"Copy Number"].empty?
+			variant_call_attr_h.store(:reference_copy_number, "")
+			# variant_call_attr_h.store(:support_count, "")
+			# variant_call_attr_h.store(:log2_value, "")
+			# variant_call_attr_h.store(:is_low_quality, "")
 
 			# Experiment ID
 			# from VCF and has an experiment ID
-			if variant_call["Experiment ID"]
-				variant_call_attr_h.store("experiment_id", variant_call["Experiment ID"])
+			if variant_call[:"Experiment ID"]
+				variant_call_attr_h.store(:experiment_id, variant_call[:"Experiment ID"])
 			# from tsv
-			elsif !variant_call["Dataset ID"].empty? && dataset_to_experiment_h[variant_call["Dataset ID"]]
-				variant_call_attr_h.store("experiment_id", dataset_to_experiment_h[variant_call["Dataset ID"]])
+			elsif !variant_call[:"Dataset ID"].empty? && dataset_to_experiment_h[variant_call[:"Dataset ID"].to_i]
+				variant_call_attr_h.store(:experiment_id, dataset_to_experiment_h[variant_call[:"Dataset ID"].to_i])
 			end
 
-			variant_call_attr_h.store("allele_count", variant_call["Allele Count"]) if variant_call["Allele Count"] && !variant_call["Allele Count"].empty?
-			variant_call_attr_h.store("allele_number", variant_call["Allele Number"]) if variant_call["Allele Number"] && !variant_call["Allele Number"].empty?
+			variant_call_attr_h.store(:allele_count, variant_call[:"Allele Count"]) if variant_call[:"Allele Count"] && !variant_call[:"Allele Count"].empty?
+			variant_call_attr_h.store(:allele_number, variant_call[:"Allele Number"]) if variant_call[:"Allele Number"] && !variant_call[:"Allele Number"].empty?
 
 			# JV_C0063: Allele count greater than allele number
 			ac_greater_than_an_f = false
-			if variant_call["Allele Count"].to_i && variant_call["Allele Number"].to_i && variant_call["Allele Count"].to_i > variant_call["Allele Number"].to_i
+			if variant_call[:"Allele Count"].to_i && variant_call[:"Allele Number"].to_i && variant_call[:"Allele Count"].to_i > variant_call[:"Allele Number"].to_i
 				ac_greater_than_an_a.push(variant_call_id)
-				variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_C0063 Error: Allele count is greater than allele number.")
+				variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_C0063 Error: Allele count is greater than allele number.")
 				ac_greater_than_an_f = true
 			end
 
 			af = ""
-			if variant_call["Allele Frequency"] && !variant_call["Allele Frequency"].empty?
-				variant_call_attr_h.store("allele_frequency", variant_call["Allele Frequency"])
+			if variant_call[:"Allele Frequency"] && !variant_call[:"Allele Frequency"].empty?
+				variant_call_attr_h.store(:allele_frequency, variant_call[:"Allele Frequency"])
 			# AN AC があって AF がない場合、AF を計算
-			elsif variant_call["Allele Number"] && !variant_call["Allele Number"].empty? && variant_call["Allele Number"].to_i && variant_call["Allele Count"] && !variant_call["Allele Count"].empty? && variant_call["Allele Count"].to_i && !ac_greater_than_an_f
-				if variant_call["Allele Count"].to_i.fdiv(variant_call["Allele Number"].to_i).floor(6).to_s
-					af = variant_call["Allele Count"].to_i.fdiv(variant_call["Allele Number"].to_i).floor(6).to_s
-					variant_call_attr_h.store("allele_frequency", af)
+			elsif variant_call[:"Allele Number"] && !variant_call[:"Allele Number"].empty? && variant_call[:"Allele Number"].to_i && variant_call[:"Allele Count"] && !variant_call[:"Allele Count"].empty? && variant_call[:"Allele Count"].to_i && !ac_greater_than_an_f
+				if variant_call[:"Allele Count"].to_i.fdiv(variant_call[:"Allele Number"].to_i).floor(6).to_s
+					af = variant_call[:"Allele Count"].to_i.fdiv(variant_call[:"Allele Number"].to_i).floor(6).to_s
+					variant_call_attr_h.store(:allele_frequency, af)
 					calculated_af_a.push(variant_call_id)
-					variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_C0062 Warning: Allele frequency was calculated as allele count/allele number.")
+					variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_C0062 Warning: Allele frequency was calculated as allele count/allele number.")
 				end
 			end
 
-			variant_call_attr_h.store("repeat_count", "")
+			variant_call_attr_h.store(:repeat_count, "")
 
 			submission.VARIANT_CALL(variant_call_attr_h){|variant_call_e|
 
 				# VALIDATION
-				if variant_call["Validation"].scan(/(\d{1,}) *: *(#{validation_result_regex})/i).size > 0
-					for eid, result in variant_call["Validation"].scan(/(\d{1,}) *: *(#{validation_result_regex})/i)
-						variant_call_e.VALIDATION("experiment_id" => eid, "result" => result.capitalize)
+				if variant_call[:Validation].scan(/(\d{1,}) *: *(#{validation_result_regex})/i).size > 0
+					for eid, result in variant_call[:Validation].scan(/(\d{1,}) *: *(#{validation_result_regex})/i)
+						variant_call_e.VALIDATION(:experiment_id => eid, :result => result.capitalize)
 					end
 				end
 
 				# DESCRIPTION
-				variant_call_e.DESCRIPTION(variant_call["Description"])
+				variant_call_e.DESCRIPTION(variant_call[:Description])
 
 				# SAMPLESET
 				# from VCF and has an SampleSet ID
-				if variant_call["SampleSet ID"]
-					variant_call_e.SAMPLESET("sampleset_id" => variant_call["SampleSet ID"])
-					variant_call_id_sampleset_h.store(variant_call_id, variant_call["SampleSet ID"])
+				if variant_call[:"SampleSet ID"]
+					variant_call_e.SAMPLESET(:sampleset_id => variant_call[:"SampleSet ID"])
+					variant_call_id_sampleset_h.store(:"#{variant_call_id}", variant_call[:"SampleSet ID"])
 				# from tsv
-				elsif !variant_call["Dataset ID"].empty? && dataset_to_sampleset_h[variant_call["Dataset ID"]]
-					variant_call_e.SAMPLESET("sampleset_id" => dataset_to_sampleset_h[variant_call["Dataset ID"]])
-					variant_call_id_sampleset_h.store(variant_call_id, dataset_to_sampleset_h[variant_call["Dataset ID"]])
+				elsif !variant_call[:"Dataset ID"].empty? && dataset_to_sampleset_h[variant_call[:"Dataset ID"].to_i]
+					variant_call_e.SAMPLESET(:sampleset_id => dataset_to_sampleset_h[variant_call[:"Dataset ID"].to_i])
+					variant_call_id_sampleset_h.store(:"#{variant_call_id}", dataset_to_sampleset_h[variant_call[:"Dataset ID"].to_i])
 				end
 
 				# LINK
-				if variant_call["External Links"].scan(/(#{xref_db_all_regex}) *: *([-A-Za-z0-9]+)/).size > 0
-					for db, id in variant_call["External Links"].scan(/(#{xref_db_all_regex}) *: *([-A-Za-z0-9]+)/)
-						variant_call_e.LINK("db" => db, "id" => id)
+				if variant_call[:"External Links"].scan(/(#{xref_db_all_regex}) *: *([-A-Za-z0-9]+)/).size > 0
+					for db, id in variant_call[:"External Links"].scan(/(#{xref_db_all_regex}) *: *([-A-Za-z0-9]+)/)
+						variant_call_e.LINK(:db => db, :id => id)
 					end # for db, id in variant_call["External Links"].scan(/(#{xref_db_all_regex}) *: *([-A-Za-z0-9]+)/)
 				end
 
 				# PHENOTYPE
-				unless variant_call["Phenotype"].empty?
-					if variant_call["Phenotype"].scan(/(#{xref_db_phenotypes_regex}) *: *([-A-Za-z0-9]+)/).size > 0
+				unless variant_call[:Phenotype].empty?
+					if variant_call[:Phenotype].scan(/(#{xref_db_phenotypes_regex}) *: *([-A-Za-z0-9]+)/).size > 0
 						variant_call_e.PHENOTYPE{|phenotype|
-							for db, id in variant_call["Phenotype"].scan(/(#{xref_db_phenotypes_regex}) *: *([-A-Za-z0-9]+)/)
-								phenotype.LINK("db" => db, "id" => id)
+							for db, id in variant_call[:Phenotype].scan(/(#{xref_db_phenotypes_regex}) *: *([-A-Za-z0-9]+)/)
+								phenotype.LINK(:db => db, :id => id)
 							end # for db, id in variant_call["Phenotype"].scan(/(#{xref_db_phenotypes_regex}) *: *([-A-Za-z0-9]+)/)
 						}
 					else
 						variant_call_e.PHENOTYPE{|phenotype|
-							phenotype.DESCRIPTION(variant_call["Phenotype"])
+							phenotype.DESCRIPTION(variant_call[:Phenotype])
 						}
 
 						## JV_SV0033: Invalid Variant Call Phenotype link
-						invalid_phenotype_link_call_a.push("#{variant_call_id} #{variant_call["Phenotype"]}")
-						variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0033 Warning: Invalid Variant Call Phenotype link. #{variant_call["Phenotype"]}")
+						invalid_phenotype_link_call_a.push("#{variant_call_id} #{variant_call[:Phenotype]}")
+						variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_SV0033 Warning: Invalid Variant Call Phenotype link. #{variant_call[:Phenotype]}")
 
 					end
 				end # unless sample["Subject Phenotype"].empty?
 
 				## mutation ID, order チェック用に格納
-				variant_call_mutation_h.store(variant_call_id, {"Variant Call ID" => variant_call_id, "Assembly for Translocation Breakpoint" => variant_call["Assembly for Translocation Breakpoint"], "From Chr" => variant_call["From Chr"], "From Coord" => variant_call["From Coord"], "From Strand" => variant_call["From Strand"], "To Chr" => variant_call["To Chr"], "To Coord" => variant_call["To Coord"], "To Strand" => variant_call["To Strand"], "Mutation ID" => variant_call["Mutation ID"], "Mutation Order" => variant_call["Mutation Order"], "Mutation Molecule" => variant_call["Mutation Molecule"]})
+				variant_call_mutation_h.store(:"#{variant_call_id}", {:"Variant Call ID" => variant_call_id, :"Assembly for Translocation Breakpoint" => variant_call[:"Assembly for Translocation Breakpoint"], :"From Chr" => variant_call[:"From Chr"], :"From Coord" => variant_call[:"From Coord"], :"From Strand" => variant_call[:"From Strand"], :"To Chr" => variant_call[:"To Chr"], :"To Coord" => variant_call[:"To Coord"], :"To Strand" => variant_call[:"To Strand"], :"Mutation ID" => variant_call[:"Mutation ID"], :"Mutation Order" => variant_call[:"Mutation Order"], :"Mutation Molecule" => variant_call[:"Mutation Molecule"]})
 
 				# PLACEMENT attributes
 				placement_attr_h = {}
-				placement_attr_h.store("placement_method", "Submitted genomic")
+				placement_attr_h.store(:placement_method, "Submitted genomic")
 
 				## translocation
-				if variant_call["Variant Call Type"] =~ /translocation/
+				if variant_call[:"Variant Call Type"].match?(/translocation/)
 
 					## JV_SV0094: Missing strand for translocation
-					if variant_call["From Strand"].empty? || variant_call["To Strand"].empty?
+					if variant_call[:"From Strand"].empty? || variant_call[:"To Strand"].empty?
 						missing_strand_call_a.push(variant_call_id)
-						variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0094 Warning: Missing strand for translocation.")
+						variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_SV0094 Warning: Missing strand for translocation.")
 					end
 
 					## JV_SV0045: Invalid translocation from and to
-					if variant_call["Assembly for Translocation Breakpoint"] && variant_call["Assembly for Translocation Breakpoint"].empty? || variant_call["From Chr"].empty? || variant_call["From Coord"].empty? || variant_call["From Strand"].empty? || variant_call["To Chr"].empty? || variant_call["To Coord"].empty? || variant_call["To Strand"].empty?
+					if variant_call[:"Assembly for Translocation Breakpoint"] && variant_call[:"Assembly for Translocation Breakpoint"].empty? || variant_call[:"From Chr"].empty? || variant_call[:"From Coord"].empty? || variant_call[:"From Strand"].empty? || variant_call[:"To Chr"].empty? || variant_call[:"To Coord"].empty? || variant_call[:"To Strand"].empty?
 						invalid_from_to_call_a.push(variant_call_id)
-						variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0045 Error: Invalid translocation from and to.")
+						variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_SV0045 Error: Invalid translocation from and to.")
 					else
 
 						## translocation call を格納
-						variant_call_translocation_h.store(variant_call_id, {"Variant Call ID" => variant_call_id, "Assembly for Translocation Breakpoint" => variant_call["Assembly for Translocation Breakpoint"], "From Chr" => variant_call["From Chr"], "From Coord" => variant_call["From Coord"], "From Strand" => variant_call["From Strand"], "To Chr" => variant_call["To Chr"], "To Coord" => variant_call["To Coord"], "To Strand" => variant_call["To Strand"], "Mutation ID" => variant_call["Mutation ID"], "Mutation Order" => variant_call["Mutation Order"], "Mutation Molecule" => variant_call["Mutation Molecule"]})
+						variant_call_translocation_h.store(:"#{variant_call_id}", {:"Variant Call ID" => variant_call_id, :"Assembly for Translocation Breakpoint" => variant_call[:"Assembly for Translocation Breakpoint"], :"From Chr" => variant_call[:"From Chr"], :"From Coord" => variant_call[:"From Coord"], :"From Strand" => variant_call[:"From Strand"], :"To Chr" => variant_call[:"To Chr"], :"To Coord" => variant_call[:"To Coord"], :"To Strand" => variant_call[:"To Strand"], :"Mutation ID" => variant_call[:"Mutation ID"], :"Mutation Order" => variant_call[:"Mutation Order"], :"Mutation Molecule" => variant_call[:"Mutation Molecule"]})
 
 						## JV_SV0041: Different chromosomes for intrachromosomal translocation
-						if variant_call["Variant Call Type"] == "intrachromosomal translocation" && variant_call["From Chr"] != variant_call["To Chr"]
+						if variant_call[:"Variant Call Type"] == "intrachromosomal translocation" && variant_call[:"From Chr"] != variant_call[:"To Chr"]
 							different_chrs_for_intra_call_a.push(variant_call_id)
-							variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0041 Error: Different chromosomes for intrachromosomal translocation.")
+							variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_SV0041 Error: Different chromosomes for intrachromosomal translocation.")
 						end
 
 						## JV_SV0042: Same chromosomes for interchromosomal translocation
-						if variant_call["Variant Call Type"] == "interchromosomal translocation" && variant_call["From Chr"] == variant_call["To Chr"]
+						if variant_call[:"Variant Call Type"] == "interchromosomal translocation" && variant_call[:"From Chr"] == variant_call[:"To Chr"]
 							same_chrs_for_inter_call_a.push(variant_call_id)
-							variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0042 Error: Same chromosomes for interchromosomal translocation.")
+							variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_SV0042 Error: Same chromosomes for interchromosomal translocation.")
 						end
 
-						translocation_assembly_a.push(variant_call["Assembly for Translocation Breakpoint"])
+						translocation_assembly_a.push(variant_call[:"Assembly for Translocation Breakpoint"])
 
 						# 最初の assembly で以降は同じと仮定して valid な chromosome list を構築。assembly 混在は最後にチェック
-						if variant_call["Assembly for Translocation Breakpoint"] && !variant_call["Assembly for Translocation Breakpoint"].empty? && refseq_assembly == "" && chromosome_per_assembly_a.empty?
+						if variant_call[:"Assembly for Translocation Breakpoint"] && !variant_call[:"Assembly for Translocation Breakpoint"].empty? && refseq_assembly == "" && chromosome_per_assembly_a.empty?
 
 							## assembly から refseq accession 取得
-							assembly_a.each{|assembly_h|
-								refseq_assembly = assembly_h["refseq_assembly"] if assembly_h.values.include?(variant_call["Assembly for Translocation Breakpoint"])
+							$assembly_a.each{|assembly_h|
+								refseq_assembly = assembly_h[:refseq_assembly] if assembly_h.values.include?(variant_call[:"Assembly for Translocation Breakpoint"])
 							}
 
 							## refseq assembly から構成配列を取得
-							sequence_a.each{|sequence_h|
-								if sequence_h["assemblyAccession"] == refseq_assembly
-									chromosome_per_assembly_a.push({"chrName"=>sequence_h["chrName"], "ucscStyleName"=>sequence_h["ucscStyleName"], "refseqAccession"=>sequence_h["refseqAccession"], "genbankAccession"=>sequence_h["genbankAccession"], "role"=>sequence_h["role"], "length"=>sequence_h["length"]})
+							$sequence_a.each{|sequence_h|
+								if sequence_h[:assemblyAccession] == refseq_assembly
+									chromosome_per_assembly_a.push({:chrName => sequence_h[:chrName], :ucscStyleName => sequence_h[:ucscStyleName], :refseqAccession => sequence_h[:refseqAccession], :genbankAccession => sequence_h[:genbankAccession], :role => sequence_h[:role], :length => sequence_h[:length]})
 								end
 							}
 
 						end
 
 						# FROM
-						placement_attr_h.store("breakpoint_order", "From")
+						placement_attr_h.store(:breakpoint_order, "From")
 
 						variant_call_e.PLACEMENT(placement_attr_h){|placement_e|
 
@@ -2139,12 +2091,12 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 							from_found_f = false
 
 							# contig が download ref にあるかどうか. download にある = assembly には含まれていない
-							if !variant_call["From Chr"].empty? && $ref_download_h.has_key?(variant_call["From Chr"].to_sym) && !from_found_f
+							if !variant_call[:"From Chr"].empty? && $ref_download_h.has_key?(variant_call[:"From Chr"]) && !from_found_f
 								from_assembly = ""
 								from_chr_name = ""
 								from_chr_accession = ""
-								from_chr_length = $ref_download_h[variant_call["From Chr"].to_sym].to_i if $ref_download_h[variant_call["From Chr"].to_sym].to_i
-								from_contig_accession = variant_call["From Chr"]
+								from_chr_length = $ref_download_h[variant_call[:"From Chr"]].to_i if $ref_download_h[variant_call[:"From Chr"]].to_i
+								from_contig_accession = variant_call[:"From Chr"]
 								
 								from_valid_contig_f = true
 								from_ref_download_f = true
@@ -2153,29 +2105,29 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 								for chromosome_per_assembly_h in chromosome_per_assembly_a
 
 									## From Chr に sequence report にある RefSeq/GenBank accession が記載されているかどうか
-									if !variant_call["From Chr"].empty? && (chromosome_per_assembly_h["refseqAccession"] == variant_call["From Chr"] || chromosome_per_assembly_h["genbankAccession"] == variant_call["From Chr"]) && !from_found_f
-										from_assembly = variant_call["Assembly for Translocation Breakpoint"]
+									if !variant_call[:"From Chr"].empty? && (chromosome_per_assembly_h[:refseqAccession] == variant_call[:"From Chr"] || chromosome_per_assembly_h[:genbankAccession] == variant_call[:"From Chr"]) && !from_found_f
+										from_assembly = variant_call[:"Assembly for Translocation Breakpoint"]
 										from_chr_name = ""
 										from_chr_accession = ""
-										from_chr_length = chromosome_per_assembly_h["length"]
-										from_contig_accession = chromosome_per_assembly_h["refseqAccession"] # fna は refseqAccession 記載
+										from_chr_length = chromosome_per_assembly_h[:length]
+										from_contig_accession = chromosome_per_assembly_h[:refseqAccession] # fna は refseqAccession 記載
 										
 										from_valid_contig_f = true						
 										from_found_f = true
-									elsif !variant_call["From Chr"].empty? && chromosome_per_assembly_h["chrName"] == variant_call["From Chr"].sub(/chr/i, "") && chromosome_per_assembly_h["role"] == "assembled-molecule" && !from_found_f
-										from_assembly = variant_call["Assembly for Translocation Breakpoint"]
-										from_chr_name = chromosome_per_assembly_h["chrName"]
-										from_chr_accession = chromosome_per_assembly_h["refseqAccession"]
-										from_chr_length = chromosome_per_assembly_h["length"]
+									elsif !variant_call[:"From Chr"].empty? && chromosome_per_assembly_h[:chrName] == variant_call[:"From Chr"].sub(/chr/i, "") && chromosome_per_assembly_h[:role] == "assembled-molecule" && !from_found_f
+										from_assembly = variant_call[:"Assembly for Translocation Breakpoint"]
+										from_chr_name = chromosome_per_assembly_h[:chrName]
+										from_chr_accession = chromosome_per_assembly_h[:refseqAccession]
+										from_chr_length = chromosome_per_assembly_h[:length]
 										from_contig_accession = ""
 										
 										from_valid_chr_f = true
 										from_found_f = true
-									elsif !variant_call["From Chr"].empty? && chromosome_per_assembly_h["ucscStyleName"].sub(/^chr/i, "") == variant_call["From Chr"].sub(/^chr/i, "") && !from_found_f
-										from_assembly = variant_call["Assembly for Translocation Breakpoint"]
-										from_chr_name = chromosome_per_assembly_h["ucscStyleName"]
-										from_chr_accession = chromosome_per_assembly_h["refseqAccession"]
-										from_chr_length = chromosome_per_assembly_h["length"]
+									elsif !variant_call[:"From Chr"].empty? && chromosome_per_assembly_h[:ucscStyleName].sub(/^chr/i, "") == variant_call[:"From Chr"].sub(/^chr/i, "") && !from_found_f
+										from_assembly = variant_call[:"Assembly for Translocation Breakpoint"]
+										from_chr_name = chromosome_per_assembly_h[:ucscStyleName]
+										from_chr_accession = chromosome_per_assembly_h[:refseqAccession]
+										from_chr_length = chromosome_per_assembly_h[:length]
 										from_contig_accession = ""
 										
 										from_valid_chr_f = true
@@ -2188,33 +2140,33 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 
 							## JV_SV0072: Invalid chromosome reference, to/from は contig 列がなく一体
-							if !variant_call["From Chr"].empty? && !from_valid_chr_f && !from_valid_contig_f
+							if !variant_call[:"From Chr"].empty? && !from_valid_chr_f && !from_valid_contig_f
 								invalid_chr_ref_call_a.push(variant_call_id)
-								variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0072 Error: Invalid chromosome reference.")
+								variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_SV0072 Error: Invalid chromosome reference.")
 							end
 
 							# FROM GENOME
 							from_genome_attr_h = {}
-							from_genome_attr_h.store("assembly", refseq_assembly)
+							from_genome_attr_h.store(:assembly, refseq_assembly)
 
-							from_genome_attr_h.store("chr_name", from_chr_name)
-							from_genome_attr_h.store("chr_accession", from_chr_accession)
-							from_genome_attr_h.store("contig_accession", from_contig_accession)
-							from_genome_attr_h.store("strand", variant_call["From Strand"])
+							from_genome_attr_h.store(:chr_name, from_chr_name)
+							from_genome_attr_h.store(:chr_accession, from_chr_accession)
+							from_genome_attr_h.store(:contig_accession, from_contig_accession)
+							from_genome_attr_h.store(:strand, variant_call[:"From Strand"])
 													
 							# FROM COORD
-							if variant_call["From Coord"] && variant_call["From Coord"].to_i
-								from_coord = variant_call["From Coord"].to_i
-								from_genome_attr_h.store("start", variant_call["From Coord"])
-								from_genome_attr_h.store("stop", variant_call["From Coord"])
+							if variant_call[:"From Coord"] && variant_call[:"From Coord"].to_i
+								from_coord = variant_call[:"From Coord"].to_i
+								from_genome_attr_h.store(:start, variant_call[:"From Coord"])
+								from_genome_attr_h.store(:stop, variant_call[:"From Coord"])
 							else
-								from_genome_attr_h.store("start", "")
-								from_genome_attr_h.store("stop", "")
+								from_genome_attr_h.store(:start, "")
+								from_genome_attr_h.store(:stop, "")
 							end
 
 							# cipos
-							from_genome_attr_h.store("ciposleft", variant_call["ciposleft"]) if variant_call["ciposleft"] && !variant_call["ciposleft"].empty?
-							from_genome_attr_h.store("ciposright", variant_call["ciposright"]) if variant_call["ciposright"] && !variant_call["ciposright"].empty?
+							from_genome_attr_h.store(:ciposleft, variant_call[:ciposleft]) if variant_call[:ciposleft] && !variant_call[:ciposleft].empty?
+							from_genome_attr_h.store(:ciposright, variant_call[:ciposright]) if variant_call[:ciposright] && !variant_call[:ciposright].empty?
 
 							# GENOME attributes
 							placement_e.GENOME(from_genome_attr_h)
@@ -2222,14 +2174,14 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 							if from_chr_length != -1
 								if from_coord != -1 && (from_coord > from_chr_length + 1)
 									pos_outside_chr_call_a.push(variant_call_id)
-									variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_C0061 Error: Chromosome position is larger than chromosome size + 1. Check if the position is correct.")
+									variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_C0061 Error: Chromosome position is larger than chromosome size + 1. Check if the position is correct.")
 								end
 							end
 
 						} # placement_e
 
 						# TO
-						placement_attr_h.store("breakpoint_order", "To")
+						placement_attr_h.store(:breakpoint_order, "To")
 
 						variant_call_e.PLACEMENT(placement_attr_h){|placement_e|
 
@@ -2248,12 +2200,12 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 							to_found_f = false
 
 							# contig が download ref にあるかどうか. download にある = assembly には含まれていない
-							if !variant_call["To Chr"].empty? && $ref_download_h.has_key?(variant_call["To Chr"].to_sym) && !to_found_f
+							if !variant_call[:"To Chr"].empty? && $ref_download_h.has_key?(variant_call[:"To Chr"]) && !to_found_f
 								to_assembly = ""
 								to_chr_name = ""
 								to_chr_accession = ""
-								to_chr_length = $ref_download_h[variant_call["To Chr"].to_sym].to_i if $ref_download_h[variant_call["To Chr"].to_sym].to_i
-								to_contig_accession = variant_call["To Chr"]
+								to_chr_length = $ref_download_h[variant_call[:"To Chr"]].to_i if $ref_download_h[variant_call[:"To Chr"]].to_i
+								to_contig_accession = variant_call[:"To Chr"]
 								
 								to_valid_contig_f = true
 								to_ref_download_f = true
@@ -2261,29 +2213,29 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 							else
 								for chromosome_per_assembly_h in chromosome_per_assembly_a
 									## From Chr に sequence report にある RefSeq/GenBank accession が記載されているかどうか
-									if !variant_call["To Chr"].empty? && (chromosome_per_assembly_h["refseqAccession"] == variant_call["To Chr"] || chromosome_per_assembly_h["genbankAccession"] == variant_call["To Chr"]) && !to_found_f
-										to_assembly = variant_call["Assembly for Translocation Breakpoint"]
+									if !variant_call[:"To Chr"].empty? && (chromosome_per_assembly_h[:refseqAccession] == variant_call[:"To Chr"] || chromosome_per_assembly_h[:genbankAccession] == variant_call[:"To Chr"]) && !to_found_f
+										to_assembly = variant_call[:"Assembly for Translocation Breakpoint"]
 										to_chr_name = ""
 										to_chr_accession = ""
-										to_chr_length = chromosome_per_assembly_h["length"]
-										to_contig_accession = chromosome_per_assembly_h["refseqAccession"] # fna は refseqAccession 記載
+										to_chr_length = chromosome_per_assembly_h[:length]
+										to_contig_accession = chromosome_per_assembly_h[:refseqAccession] # fna は refseqAccession 記載
 										
 										to_valid_contig_f = true						
 										to_found_f = true
-									elsif !variant_call["To Chr"].empty? && chromosome_per_assembly_h["chrName"] == variant_call["To Chr"].sub(/chr/i, "") && chromosome_per_assembly_h["role"] == "assembled-molecule" && !to_found_f
-										to_assembly = variant_call["Assembly for Translocation Breakpoint"]
-										to_chr_name = chromosome_per_assembly_h["chrName"]
-										to_chr_accession = chromosome_per_assembly_h["refseqAccession"]
-										to_chr_length = chromosome_per_assembly_h["length"]
+									elsif !variant_call[:"To Chr"].empty? && chromosome_per_assembly_h[:chrName] == variant_call[:"To Chr"].sub(/chr/i, "") && chromosome_per_assembly_h[:role] == "assembled-molecule" && !to_found_f
+										to_assembly = variant_call[:"Assembly for Translocation Breakpoint"]
+										to_chr_name = chromosome_per_assembly_h[:chrName]
+										to_chr_accession = chromosome_per_assembly_h[:refseqAccession]
+										to_chr_length = chromosome_per_assembly_h[:length]
 										to_contig_accession = ""
 
 										to_valid_chr_f = true
 										to_found_f = true
-									elsif !variant_call["To Chr"].empty? && chromosome_per_assembly_h["ucscStyleName"].sub(/^chr/i, "") == variant_call["To Chr"].sub(/^chr/i, "") && !to_found_f
-										to_assembly = variant_call["Assembly for Translocation Breakpoint"]
-										to_chr_name = chromosome_per_assembly_h["ucscStyleName"]
-										to_chr_accession = chromosome_per_assembly_h["refseqAccession"]
-										to_chr_length = chromosome_per_assembly_h["length"]
+									elsif !variant_call[:"To Chr"].empty? && chromosome_per_assembly_h[:ucscStyleName].sub(/^chr/i, "") == variant_call[:"To Chr"].sub(/^chr/i, "") && !to_found_f
+										to_assembly = variant_call[:"Assembly for Translocation Breakpoint"]
+										to_chr_name = chromosome_per_assembly_h[:ucscStyleName]
+										to_chr_accession = chromosome_per_assembly_h[:refseqAccession]
+										to_chr_length = chromosome_per_assembly_h[:length]
 										to_contig_accession = ""
 
 										to_valid_chr_f = true
@@ -2295,33 +2247,33 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 							end # if !variant_call["To Chr"].empty? && $ref_download_h.has_key?(variant_call["To Chr"])
 
 							## JV_SV0072: Invalid chromosome reference, to/from は contig 列がなく一体
-							if !variant_call["To Chr"].empty? && !to_valid_chr_f && !to_valid_contig_f
+							if !variant_call[:"To Chr"].empty? && !to_valid_chr_f && !to_valid_contig_f
 								invalid_chr_ref_call_a.push(variant_call_id)
-								variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0072 Error: Invalid chromosome reference.")
+								variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_SV0072 Error: Invalid chromosome reference.")
 							end
 
 							# TO GENOME
 							to_genome_attr_h = {}
-							to_genome_attr_h.store("assembly", refseq_assembly)
+							to_genome_attr_h.store(:assembly, refseq_assembly)
 
-							to_genome_attr_h.store("chr_name", to_chr_name)
-							to_genome_attr_h.store("chr_accession", to_chr_accession)
-							to_genome_attr_h.store("contig_accession", to_contig_accession)
-							to_genome_attr_h.store("strand", variant_call["To Strand"])
+							to_genome_attr_h.store(:chr_name, to_chr_name)
+							to_genome_attr_h.store(:chr_accession, to_chr_accession)
+							to_genome_attr_h.store(:contig_accession, to_contig_accession)
+							to_genome_attr_h.store(:strand, variant_call[:"To Strand"])
 
 							# TO COORD
-							if variant_call["To Coord"] && variant_call["To Coord"].to_i
-								to_coord = variant_call["To Coord"].to_i
-								to_genome_attr_h.store("start", variant_call["To Coord"])
-								to_genome_attr_h.store("stop", variant_call["To Coord"])
+							if variant_call[:"To Coord"] && variant_call[:"To Coord"].to_i
+								to_coord = variant_call[:"To Coord"].to_i
+								to_genome_attr_h.store(:start, variant_call[:"To Coord"])
+								to_genome_attr_h.store(:stop, variant_call[:"To Coord"])
 							else
-								to_genome_attr_h.store("start", "")
-								to_genome_attr_h.store("stop", "")
+								to_genome_attr_h.store(:start, "")
+								to_genome_attr_h.store(:stop, "")
 							end
 
 							# ciend
-							to_genome_attr_h.store("ciendleft", variant_call["ciendleft"]) if variant_call["ciendleft"] && !variant_call["ciendleft"].empty?
-							to_genome_attr_h.store("ciendright", variant_call["ciendright"]) if variant_call["ciendright"] && !variant_call["ciendright"].empty?
+							to_genome_attr_h.store(:ciendleft, variant_call[:ciendleft]) if variant_call[:ciendleft] && !variant_call[:ciendleft].empty?
+							to_genome_attr_h.store(:ciendright, variant_call[:ciendright]) if variant_call[:ciendright] && !variant_call[:ciendright].empty?
 
 							# GENOME attributes
 							placement_e.GENOME(to_genome_attr_h)
@@ -2330,15 +2282,15 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 							if to_chr_length != -1
 								if to_coord != -1 && (to_coord > to_chr_length + 1)
 									pos_outside_chr_call_a.push(variant_call_id)
-									variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_C0061 Error: Chromosome position is larger than chromosome size + 1. Check if the position is correct.")
+									variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_C0061 Error: Chromosome position is larger than chromosome size + 1. Check if the position is correct.")
 								end
 							end
 
 						} # placement_e
 
 						# if there is variant_sequence in VCF translocations
-						if variant_call["variant_sequence"] && !variant_call["variant_sequence"].empty?
-							variant_call_e.VARIANT_SEQUENCE(variant_call["variant_sequence"])
+						if variant_call[:"variant_sequence"] && !variant_call[:"variant_sequence"].empty?
+							variant_call_e.VARIANT_SEQUENCE(variant_call[:"variant_sequence"])
 						end
 
 					end # if there are translocation placements
@@ -2346,39 +2298,39 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 				else # if not =~ /translocation/
 
 					## JV_SV0095: Strand for non-translocation
-					if (variant_call["From Strand"] && !variant_call["From Strand"].empty?) || (variant_call["To Strand"] && !variant_call["To Strand"].empty?)
+					if (variant_call[:"From Strand"] && !variant_call[:"From Strand"].empty?) || (variant_call[:"To Strand"] && !variant_call[:"To Strand"].empty?)
 						strand_for_translocation_call_a.push(variant_call_id)
-						variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0095 Warning: Strand for non-translocation.")
+						variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_SV0095 Warning: Strand for non-translocation.")
 					end
 
-					# placement_attr_h.store("alt_status", "")
-					# placement_attr_h.store("breakpoint_order", "")
+					# placement_attr_h.store(:alt_status, "")
+					# placement_attr_h.store(:breakpoint_order, "")
 
 					# 最初の assembly で VCF/variant call tsv 毎に以降は同じと仮定して valid な chromosome list を構築。assembly 混在は最後にチェック
-					if variant_call["Assembly"] && !variant_call["Assembly"].empty? && refseq_assembly == "" && chromosome_per_assembly_a.empty?
+					if variant_call[:Assembly] && !variant_call[:Assembly].empty? && refseq_assembly == "" && chromosome_per_assembly_a.empty?
 
 						## assembly から refseq accession 取得
-						assembly_a.each{|assembly_h|
-							refseq_assembly = assembly_h["refseq_assembly"] if assembly_h.values.include?(variant_call["Assembly"])
+						$assembly_a.each{|assembly_h|
+							refseq_assembly = assembly_h[:refseq_assembly] if assembly_h.values.include?(variant_call[:Assembly])
 						}
 
 						## refseq assembly から構成配列を取得
-						sequence_a.each{|sequence_h|
-							if sequence_h["assemblyAccession"] == refseq_assembly
-								chromosome_per_assembly_a.push({"chrName"=>sequence_h["chrName"], "ucscStyleName"=>sequence_h["ucscStyleName"], "refseqAccession"=>sequence_h["refseqAccession"], "genbankAccession"=>sequence_h["genbankAccession"], "role"=>sequence_h["role"], "length"=>sequence_h["length"]})
+						$sequence_a.each{|sequence_h|
+							if sequence_h[:assemblyAccession] == refseq_assembly
+								chromosome_per_assembly_a.push({:chrName => sequence_h[:chrName], :ucscStyleName => sequence_h[:ucscStyleName], :refseqAccession => sequence_h[:refseqAccession], :genbankAccession => sequence_h[:genbankAccession], :role => sequence_h[:role], :length => sequence_h[:length]})
 							end
 						}
 
 					end
 
 					# deletion
-					if variant_call["Variant Call Type"] == "deletion"
+					if variant_call[:"Variant Call Type"] == "deletion"
 
 						# if outers-only
-						if !variant_call["Outer Start"].empty? && !variant_call["Outer Stop"].empty? && variant_call["Start"].empty? && variant_call["Inner Start"].empty? && variant_call["Stop"].empty? && variant_call["Inner Stop"].empty?
+						if !variant_call[:"Outer Start"].empty? && !variant_call[:"Outer Stop"].empty? && variant_call[:Start].empty? && variant_call[:"Inner Start"].empty? && variant_call[:Stop].empty? && variant_call[:"Inner Stop"].empty?
 							## JV_SV0047: Inconsistent outer start and outer stop
-							inconsistent_outer_start_stop_call_a.push(variant_call_id) if variant_call["Outer Start"].to_i > variant_call["Outer Stop"].to_i
-							variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0047 Error: Inconsistent outer start and outer stop.")
+							inconsistent_outer_start_stop_call_a.push(variant_call_id) if variant_call[:"Outer Start"].to_i > variant_call[:"Outer Stop"].to_i
+							variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_SV0047 Error: Inconsistent outer start and outer stop.")
 						end
 
 					end
@@ -2405,12 +2357,12 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 							found_f = false
 
 							# contig が download ref にあるかどうか. download にある = assembly には含まれていない
-							if !variant_call["Chr"].empty? && $ref_download_h.has_key?(variant_call["Chr"].to_sym) && !found_f
+							if !variant_call[:Chr].empty? && $ref_download_h.has_key?(variant_call[:Chr]) && !found_f
 								assembly = ""
 								chr_name = ""
 								chr_accession = ""
-								chr_length = $ref_download_h[variant_call["Chr"].to_sym].to_i if $ref_download_h[variant_call["Chr"].to_sym].to_i
-								contig_accession = variant_call["Chr"]
+								chr_length = $ref_download_h[variant_call[:Chr]].to_i if $ref_download_h[variant_call[:Chr]].to_i
+								contig_accession = variant_call[:Chr]
 								
 								valid_contig_f = true
 								ref_download_f = true
@@ -2418,29 +2370,29 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 							else
 								for chromosome_per_assembly_h in chromosome_per_assembly_a
 									## From Chr に sequence report にある RefSeq/GenBank accession が記載されているかどうか
-									if !variant_call["Chr"].empty? && (chromosome_per_assembly_h["refseqAccession"] == variant_call["Chr"] || chromosome_per_assembly_h["genbankAccession"] == variant_call["Chr"]) && !found_f
-										assembly = variant_call["Assembly for Translocation Breakpoint"]
+									if !variant_call[:Chr].empty? && (chromosome_per_assembly_h[:refseqAccession] == variant_call[:Chr] || chromosome_per_assembly_h[:genbankAccession] == variant_call[:Chr]) && !found_f
+										assembly = variant_call[:"Assembly for Translocation Breakpoint"]
 										chr_name = ""
 										chr_accession = ""
-										chr_length = chromosome_per_assembly_h["length"]
-										contig_accession = chromosome_per_assembly_h["refseqAccession"] # fna は refseqAccession 記載
+										chr_length = chromosome_per_assembly_h[:length]
+										contig_accession = chromosome_per_assembly_h[:refseqAccession] # fna は refseqAccession 記載
 										
 										valid_contig_f = true						
 										found_f = true
-									elsif !variant_call["Chr"].empty? && chromosome_per_assembly_h["chrName"] == variant_call["Chr"].sub(/chr/i, "") && chromosome_per_assembly_h["role"] == "assembled-molecule" && !found_f
-										assembly = variant_call["Assembly for Translocation Breakpoint"]
-										chr_name = chromosome_per_assembly_h["chrName"]
-										chr_accession = chromosome_per_assembly_h["refseqAccession"]
-										chr_length = chromosome_per_assembly_h["length"]
+									elsif !variant_call[:Chr].empty? && chromosome_per_assembly_h[:chrName] == variant_call[:Chr].sub(/chr/i, "") && chromosome_per_assembly_h[:role] == "assembled-molecule" && !found_f
+										assembly = variant_call[:"Assembly for Translocation Breakpoint"]
+										chr_name = chromosome_per_assembly_h[:chrName]
+										chr_accession = chromosome_per_assembly_h[:refseqAccession]
+										chr_length = chromosome_per_assembly_h[:length]
 										contig_accession = ""
 
 										valid_chr_f = true
 										found_f = true
-									elsif !variant_call["Chr"].empty? && chromosome_per_assembly_h["ucscStyleName"].sub(/^chr/i, "") == variant_call["Chr"].sub(/^chr/i, "") && !found_f
-										assembly = variant_call["Assembly for Translocation Breakpoint"]
-										chr_name = chromosome_per_assembly_h["ucscStyleName"]
-										chr_accession = chromosome_per_assembly_h["refseqAccession"]
-										chr_length = chromosome_per_assembly_h["length"]
+									elsif !variant_call[:Chr].empty? && chromosome_per_assembly_h[:ucscStyleName].sub(/^chr/i, "") == variant_call[:Chr].sub(/^chr/i, "") && !found_f
+										assembly = variant_call[:"Assembly for Translocation Breakpoint"]
+										chr_name = chromosome_per_assembly_h[:ucscStyleName]
+										chr_accession = chromosome_per_assembly_h[:refseqAccession]
+										chr_length = chromosome_per_assembly_h[:length]
 										contig_accession = ""
 
 										valid_chr_f = true
@@ -2452,211 +2404,211 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 							end # if !variant_call["Chr"].empty? && $ref_download_h.has_key?(variant_call["Chr"])
 
 						## JV_SV0077: Contig accession exists for chromosome accession
-						if !variant_call["Contig"].empty? && !variant_call["Chr"].empty?
+						if !variant_call[:Contig].empty? && !variant_call[:Chr].empty?
 							contig_acc_for_chr_acc_call_a.push(variant_call_id)
-							variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0077 Error: Contig accession exists for chromosome accession.")
+							variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_SV0077 Error: Contig accession exists for chromosome accession.")
 						end
 
 						## JV_SV0072: Invalid chromosome reference
-						if !variant_call["Chr"].empty? && !valid_chr_f
+						if !variant_call[:Chr].empty? && !valid_chr_f
 							invalid_chr_ref_call_a.push(variant_call_id)
-							variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0072 Error: Invalid chromosome reference.")
+							variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_SV0072 Error: Invalid chromosome reference.")
 						end
 
 						## JV_SV0074: Invalid contig accession reference
-						if !variant_call["Contig"].empty? && !valid_contig_f
-							invalid_contig_acc_ref_call_a.push("#{variant_call_id} #{variant_call["Contig"]}")
-							variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0074 Error: Invalid contig accession reference.")
+						if !variant_call[:Contig].empty? && !valid_contig_f
+							invalid_contig_acc_ref_call_a.push("#{variant_call_id} #{variant_call[:Contig]}")
+							variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_SV0074 Error: Invalid contig accession reference.")
 
 							# download fasta
 							contig_download_a.push("wget \"http://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=nucleotide&id=#{variant_call["Contig"]}&rettype=fasta\" -O #{ref_download_path}/#{variant_call["Contig"]}.fna")
-							contig_download_a.push("samtools faidx #{variant_call["Contig"]}.fna")
+							contig_download_a.push("samtools faidx #{variant_call[:Contig]}.fna")
 						end
 
 						## JV_SV0076: Missing chromosome/contig accession
 						if chr_name.empty? && chr_accession.empty? && contig_accession.empty?
 							missing_chr_contig_acc_call_a.push(variant_call_id)
-							variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0076 Error: Missing chromosome/contig accession.")
+							variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_SV0076 Error: Missing chromosome/contig accession.")
 						end
 
 						## JV_SV0059: Chromosome Y for female
-						if chr_name == "Y" && variant_call["SampleSet ID"] && !variant_call["SampleSet ID"].empty? && sampleset_id_sex_h[variant_call["SampleSet ID"]] && sampleset_id_sex_h[variant_call["SampleSet ID"]] == "Female"
+						if chr_name == "Y" && variant_call[:"SampleSet ID"] && !variant_call[:"SampleSet ID"].empty? && sampleset_id_sex_h[variant_call[:"SampleSet ID"]] && sampleset_id_sex_h[variant_call[:"SampleSet ID"]] == "Female"
 							chry_for_female_call_a.push(variant_call_id)
-							variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0059 Warning: Chromosome Y for female")
+							variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_SV0059 Warning: Chromosome Y for female")
 						end
 
 						## genome_attr_h
 						## download に存在　=　Assembly　には含まれていない					
-						genome_attr_h.store("assembly", refseq_assembly)
+						genome_attr_h.store(:assembly, refseq_assembly)
 
 						## chr/chr_accession/contig_accession
-						genome_attr_h.store("chr_name", chr_name)
-						genome_attr_h.store("chr_accession", chr_accession)
-						genome_attr_h.store("contig_accession", contig_accession)
+						genome_attr_h.store(:chr_name, chr_name)
+						genome_attr_h.store(:chr_accession, chr_accession)
+						genome_attr_h.store(:contig_accession, contig_accession)
 
 						## placement check
 						## JV_SV0078: Missing start
-						if variant_call["Outer Start"].empty? && variant_call["Start"].empty? && variant_call["Inner Start"].empty? && variant_call_type !~ /translocation/ && variant_call_type != "novel sequence insertion"
+						if variant_call[:"Outer Start"].empty? && variant_call[:Start].empty? && variant_call[:"Inner Start"].empty? && !variant_call_type.match?(/translocation/) && variant_call_type != "novel sequence insertion"
 							missing_start_call_a.push(variant_call_id)
-							variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0078 Error: Missing start.")
+							variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_SV0078 Error: Missing start.")
 						end
 
 						## JV_SV0079: Missing stop
-						if variant_call["Outer Stop"].empty? && variant_call["Stop"].empty? && variant_call["Inner Stop"].empty? && variant_call_type !~ /translocation/ && variant_call_type != "novel sequence insertion"
+						if variant_call[:"Outer Stop"].empty? && variant_call[:Stop].empty? && variant_call[:"Inner Stop"].empty? && !variant_call_type.match?(/translocation/) && variant_call_type != "novel sequence insertion"
 							missing_stop_call_a.push(variant_call_id)
-							variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0079 Error: Missing stop.")
+							variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_SV0079 Error: Missing stop.")
 						end
 
 						# JV_SV0080: When on same sequence, start must be <= stop
-						if !variant_call["Start"].empty? && !variant_call["Stop"].empty? && (variant_call["Start"].to_i > variant_call["Stop"].to_i)
+						if !variant_call[:Start].empty? && !variant_call[:Stop].empty? && (variant_call[:Start].to_i > variant_call[:Stop].to_i)
 							invalid_start_stop_call_a.push(variant_call_id)
-							variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0080 Error: When on same sequence, start must be <= stop.")
+							variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_SV0080 Error: When on same sequence, start must be <= stop.")
 						end
 
 						# JV_SV0081: When on same sequence, outer_start must be <= outer_stop
-						if !variant_call["Outer Start"].empty? && !variant_call["Outer Stop"].empty? && (variant_call["Outer Start"].to_i > variant_call["Outer Stop"].to_i)
+						if !variant_call[:"Outer Start"].empty? && !variant_call[:"Outer Stop"].empty? && (variant_call[:"Outer Start"].to_i > variant_call[:"Outer Stop"].to_i)
 							invalid_outer_start_outer_stop_call_a.push(variant_call_id)
-							variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0081 Error: When on same sequence, outer_start must be <= outer_stop.")
+							variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_SV0081 Error: When on same sequence, outer_start must be <= outer_stop.")
 						end
 
 						# JV_SV0082: When on same sequence, outer_start must be <= inner_start
-						if !variant_call["Outer Start"].empty? && !variant_call["Inner Start"].empty? && (variant_call["Outer Start"].to_i > variant_call["Inner Start"].to_i)
+						if !variant_call[:"Outer Start"].empty? && !variant_call[:"Inner Start"].empty? && (variant_call[:"Outer Start"].to_i > variant_call[:"Inner Start"].to_i)
 							invalid_outer_start_inner_start_call_a.push(variant_call_id)
-							variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0082 Error: When on same sequence, outer_start must be <= inner_start.")
+							variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_SV0082 Error: When on same sequence, outer_start must be <= inner_start.")
 						end
 
 						# JV_SV0083: When on same sequence, inner_stop must be <= outer_stop
-						if !variant_call["Inner Stop"].empty? && !variant_call["Outer Stop"].empty? && (variant_call["Inner Stop"].to_i > variant_call["Outer Stop"].to_i)
+						if !variant_call[:"Inner Stop"].empty? && !variant_call[:"Outer Stop"].empty? && (variant_call[:"Inner Stop"].to_i > variant_call[:"Outer Stop"].to_i)
 							invalid_inner_stop_outer_stop_call_a.push(variant_call_id)
-							variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0083 Error: When on same sequence, inner_stop must be <= outer_stop.")
+							variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_SV0083 Error: When on same sequence, inner_stop must be <= outer_stop.")
 						end
 
 						# JV_SV0084: Invalid start and inner stop
-						if !variant_call["Start"].empty? && !variant_call["Inner Stop"].empty? && (variant_call["Start"].to_i >= variant_call["Inner Stop"].to_i) && !(!variant_call["Start"].empty? && !variant_call["Stop"].empty? && !variant_call["Outer Start"].empty? && !variant_call["Outer Stop"].empty? && !variant_call["Inner Start"].empty? && !variant_call["Inner Stop"].empty?)
+						if !variant_call[:Start].empty? && !variant_call[:"Inner Stop"].empty? && (variant_call[:Start].to_i >= variant_call[:"Inner Stop"].to_i) && !(!variant_call[:Start].empty? && !variant_call[:Stop].empty? && !variant_call[:"Outer Start"].empty? && !variant_call[:"Outer Stop"].empty? && !variant_call[:"Inner Start"].empty? && !variant_call[:"Inner Stop"].empty?)
 							invalid_start_inner_stop_call_a.push(variant_call_id)
-							variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0084 Error: Invalid start and inner stop.")
+							variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_SV0084 Error: Invalid start and inner stop.")
 						end
 
 						# JV_SV0085: Invalid inner start and stop
-						if !variant_call["Inner Start"].empty? && !variant_call["Stop"].empty? && (variant_call["Inner Start"].to_i >= variant_call["Stop"].to_i) && !(!variant_call["Start"].empty? && !variant_call["Stop"].empty? && !variant_call["Outer Start"].empty? && !variant_call["Outer Stop"].empty? && !variant_call["Inner Start"].empty? && !variant_call["Inner Stop"].empty?)
+						if !variant_call[:"Inner Start"].empty? && !variant_call[:Stop].empty? && (variant_call[:"Inner Start"].to_i >= variant_call[:Stop].to_i) && !(!variant_call[:Start].empty? && !variant_call[:Stop].empty? && !variant_call[:"Outer Start"].empty? && !variant_call[:"Outer Stop"].empty? && !variant_call[:"Inner Start"].empty? && !variant_call[:"Inner Stop"].empty?)
 							invalid_inner_start_stop_call_a.push(variant_call_id)
-							variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0085 Error: Invalid inner start and stop")
+							variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_SV0085 Error: Invalid inner start and stop")
 						end
 
 						# JV_SV0086: When on same sequence, inner_start must be <= inner_stop if there are only inner placements
-						if !variant_call["Inner Start"].empty? && !variant_call["Inner Stop"].empty? && (variant_call["Inner Start"].to_i > variant_call["Inner Stop"].to_i) && !(variant_call["Start"].empty? && variant_call["Stop"].empty? && variant_call["Outer Start"].empty? && variant_call["Outer Stop"].empty? && !variant_call["Inner Start"].empty? && !variant_call["Inner Stop"].empty?)
+						if !variant_call[:"Inner Start"].empty? && !variant_call[:"Inner Stop"].empty? && (variant_call[:"Inner Start"].to_i > variant_call[:"Inner Stop"].to_i) && !(variant_call[:Start].empty? && variant_call[:Stop].empty? && variant_call[:"Outer Start"].empty? && variant_call[:"Outer Stop"].empty? && !variant_call[:"Inner Start"].empty? && !variant_call[:"Inner Stop"].empty?)
 							invalid_inner_start_inner_stop_call_a.push(variant_call_id)
-							variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0086 Error: When on same sequence, inner_start must be <= inner_stop if there are only inner placements.")
+							variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_SV0086 Error: When on same sequence, inner_start must be <= inner_stop if there are only inner placements.")
 						end
 
 						# JV_SV0087: Multiple starts
-						if !variant_call["Start"].empty? && (!variant_call["Inner Start"].empty? || !variant_call["Outer Start"].empty?) || (!variant_call["Inner Start"].empty? && !variant_call["Outer Start"].empty?) && !variant_call["Start"].empty?
-							if (!variant_call["Start"].empty? && !variant_call["Outer Start"].empty? && variant_call["Start"] != variant_call["Outer Start"]) && (!variant_call["Start"].empty? && !variant_call["Inner Start"].empty? && variant_call["Start"] != variant_call["Inner Start"])
+						if !variant_call[:Start].empty? && (!variant_call[:"Inner Start"].empty? || !variant_call[:"Outer Start"].empty?) || (!variant_call[:"Inner Start"].empty? && !variant_call[:"Outer Start"].empty?) && !variant_call[:Start].empty?
+							if (!variant_call[:Start].empty? && !variant_call[:"Outer Start"].empty? && variant_call[:Start] != variant_call[:"Outer Start"]) && (!variant_call[:Start].empty? && !variant_call[:"Inner Start"].empty? && variant_call[:Start] != variant_call[:"Inner Start"])
 								multiple_starts_call_a.push(variant_call_id)
-								variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0087 Error: Multiple starts.")
+								variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_SV0087 Error: Multiple starts.")
 							end
 						end
 
 						# JV_SV0088: Multiple stops
-						if !variant_call["Stop"].empty? && (!variant_call["Inner Stop"].empty? || !variant_call["Outer Stop"].empty?) || (!variant_call["Inner Stop"].empty? && !variant_call["Outer Stop"].empty?) && !variant_call["Stop"].empty?
-							if (!variant_call["Stop"].empty? && !variant_call["Outer Stop"].empty? && variant_call["Stop"] != variant_call["Outer Stop"]) && (!variant_call["Stop"].empty? && !variant_call["Inner Stop"].empty? && variant_call["Stop"] != variant_call["Inner Stop"])
+						if !variant_call[:Stop].empty? && (!variant_call[:"Inner Stop"].empty? || !variant_call[:"Outer Stop"].empty?) || (!variant_call[:"Inner Stop"].empty? && !variant_call[:"Outer Stop"].empty?) && !variant_call[:Stop].empty?
+							if (!variant_call[:Stop].empty? && !variant_call[:"Outer Stop"].empty? && variant_call[:Stop] != variant_call[:"Outer Stop"]) && (!variant_call[:Stop].empty? && !variant_call[:"Inner Stop"].empty? && variant_call[:Stop] != variant_call[:"Inner Stop"])
 								multiple_stops_call_a.push(variant_call_id)
-								variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0088 Error: Multiple stops.")
+								variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_SV0088 Error: Multiple stops.")
 							end
 						end
 
 						# JV_SV0089: Inconsistent sequence length and start/stop
 						if chr_length != -1
-							if (!variant_call["Stop"].empty? && variant_call["Stop"].to_i > chr_length.to_i) || (!variant_call["Inner Stop"].empty? && variant_call["Inner Stop"].to_i > chr_length.to_i) || (!variant_call["Outer Stop"].empty? && variant_call["Outer Stop"].to_i > chr_length.to_i)
+							if (!variant_call[:Stop].empty? && variant_call[:Stop].to_i > chr_length.to_i) || (!variant_call[:"Inner Stop"].empty? && variant_call[:"Inner Stop"].to_i > chr_length.to_i) || (!variant_call[:"Outer Stop"].empty? && variant_call[:"Outer Stop"].to_i > chr_length.to_i)
 								inconsistent_length_start_stop_call_a.push(variant_call_id)
-								variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0089 Error: Inconsistent sequence length and start/stop.")
+								variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_SV0089 Error: Inconsistent sequence length and start/stop.")
 							end
 						end
 
 						# JV_SV0090: Inconsistent inner start and stop
-						if !variant_call["Inner Start"].empty? && !variant_call["Inner Stop"].empty? && (variant_call["Inner Start"].to_i > variant_call["Inner Stop"].to_i) && (!variant_call["Outer Start"].empty? || !variant_call["Outer Stop"].empty?)
+						if !variant_call[:"Inner Start"].empty? && !variant_call[:"Inner Stop"].empty? && (variant_call[:"Inner Start"].to_i > variant_call[:"Inner Stop"].to_i) && (!variant_call[:"Outer Start"].empty? || !variant_call[:"Outer Stop"].empty?)
 							inconsistent_inner_start_stop_call_a.push(variant_call_id)
-							variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_SV0090 Warning: Inconsistent inner start and stop.")
+							variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_SV0090 Warning: Inconsistent inner start and stop.")
 						end
 
 						# JV_SV0091: Start and outer/inner starts co-exist
-						start_outer_inner_start_coexist_call_a.push(variant_call_id) if !variant_call["Inner Start"].empty? && !variant_call["Start"].empty? && !variant_call["Outer Start"].empty?
+						start_outer_inner_start_coexist_call_a.push(variant_call_id) if !variant_call[:"Inner Start"].empty? && !variant_call[:Start].empty? && !variant_call[:"Outer Start"].empty?
 
 						# JV_SV0092: Stop and outer/inner stops co-exist
-						stop_outer_inner_stop_coexist_call_a.push(variant_call_id) if !variant_call["Inner Stop"].empty? && !variant_call["Stop"].empty? && !variant_call["Outer Stop"].empty?
+						stop_outer_inner_stop_coexist_call_a.push(variant_call_id) if !variant_call[:"Inner Stop"].empty? && !variant_call[:Stop].empty? && !variant_call[:"Outer Stop"].empty?
 
 						# start
-						genome_attr_h.store("outer_start", variant_call["Outer Start"]) unless variant_call["Outer Start"].empty?
-						genome_attr_h.store("start", variant_call["Start"]) unless variant_call["Start"].empty?
-						genome_attr_h.store("inner_start", variant_call["Inner Start"]) unless variant_call["Inner Start"].empty?
+						genome_attr_h.store(:outer_start, variant_call[:"Outer Start"]) unless variant_call[:"Outer Start"].empty?
+						genome_attr_h.store(:start, variant_call[:Start]) unless variant_call[:Start].empty?
+						genome_attr_h.store(:inner_start, variant_call[:"Inner Start"]) unless variant_call[:"Inner Start"].empty?
 
 						# stop
-						genome_attr_h.store("stop", variant_call["Stop"]) unless variant_call["Stop"].empty?
-						genome_attr_h.store("inner_stop", variant_call["Inner Stop"]) unless variant_call["Inner Stop"].empty?
-						genome_attr_h.store("outer_stop", variant_call["Outer Stop"]) unless variant_call["Outer Stop"].empty?
-						genome_attr_h.store("ciposleft", variant_call["ciposleft"]) if variant_call["ciposleft"] && !variant_call["ciposleft"].empty?
-						genome_attr_h.store("ciposright", variant_call["ciposright"]) if variant_call["ciposright"] && !variant_call["ciposright"].empty?
-						genome_attr_h.store("ciendleft", variant_call["ciendleft"]) if variant_call["ciendleft"] && !variant_call["ciendleft"].empty?
-						genome_attr_h.store("ciendright", variant_call["ciendright"]) if variant_call["ciendright"] && !variant_call["ciendright"].empty?
-						# genome_attr_h.store("remap_score", "")
-						# genome_attr_h.store("strand", "")
-						# genome_attr_h.store("assembly_unit", "")
-						# genome_attr_h.store("alignment", "")
-						# genome_attr_h.store("remap_failure_code", "")
-						# genome_attr_h.store("placement_rank", "")
-						# genome_attr_h.store("placements_per_assembly", "")
-						# genome_attr_h.store("remap_diff_chr", "")
-						# genome_attr_h.store("remap_best_within_cluster", "")
+						genome_attr_h.store(:stop, variant_call[:Stop]) unless variant_call[:Stop].empty?
+						genome_attr_h.store(:inner_stop, variant_call[:"Inner Stop"]) unless variant_call[:"Inner Stop"].empty?
+						genome_attr_h.store(:outer_stop, variant_call[:"Outer Stop"]) unless variant_call[:"Outer Stop"].empty?
+						genome_attr_h.store(:ciposleft, variant_call[:ciposleft]) if variant_call[:ciposleft] && !variant_call[:ciposleft].empty?
+						genome_attr_h.store(:ciposright, variant_call[:ciposright]) if variant_call[:ciposright] && !variant_call[:ciposright].empty?
+						genome_attr_h.store(:ciendleft, variant_call[:ciendleft]) if variant_call[:ciendleft] && !variant_call[:ciendleft].empty?
+						genome_attr_h.store(:ciendright, variant_call[:ciendright]) if variant_call[:ciendright] && !variant_call[:ciendright].empty?
+						# genome_attr_h.store(:remap_score, "")
+						# genome_attr_h.store(:strand, "")
+						# genome_attr_h.store(:assembly_unit, "")
+						# genome_attr_h.store(:alignment, "")
+						# genome_attr_h.store(:remap_failure_code, "")
+						# genome_attr_h.store(:placement_rank, "")
+						# genome_attr_h.store(:placements_per_assembly, "")
+						# genome_attr_h.store(:remap_diff_chr, "")
+						# genome_attr_h.store(:remap_best_within_cluster, "")
 
 						# GENOME attributes
 						placement_e.GENOME(genome_attr_h)
 
 						# min start
-						if [variant_call["Outer Start"], variant_call["Start"], variant_call["Inner Start"]].reject{|e| e.empty? }.map{|e| e.to_i}.min
-							start_pos = [variant_call["Outer Start"], variant_call["Start"], variant_call["Inner Start"]].reject{|e| e.empty? }.map{|e| e.to_i}.min
+						if [variant_call[:"Outer Start"], variant_call[:Start], variant_call[:"Inner Start"]].reject{|e| e.empty? }.map{|e| e.to_i}.min
+							start_pos = [variant_call[:"Outer Start"], variant_call[:Start], variant_call[:"Inner Start"]].reject{|e| e.empty? }.map{|e| e.to_i}.min
 						end
 						
 						# max stop
-						if [variant_call["Outer Stop"], variant_call["Stop"], variant_call["Inner Stop"]].reject{|e| e.empty? }.map{|e| e.to_i}.max
-							stop_pos = [variant_call["Outer Stop"], variant_call["Stop"], variant_call["Inner Stop"]].reject{|e| e.empty? }.map{|e| e.to_i}.max
+						if [variant_call[:"Outer Stop"], variant_call[:Stop], variant_call[:"Inner Stop"]].reject{|e| e.empty? }.map{|e| e.to_i}.max
+							stop_pos = [variant_call[:"Outer Stop"], variant_call[:Stop], variant_call[:"Inner Stop"]].reject{|e| e.empty? }.map{|e| e.to_i}.max
 						end
 
 						# JV_C0061: Chromosome position larger than chromosome size + 1
 						if chr_length != -1
 							if (start_pos != -1 && (start_pos > chr_length + 1)) || (stop_pos != -1 && (stop_pos > chr_length + 1))
 								pos_outside_chr_call_a.push(variant_call_id)
-								variant_call_tsv_log_a.push("#{variant_call["row"].join("\t")}\t# JV_C0061 Error: Chromosome position is larger than chromosome size + 1. Check if the position is correct.")
+								variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_C0061 Error: Chromosome position is larger than chromosome size + 1. Check if the position is correct.")
 							end
 						end
 
 						## parent region の placement との整合性チェック
-						variant_call_placement_h.store(variant_call_id, {"Assembly" => refseq_assembly, "Chr" => chr_name, "Contig" => contig_accession, "Outer Start" => variant_call["Outer Start"], "Start" => variant_call["Start"], "Inner Start" => variant_call["Inner Start"], "Stop" => variant_call["Stop"], "Inner Stop" => variant_call["Inner Stop"], "Outer Stop" => variant_call["Outer Stop"]})
+						variant_call_placement_h.store(:"#{variant_call_id}", {:Assembly => refseq_assembly, :Chr => chr_name, :Contig => contig_accession, :"Outer Start" => variant_call[:"Outer Start"], :Start => variant_call[:Start], :"Inner Start" => variant_call[:"Inner Start"], :Stop => variant_call[:Stop], :"Inner Stop" => variant_call[:"Inner Stop"], :"Outer Stop" => variant_call[:"Outer Stop"]})
 
 					} # placement_e
 
 				end # if translocation
 
 				## JV_SV0054: Invalid placements for paired-end sequencing
-				if experiment_type_h[variant_call["Experiment ID"]] && experiment_type_h[variant_call["Experiment ID"]]["Method Type"] == "Sequencing" && experiment_type_h[variant_call["Experiment ID"]]["Analysis Type"] == "Paired-end mapping" && (!variant_call["Start"].empty? || !variant_call["Inner Start"].empty? || !variant_call["Stop"].empty? || !variant_call["Inner Stop"].empty?)
+				if experiment_type_h[variant_call[:"Experiment ID"]] && experiment_type_h[variant_call[:"Experiment ID"]]["Method Type"] == "Sequencing" && experiment_type_h[variant_call[:"Experiment ID"]]["Analysis Type"] == "Paired-end mapping" && (!variant_call[:Start].empty? || !variant_call[:"Inner Start"].empty? || !variant_call[:Stop].empty? || !variant_call[:"Inner Stop"].empty?)
 					invalid_placements_pe_seq_call_a.push(variant_call_id)
 				end
 
 				# VARIANT_SEQUENCE
-				unless variant_call["Sequence"].empty?
-					variant_call_e.VARIANT_SEQUENCE(variant_call["Sequence"])
+				unless variant_call[:Sequence].empty?
+					variant_call_e.VARIANT_SEQUENCE(variant_call[:Sequence])
 
 					## JV_SV0060: Invalid sequence
-					unless variant_call["Sequence"] =~ /^[- .ABCDGHKMNRSTUVWY]+$/i
+					unless variant_call[:Sequence].match?(/^[- .ABCDGHKMNRSTUVWY]+$/i)
 						invalid_seq_call_a.push(variant_call_id) # JV_SV0060
 					end
 
 				end
 
 				# SUPPORT db id
-				unless variant_call["Evidence"].empty?
-					if variant_call["Evidence"].scan(/(#{xref_db_all_regex}) *: *([-A-Za-z0-9]+)/).size > 0
-						for db, id in variant_call["Evidence"].scan(/(#{xref_db_all_regex}) *: *([-A-Za-z0-9]+)/)
-							variant_call_e.SUPPORT("db" => db, "id" => id, "sequence_type" => "evidence_seq")
+				unless variant_call[:Evidence].empty?
+					if variant_call[:Evidence].scan(/(#{xref_db_all_regex}) *: *([-A-Za-z0-9]+)/).size > 0
+						for db, id in variant_call[:Evidence].scan(/(#{xref_db_all_regex}) *: *([-A-Za-z0-9]+)/)
+							variant_call_e.SUPPORT(:db => db, :id => id, :sequence_type => "evidence_seq")
 						end # for db, id in variant_call["Evidence"].scan(/(#{xref_db_all_regex}) *: *([-A-Za-z0-9]+)/)
 					else
 						## JV_SV0036: Invalid Variant Call Phenotype link
@@ -2672,60 +2624,60 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 			if sv_genotype_f
 
 				# Sample Name, Subject ID は BioSample accession に置換
-				unless variant_call["FORMAT"].empty?
+				unless variant_call[:FORMAT].empty?
 					
-					for ft_value_h in variant_call["FORMAT"]
+					for ft_value_h in variant_call[:FORMAT]
 
 						genotype_attr_h = {}
 
-						unless variant_call["Variant Call ID"] && variant_call["Variant Call ID"].empty?
-							genotype_attr_h.store("variant_accession", variant_call["Variant Call ID"])
+						unless variant_call[:"Variant Call ID"] && variant_call[:"Variant Call ID"].empty?
+							genotype_attr_h.store(:variant_accession, variant_call[:"Variant Call ID"])
 						else
-							genotype_attr_h.store("variant_accession", "")
+							genotype_attr_h.store(:variant_accession, "")
 						end
 
-						unless variant_call["Experiment ID"] && variant_call["Experiment ID"].empty?
-							genotype_attr_h.store("experiment_id", variant_call["Experiment ID"])
+						unless variant_call[:"Experiment ID"] && variant_call[:"Experiment ID"].empty?
+							genotype_attr_h.store(:experiment_id, variant_call[:"Experiment ID"])
 						end
 
 						# per sample
 						# genotype から sample への reference は sample_name (sample_id in XML)
 						# genotype から sampleset への reference は sampleset_id
 
-						ft_value_h.each{|sample_key, sample_value_h|
+						ft_value_h.each{|sample_key_sym, sample_value_h|
 
 							ref_sample_name = ""
 							ref_sampleset_id = ""
 							cn = ""
-							if sample_key =~ /^SAM[D|E|N]\d{1,}$/ && sample_name_accession_h.key(sample_key)
-								ref_sample_name = sample_name_accession_h.key(sample_key)
-							elsif sample_name_accession_h[sample_key]
-								ref_sample_name = sample_key
+							if "#{sample_key_sym}".match?(/^SAM[D|E|N]\d{1,}$/) && sample_name_accession_h.key("#{sample_key_sym}")
+								ref_sample_name = sample_name_accession_h.key("#{sample_key_sym}")
+							elsif sample_name_accession_h["#{sample_key_sym}"]
+								ref_sample_name = "#{sample_key_sym}"
 							# sampleset name であれば OK
-							elsif sampleset_name_per_sampleset_h[variant_call["SampleSet ID"]] && sampleset_name_per_sampleset_h[variant_call["SampleSet ID"]] == [sample_key]
-								ref_sampleset_id = variant_call["SampleSet ID"]
+							elsif sampleset_name_per_sampleset_h[variant_call[:"SampleSet ID"]] && sampleset_name_per_sampleset_h[variant_call[:"SampleSet ID"]] == ["#{sample_key_sym}"]
+								ref_sampleset_id = variant_call[:"SampleSet ID"]
 							# defined name
-							elsif defined_samples_a.include?(sample_key)
-								ref_sample_name = sample_key
+							elsif defined_samples_list_h.has_key?("#{sample_key_sym}")
+								ref_sample_name = "#{sample_key_sym}"
 							end
 
-							missing_sample_sampleset_ref_a.push(sample_key) if ref_sample_name.empty? && ref_sampleset_id.empty?
+							missing_sample_sampleset_ref_a.push("#{sample_key_sym}") if ref_sample_name.empty? && ref_sampleset_id.empty?
 
 							# xsd error を回避するためデフォルト true
 							success = "true"
-							for ft_key, sample_value in sample_value_h
+							for ft_key_sym, sample_value in sample_value_h
 								
-								if ft_key == "GT"
-									genotype_attr_h.store("submitted_genotype", sample_value)
+								if "#{ft_key_sym}" == "GT"
+									genotype_attr_h.store(:submitted_genotype, sample_value)
 								end
 
-								if ft_key == "CN"
+								if "#{ft_key_sym}" == "CN"
 									cn = sample_value
 								end
 
 								# FT PASS or not
-								if ft_key == "FT"
-									if sample_value =~ /PASS/i
+								if "#{ft_key_sym}" == "FT"
+									if sample_value.match?(/PASS/i)
 										success = "true"
 									else
 										success = "false"
@@ -2734,17 +2686,17 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 							end
 
-							genotype_attr_h.store("success", success)
+							genotype_attr_h.store(:success, success)
 
 							if !ref_sample_name.empty?
 								gt_xml.GENOTYPE(genotype_attr_h){|genotype_e|
-									genotype_e.SAMPLE("sample_id" => ref_sample_name)
-									genotype_e.ALLELE("allele_copy_number" => cn) unless cn.empty?
+									genotype_e.SAMPLE(:sample_id => ref_sample_name)
+									genotype_e.ALLELE(:allele_copy_number => cn) unless cn.empty?
 								}
 							elsif !ref_sampleset_id.empty?
 								gt_xml.GENOTYPE(genotype_attr_h){|genotype_e|
-									genotype_e.SAMPLESET("sampleset_id" => ref_sampleset_id)
-									genotype_e.ALLELE("allele_copy_number" => cn) unless cn.empty?
+									genotype_e.SAMPLESET(:sampleset_id => ref_sampleset_id)
+									genotype_e.ALLELE(:allele_copy_number => cn) unless cn.empty?
 								}
 							end
 
@@ -2762,22 +2714,17 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 			# VCF で提供された場合、variant call tsv を出力
 			if !vcf_sv_f.empty?
-				variant_call_field_a = []
-				open("#{conf_path}/variant_call_tsv.json"){|f|
-					variant_call_field_a = JSON.load(f)
-				}
-
-				variant_call_tsv_s += "# #{variant_call_field_a[0]}\t#{variant_call_field_a[1..-1].join("\t")}\n" if vc_line == 0
-				all_variant_call_tsv_s += "# #{variant_call_field_a[0]}\t#{variant_call_field_a[1..-1].join("\t")}\n" if vc_line == 0 && vcf_count == 0
+				variant_call_tsv_s += "# #{$variant_call_field_a[0]}\t#{$variant_call_field_a[1..-1].join("\t")}\n" if vc_line == 0
+				all_variant_call_tsv_s += "# #{$variant_call_field_a[0]}\t#{$variant_call_field_a[1..-1].join("\t")}\n" if vc_line == 0 && vcf_count == 0
 
 				variant_call_tsv_line_a = []
-				for field in variant_call_field_a
+				for field in $variant_call_field_a
 					
 					if field == "FORMAT"
-						if !variant_call[field].nil? && !variant_call[field].empty?
+						if !variant_call[:"#{field}"].nil? && !variant_call[:"#{field}"].empty?
 							format_for_tsv_a = []
-							variant_call[field].each{|sample_value_h|
-								sample_value_h.each{|ft_sample,ft_sample_value_h|
+							variant_call[:"#{field}"].each{|sample_value_h|
+								sample_value_h.each{|ft_sample, ft_sample_value_h|
 									ft_sample_value_s = ""
 									ft_sample_value_s = ft_sample_value_h.map{|k,v| "#{k}:#{v}"}.join(";") if ft_sample_value_h
 									format_for_tsv_a.push("#{ft_sample}=#{ft_sample_value_s}") unless ft_sample_value_s.empty?
@@ -2789,8 +2736,8 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 							variant_call_tsv_line_a.push("")
 						end					
 					else
-						if !variant_call[field].nil? && !variant_call[field].empty?
-							variant_call_tsv_line_a.push(variant_call[field])
+						if !variant_call[:"#{field}"].nil? && !variant_call[:"#{field}"].empty?
+							variant_call_tsv_line_a.push(variant_call[:"#{field}"])
 						else
 							variant_call_tsv_line_a.push("")
 						end
@@ -2923,14 +2870,9 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 	##
 	## Variant Region
 	##
-	variant_region_call_type_h = {}
-	open("#{conf_path}/different_variant_region_call_type_mapping.json"){|f|
-		variant_region_call_type_h = JSON.load(f)
-	}
-
 	supporting_call_id_a = []
 	supporting_region_id_a = []
-	variant_region_id_a = []
+	variant_region_id_h = {}
 
 	variant_call_type_sampleset_h = {}
 	object = "Variant Region"
@@ -2993,52 +2935,52 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 		variant_region_id = ""
 		variant_region_type = ""
-		unless variant_region["Variant Region ID"].empty?
-			variant_region_id = variant_region["Variant Region ID"]
-			variant_region_attr_h.store("variant_region_id", variant_region_id)
+		unless variant_region[:"Variant Region ID"].empty?
+			variant_region_id = variant_region[:"Variant Region ID"]
+			variant_region_attr_h.store(:variant_region_id, variant_region_id)
 
-			if variant_region_id_a.include?(variant_region["Variant Region ID"])
+			if variant_region_id_h.has_key?(:"#{variant_region_id}")
 				# JV_SV0064: Duplicated Variant Region ID
 				duplicated_variant_region_id_a.push(variant_region_id)
-				variant_region_tsv_log_a.push("#{variant_region["row"].join("\t")}\t# JV_C0064 Error: Variant Region ID must be unique.")				
+				variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_C0064 Error: Variant Region ID must be unique.")				
 			end
 
-			variant_region_id_a.push(variant_region_id)
+			variant_region_id_h.store(:"#{variant_region_id}", 0)
 		end
 
-		variant_region_attr_h.store("variant_region_accession", "")
+		variant_region_attr_h.store(:variant_region_accession, "")
 
-		unless variant_region["Assertion Method"].empty?
-			variant_region_attr_h.store("assertion_method", variant_region["Assertion Method"])
+		unless variant_region[:"Assertion Method"].empty?
+			variant_region_attr_h.store(:assertion_method, variant_region[:"Assertion Method"])
 		else
 			## JV_SV0068: Missing assertion_method
 			missing_assertion_method_region_a.push(variant_region_id)
-			variant_region_tsv_log_a.push("#{variant_region["row"].join("\t")}\t# JV_SV0068 Error: Region MUST have an assertion_method.")
+			variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0068 Error: Region MUST have an assertion_method.")
 		end
 
 		# CV
-		variant_region.each{|key, value|
-			if value && !value.empty? && cv_h[object] && cv_h[object][key] && !cv_h[object][key].include?(value)
+		variant_region.each{|key_sym, value|
+			if value && !value.empty? && $cv_h[object] && $cv_h[object]["#{key_sym}"] && !$cv_h[object]["#{key_sym}"].include?(value)
 				## JV_C0057: Invalid value for controlled terms
-				invalid_value_for_cv_region_a.push("#{variant_region_id} #{key}:#{value}")
-				variant_region_tsv_log_a.push("#{variant_region["row"].join("\t")}\t# JV_C0057 Error: Value is not in controlled terms.")
+				invalid_value_for_cv_region_a.push("#{variant_region_id} #{"#{key_sym}"}:#{value}")
+				variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_C0057 Error: Value is not in controlled terms.")
 			end
 		}
 
-		unless variant_region["Variant Region Type"].empty? && vtype_h["Variant Region Type"][variant_region["Variant Region Type"]]
-			variant_region_type = vtype_h["Variant Region Type"][variant_region["Variant Region Type"]]
-			variant_region_attr_h.store("variant_region_type", variant_region_type)
+		unless variant_region[:"Variant Region Type"].empty? && $vtype_h[:"Variant Region Type"][:"#{variant_region[:"Variant Region Type"]}"]
+			variant_region_type = $vtype_h[:"Variant Region Type"][:"#{variant_region[:"Variant Region Type"]}"]
+			variant_region_attr_h.store(:variant_region_type, variant_region_type)
 		end
 
-		variant_region_attr_h.store("variant_region_type_SO_id", "")
-		# variant_region_attr_h.store("is_low_quality", "")
-		# variant_region_attr_h.store("repeat_motif", "")
-		# variant_region_attr_h.store("repeat_counts", "")
+		variant_region_attr_h.store(:variant_region_type_SO_id, "")
+		# variant_region_attr_h.store(:is_low_quality, "")
+		# variant_region_attr_h.store(:repeat_motif, "")
+		# variant_region_attr_h.store(:repeat_counts, "")
 
 		submission.VARIANT_REGION(variant_region_attr_h){|variant_region_e|
 
 			# DESCRIPTION
-			variant_region_e.DESCRIPTION(variant_region["Description"]) unless variant_region["Description"].empty?
+			variant_region_e.DESCRIPTION(variant_region[:Description]) unless variant_region[:Description].empty?
 
 			# boundary of variant region
 			region_start_a = []
@@ -3046,48 +2988,48 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 			# start of region
 			region_min_start = ""
-			region_start_a.push(variant_region["Outer Start"].to_i) if !variant_region["Outer Start"].empty? && variant_region["Outer Start"].to_i
-			region_start_a.push(variant_region["Start"].to_i) if !variant_region["Start"].empty? && variant_region["Start"].to_i
-			region_start_a.push(variant_region["Inner Start"].to_i) if !variant_region["Inner Start"].empty? && variant_region["Inner Start"].to_i
+			region_start_a.push(variant_region[:"Outer Start"].to_i) if !variant_region[:"Outer Start"].empty? && variant_region[:"Outer Start"].to_i
+			region_start_a.push(variant_region[:Start].to_i) if !variant_region[:Start].empty? && variant_region[:Start].to_i
+			region_start_a.push(variant_region[:"Inner Start"].to_i) if !variant_region[:"Inner Start"].empty? && variant_region[:"Inner Start"].to_i
 			region_min_start = region_start_a.min
 
 			# stop of region
 			region_max_stop = ""
-			region_stop_a.push(variant_region["Stop"].to_i) if !variant_region["Stop"].empty? && variant_region["Stop"].to_i
-			region_stop_a.push(variant_region["Inner Stop"].to_i) if !variant_region["Inner Stop"].empty? && variant_region["Inner Stop"].to_i
-			region_stop_a.push(variant_region["Outer Stop"].to_i) if !variant_region["Outer Stop"].empty? && variant_region["Outer Stop"].to_i
+			region_stop_a.push(variant_region[:Stop].to_i) if !variant_region[:Stop].empty? && variant_region[:Stop].to_i
+			region_stop_a.push(variant_region[:"Inner Stop"].to_i) if !variant_region[:"Inner Stop"].empty? && variant_region[:"Inner Stop"].to_i
+			region_stop_a.push(variant_region[:"Outer Stop"].to_i) if !variant_region[:"Outer Stop"].empty? && variant_region[:"Outer Stop"].to_i
 			region_max_stop = region_stop_a.max
 
 			# SUPPORTING_VARIANT_CALL
 			variant_call_type_sampleset_h = {}
 			translocation_variant_call_per_region_a = []
 			complex_variant_call_per_region_a = []
-			unless variant_region["Supporting Variant Call IDs"].empty?
-				if variant_region["Supporting Variant Call IDs"].split(/ *, */).size > 0
-					for supporting_call_id in variant_region["Supporting Variant Call IDs"].split(/ *, */)
+			unless variant_region[:"Supporting Variant Call IDs"].empty?
+				unless variant_region[:"Supporting Variant Call IDs"].split(/ *, */).empty?
+					for supporting_call_id in variant_region[:"Supporting Variant Call IDs"].split(/ *, */)
 
-						supporting_call_id_a.push(supporting_call_id)
-						variant_region_e.SUPPORTING_VARIANT_CALL("variant_call_id" => supporting_call_id)
+						supporting_call_id_a.push(:"#{supporting_call_id}")
+						variant_region_e.SUPPORTING_VARIANT_CALL(:variant_call_id => supporting_call_id)
 
 						## JV_SV0050: Inconsistent Variant Call Type and Variant Region Type
-						if ["copy number gain", "copy number loss"].include?(variant_call_id_type_h[supporting_call_id]) && variant_region["Variant Region Type"] != "copy number variation"
+						if (variant_call_id_type_h[:"#{supporting_call_id}"] == "copy number gain" || variant_call_id_type_h[:"#{supporting_call_id}"] == "copy number loss") && variant_region[:"Variant Region Type"] != "copy number variation"
 							inconsistent_type_region_a.push(variant_region_id)
-							variant_region_tsv_log_a.push("#{variant_region["row"].join("\t")}\t# JV_SV0050 Warning: Inconsistent Variant Call Type and Variant Region Type.")
+							variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0050 Warning: Inconsistent Variant Call Type and Variant Region Type.")
 						end
 
 						## JV_SV0051: Mixed Variant Region Type
-						if variant_region["Variant Region Type"] != variant_call_id_type_h[supporting_call_id] && (variant_region_call_type_h[variant_region["Variant Region Type"]] && !variant_region_call_type_h[variant_region["Variant Region Type"]].include?(variant_call_id_type_h[supporting_call_id]))
+						if variant_region[:"Variant Region Type"] != variant_call_id_type_h[:"#{supporting_call_id}"] && ($variant_region_call_type_h[:"#{variant_region[:"Variant Region Type"]}"] && !$variant_region_call_type_h[:"#{variant_region[:"Variant Region Type"]}"].include?(variant_call_id_type_h[:"#{supporting_call_id}"]))
 							mixed_type_region_a.push(variant_region_id)
-							variant_region_tsv_log_a.push("#{variant_region["row"].join("\t")}\t# JV_SV0051 Warning: Warning if variant call is in a variant region with different type UNLESS the region type is 'copy number variation' and the call type is ('copy number gain','copy number loss','deletion', or 'duplication'), OR the region type is 'mobile element insertion' and the call type is ('alu insertion', 'herv insertion', 'line1 insertion', or 'sva insertion'), OR the region type is 'mobile element deletion' and the call type is ('alu deletion', 'herv deletion', 'line1 deletion', or 'sva deletion'), OR the region type is ('translocation' or 'complex chromosomal rearrangement') and the call type is ('interchromosomal translocation' or 'intrachromosomal translocation').")
+							variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0051 Warning: Warning if variant call is in a variant region with different type UNLESS the region type is 'copy number variation' and the call type is ('copy number gain','copy number loss','deletion', or 'duplication'), OR the region type is 'mobile element insertion' and the call type is ('alu insertion', 'herv insertion', 'line1 insertion', or 'sva insertion'), OR the region type is 'mobile element deletion' and the call type is ('alu deletion', 'herv deletion', 'line1 deletion', or 'sva deletion'), OR the region type is ('translocation' or 'complex chromosomal rearrangement') and the call type is ('interchromosomal translocation' or 'intrachromosomal translocation').")
 						end
 
 						## JV_SV0069: Copy number gain and loss in the same sample
 						# sampleset 毎に variant call を格納
-						if variant_call_id_type_h[supporting_call_id] == "copy number gain" || variant_call_id_type_h[supporting_call_id] == "copy number loss"
-							if variant_call_type_sampleset_h[variant_call_id_sampleset_h[supporting_call_id]].nil? && variant_call_id_type_h[supporting_call_id]
-								variant_call_type_sampleset_h.store(variant_call_id_sampleset_h[supporting_call_id], [variant_call_id_type_h[supporting_call_id]])
-							else variant_call_type_sampleset_h[variant_call_id_sampleset_h[supporting_call_id]].class == "Array"
-								variant_call_type_sampleset_h[variant_call_id_sampleset_h[supporting_call_id]].push(variant_call_id_type_h[supporting_call_id])
+						if variant_call_id_type_h[:"#{supporting_call_id}"] == "copy number gain" || variant_call_id_type_h[:"#{supporting_call_id}"] == "copy number loss"
+							if variant_call_type_sampleset_h[variant_call_id_sampleset_h[:"#{supporting_call_id}"]].nil? && variant_call_id_type_h[:"#{supporting_call_id}"]
+								variant_call_type_sampleset_h.store(variant_call_id_sampleset_h[:"#{supporting_call_id}"], [variant_call_id_type_h[:"#{supporting_call_id}"]])
+							else variant_call_type_sampleset_h[variant_call_id_sampleset_h[:"#{supporting_call_id}"]].class == "Array"
+								variant_call_type_sampleset_h[variant_call_id_sampleset_h[:"#{supporting_call_id}"]].push(variant_call_id_type_h[:"#{supporting_call_id}"])
 							end
 						end
 
@@ -3096,17 +3038,17 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 						call_stop_a = []
 						call_min_start = ""
 						call_max_stop = ""
-						if variant_region["Variant Region Type"] !~ /translocation/ && variant_region["Variant Region Type"] != "complex chromosomal rearrangement"
+						if !variant_region[:"Variant Region Type"].match?(/translocation/) && variant_region[:"Variant Region Type"] != "complex chromosomal rearrangement"
 
 							# start of call
-							call_start_a.push(variant_call_placement_h[supporting_call_id]["Outer Start"].to_i) if variant_call_placement_h[supporting_call_id] && variant_call_placement_h[supporting_call_id]["Outer Start"] && !variant_call_placement_h[supporting_call_id]["Outer Start"].empty? && variant_call_placement_h[supporting_call_id]["Outer Start"].to_i
-							call_start_a.push(variant_call_placement_h[supporting_call_id]["Start"].to_i) if variant_call_placement_h[supporting_call_id] && variant_call_placement_h[supporting_call_id]["Start"] && !variant_call_placement_h[supporting_call_id]["Start"].empty? && variant_call_placement_h[supporting_call_id]["Start"].to_i
-							call_start_a.push(variant_call_placement_h[supporting_call_id]["Inner Start"].to_i) if variant_call_placement_h[supporting_call_id] && variant_call_placement_h[supporting_call_id]["Inner Start"] && !variant_call_placement_h[supporting_call_id]["Inner Start"].empty? && variant_call_placement_h[supporting_call_id]["Inner Start"].to_i
+							call_start_a.push(variant_call_placement_h[:"#{supporting_call_id}"][:"Outer Start"].to_i) if variant_call_placement_h[:"#{supporting_call_id}"] && variant_call_placement_h[:"#{supporting_call_id}"][:"Outer Start"] && !variant_call_placement_h[:"#{supporting_call_id}"][:"Outer Start"].empty? && variant_call_placement_h[:"#{supporting_call_id}"][:"Outer Start"].to_i
+							call_start_a.push(variant_call_placement_h[:"#{supporting_call_id}"][:"Start"].to_i) if variant_call_placement_h[:"#{supporting_call_id}"] && variant_call_placement_h[:"#{supporting_call_id}"][:Start] && !variant_call_placement_h[:"#{supporting_call_id}"][:Start].empty? && variant_call_placement_h[:"#{supporting_call_id}"][:Start].to_i
+							call_start_a.push(variant_call_placement_h[:"#{supporting_call_id}"][:"Inner Start"].to_i) if variant_call_placement_h[:"#{supporting_call_id}"] && variant_call_placement_h[:"#{supporting_call_id}"][:"Inner Start"] && !variant_call_placement_h[:"#{supporting_call_id}"][:"Inner Start"].empty? && variant_call_placement_h[:"#{supporting_call_id}"][:"Inner Start"].to_i
 
 							# stop of call
-							call_stop_a.push(variant_call_placement_h[supporting_call_id]["Stop"].to_i) if variant_call_placement_h[supporting_call_id] && variant_call_placement_h[supporting_call_id]["Stop"] && !variant_call_placement_h[supporting_call_id]["Stop"].empty? && variant_call_placement_h[supporting_call_id]["Stop"].to_i
-							call_stop_a.push(variant_call_placement_h[supporting_call_id]["Inner Stop"].to_i) if variant_call_placement_h[supporting_call_id] && variant_call_placement_h[supporting_call_id]["Inner Stop"] && !variant_call_placement_h[supporting_call_id]["Inner Stop"].empty? && variant_call_placement_h[supporting_call_id]["Inner Stop"].to_i
-							call_stop_a.push(variant_call_placement_h[supporting_call_id]["Outer Stop"].to_i) if variant_call_placement_h[supporting_call_id] && variant_call_placement_h[supporting_call_id]["Outer Stop"] && !variant_call_placement_h[supporting_call_id]["Outer Stop"].empty? && variant_call_placement_h[supporting_call_id]["Outer Stop"].to_i
+							call_stop_a.push(variant_call_placement_h[:"#{supporting_call_id}"][:Stop].to_i) if variant_call_placement_h[:"#{supporting_call_id}"] && variant_call_placement_h[:"#{supporting_call_id}"][:Stop] && !variant_call_placement_h[:"#{supporting_call_id}"][:Stop].empty? && variant_call_placement_h[:"#{supporting_call_id}"][:Stop].to_i
+							call_stop_a.push(variant_call_placement_h[:"#{supporting_call_id}"][:"Inner Stop"].to_i) if variant_call_placement_h[:"#{supporting_call_id}"] && variant_call_placement_h[:"#{supporting_call_id}"][:"Inner Stop"] && !variant_call_placement_h[:"#{supporting_call_id}"][:"Inner Stop"].empty? && variant_call_placement_h[:"#{supporting_call_id}"][:"Inner Stop"].to_i
+							call_stop_a.push(variant_call_placement_h[:"#{supporting_call_id}"][:"Outer Stop"].to_i) if variant_call_placement_h[:"#{supporting_call_id}"] && variant_call_placement_h[:"#{supporting_call_id}"][:"Outer Stop"] && !variant_call_placement_h[:"#{supporting_call_id}"][:"Outer Stop"].empty? && variant_call_placement_h[:"#{supporting_call_id}"][:"Outer Stop"].to_i
 
 						end
 
@@ -3115,24 +3057,24 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 						call_max_stop = call_stop_a.max
 
 						## JV_SV0053: Variant Call is outside of parent Variant Region
-						if (call_min_start.to_s =~ /^[0-9]+$/ && call_max_stop.to_s =~ /^[0-9]+$/ && region_min_start.to_s =~ /^[0-9]+$/ && region_max_stop.to_s =~ /^[0-9]+$/) && (call_min_start < region_min_start || region_max_stop < call_max_stop)
+						if (call_min_start.to_s.match?(/^[0-9]+$/) && call_max_stop.to_s.match?(/^[0-9]+$/) && region_min_start.to_s.match?(/^[0-9]+$/) && region_max_stop.to_s.match?(/^[0-9]+$/)) && (call_min_start < region_min_start || region_max_stop < call_max_stop)
 							call_outside_parent_region_a.push(variant_region_id)
-							variant_region_tsv_log_a.push("#{variant_region["row"].join("\t")}\t# JV_SV0053 Warning: Warning if variant call is outside of range of parent variant region, unless region is of type translocation or 'complex chromosomal rearrangement'.")
+							variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0053 Warning: Warning if variant call is outside of range of parent variant region, unless region is of type translocation or 'complex chromosomal rearrangement'.")
 						end
 
 						## region 単位で translocation type の call を格納
-						translocation_variant_call_per_region_a.push(variant_call_translocation_h[supporting_call_id]) if variant_call_translocation_h[supporting_call_id]
+						translocation_variant_call_per_region_a.push(variant_call_translocation_h[:"#{supporting_call_id}"]) if variant_call_translocation_h[:"#{supporting_call_id}"]
 
 						## region type complex, translocation で supporting call に mutation ID 無いとエラー
 						## JV_SV0066: Missing mutation order for complex chromosomal rearrangement and translocation
-						if variant_region["Variant Region Type"] =~ /^complex/ || variant_region["Variant Region Type"] == "translocation"
-							if variant_call_mutation_h[supporting_call_id] && variant_call_mutation_h[supporting_call_id]["Mutation Order"].empty?
+						if variant_region[:"Variant Region Type"].match?(/^complex/) || variant_region[:"Variant Region Type"] == "translocation"
+							if variant_call_mutation_h[:"#{supporting_call_id}"] && variant_call_mutation_h[:"#{supporting_call_id}"][:"Mutation Order"].empty?
 								missing_mutation_order_region_a.push(variant_region_id)
-								variant_region_tsv_log_a.push("#{variant_region["row"].join("\t")}\t# JV_SV0066 Error: Variant regions with type ‘complex chromosomal rearrangement’ and 'translocation' must have Mutation Order in their supporting variant calls.")
+								variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0066 Error: Variant regions with type ‘complex chromosomal rearrangement’ and 'translocation' must have Mutation Order in their supporting variant calls.")
 							end
 
 							## region 単位で region type complex or translocation の call を格納
-							complex_variant_call_per_region_a.push(variant_call_mutation_h[supporting_call_id]) if variant_call_mutation_h[supporting_call_id]
+							complex_variant_call_per_region_a.push(variant_call_mutation_h[:"#{supporting_call_id}"]) if variant_call_mutation_h[:"#{supporting_call_id}"]
 
 						end
 
@@ -3142,36 +3084,36 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 			else  # unless variant_region["Supporting Variant Call IDs"].empty?
 				## JV_SV0065: Missing variant call for region
 				missing_variant_call_for_region_a.push(variant_region_id)
-				variant_region_tsv_log_a.push("#{variant_region["row"].join("\t")}\t# JV_SV0065 Error: Region MUST have a child variant call.")
+				variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0065 Error: Region MUST have a child variant call.")
 			end # unless variant_region["Supporting Variant Call IDs"].empty?
 
 			## translocation: mutation ID and mutation order
 			translocation_mutation_id_a = []
 			translocation_mutation_order_a = []
-			translocation_variant_call_per_region_sorted_a = translocation_variant_call_per_region_a.sort_by{|e| [e["Mutation ID"], e["Mutation Order"]]}
+			translocation_variant_call_per_region_sorted_a = translocation_variant_call_per_region_a.sort_by{|e| [e[:"Mutation ID"], e[:"Mutation Order"]]}
 
 			m = 0
 			for translocation_call_h in translocation_variant_call_per_region_sorted_a[0..-2]
 
-				translocation_mutation_id_a.push(translocation_call_h["Mutation ID"])
-				translocation_mutation_order_a.push(translocation_call_h["Mutation Order"])
+				translocation_mutation_id_a.push(translocation_call_h[:"Mutation ID"])
+				translocation_mutation_order_a.push(translocation_call_h[:"Mutation Order"])
 
 				## JV_SV0043: Invalid translocation placements
-				if translocation_call_h["To Chr"] != translocation_variant_call_per_region_sorted_a[m+1]["From Chr"] || translocation_call_h["To Strand"] != translocation_variant_call_per_region_sorted_a[m+1]["From Strand"]
-					invalid_translocation_placement_SV0043_region_a.push(translocation_call_h["Variant Call ID"])
-					variant_region_tsv_log_a.push("#{variant_region["row"].join("\t")}\t# JV_SV0043 Error: Invalid translocation placements.")
+				if translocation_call_h[:"To Chr"] != translocation_variant_call_per_region_sorted_a[m+1][:"From Chr"] || translocation_call_h[:"To Strand"] != translocation_variant_call_per_region_sorted_a[m+1][:"From Strand"]
+					invalid_translocation_placement_SV0043_region_a.push(translocation_call_h[:"Variant Call ID"])
+					variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0043 Error: Invalid translocation placements.")
 				end
 
 				## JV_SV0097: Invalid translocation placements
-				if translocation_call_h["To Strand"] == "+" && translocation_call_h["To Coord"].to_i > translocation_variant_call_per_region_sorted_a[m+1]["From Coord"].to_i
-					invalid_translocation_placement_SV0097_region_a.push(translocation_call_h["Variant Call ID"])
-					variant_region_tsv_log_a.push("#{variant_region["row"].join("\t")}\t# JV_SV0097 Error: Invalid translocation placements.")
+				if translocation_call_h[:"To Strand"] == "+" && translocation_call_h[:"To Coord"].to_i > translocation_variant_call_per_region_sorted_a[m+1][:"From Coord"].to_i
+					invalid_translocation_placement_SV0097_region_a.push(translocation_call_h[:"Variant Call ID"])
+					variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0097 Error: Invalid translocation placements.")
 				end
 
 				## JV_SV0098: Invalid translocation placements
-				if translocation_call_h["To Strand"] == "-" && translocation_call_h["To Coord"].to_i < translocation_variant_call_per_region_sorted_a[m+1]["From Coord"].to_i
-					invalid_translocation_placement_SV0098_region_a.push(translocation_call_h["Variant Call ID"])
-					variant_region_tsv_log_a.push("#{variant_region["row"].join("\t")}\t# JV_SV0098 Error: Invalid translocation placements.")
+				if translocation_call_h[:"To Strand"] == "-" && translocation_call_h[:"To Coord"].to_i < translocation_variant_call_per_region_sorted_a[m+1][:"From Coord"].to_i
+					invalid_translocation_placement_SV0098_region_a.push(translocation_call_h[:"Variant Call ID"])
+					variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0098 Error: Invalid translocation placements.")
 				end
 
 				m += 1
@@ -3181,36 +3123,36 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 			## JV_SV0096: Mixed mutation ID for complex chromosomal rearrangement and translocation
 			if translocation_mutation_id_a.sort.uniq.size > 1
 				mixed_mutation_id_region_a.push(variant_region_id)
-				variant_region_tsv_log_a.push("#{variant_region["row"].join("\t")}\t# JV_SV0096 Error: Mixed mutation ID for complex chromosomal rearrangement and translocation.")
+				variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0096 Error: Mixed mutation ID for complex chromosomal rearrangement and translocation.")
 			end
 
 			## JV_SV0067: Missing serial mutation order number for complex chromosomal rearrangement and translocation
 			unless translocation_mutation_order_a.empty?
 				if [*1..translocation_mutation_order_a.size] != translocation_mutation_order_a.map{|e| e.to_i}
 					missing_serial_mutation_order_region_a.push(variant_region_id)
-					variant_region_tsv_log_a.push("#{variant_region["row"].join("\t")}\t# JV_SV0067 Error: Missing serial mutation order number for complex chromosomal rearrangement and translocation.")
+					variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0067 Error: Missing serial mutation order number for complex chromosomal rearrangement and translocation.")
 				end
 			end
 
 			## region type: complex or translocation: mutation ID and mutation order
 			complex_mutation_id_a = []
 			complex_mutation_order_a = []
-			for complex_call_h in complex_variant_call_per_region_a.sort_by{|e| [e["Mutation ID"], e["Mutation Order"]]}
-				complex_mutation_id_a.push(complex_call_h["Mutation ID"])
-				complex_mutation_order_a.push(complex_call_h["Mutation Order"])
+			for complex_call_h in complex_variant_call_per_region_a.sort_by{|e| [e[:"Mutation ID"], e[:"Mutation Order"]]}
+				complex_mutation_id_a.push(complex_call_h[:"Mutation ID"])
+				complex_mutation_order_a.push(complex_call_h[:"Mutation Order"])
 			end
 
 			## JV_SV0096: Mixed mutation ID for complex chromosomal rearrangement and translocation
 			if complex_mutation_id_a.sort.uniq.size > 1
 				mixed_mutation_id_region_a.push(variant_region_id)
-				variant_region_tsv_log_a.push("#{variant_region["row"].join("\t")}\t# JV_SV0096 Error: Mixed mutation ID for complex chromosomal rearrangement and translocation.")
+				variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0096 Error: Mixed mutation ID for complex chromosomal rearrangement and translocation.")
 			end
 
 			## JV_SV0067: Missing serial mutation order number for complex chromosomal rearrangement and translocation
 			unless complex_mutation_order_a.empty?
 				if [*1..complex_mutation_order_a.size] != complex_mutation_order_a.map{|e| e.to_i}
 					missing_serial_mutation_order_region_a.push(variant_region_id)
-					variant_region_tsv_log_a.push("#{variant_region["row"].join("\t")}\t# JV_SV0067 Error: Missing serial mutation order number for complex chromosomal rearrangement and translocation.")
+					variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0067 Error: Missing serial mutation order number for complex chromosomal rearrangement and translocation.")
 				end
 			end
 
@@ -3219,24 +3161,24 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 				for sampleset_id, call_type_a in variant_call_type_sampleset_h
 					if call_type_a.sort.uniq == ["copy number gain", "copy number loss"].sort
 						copy_number_gain_loss_same_sample_region_a.push(variant_region_id)
-						variant_region_tsv_log_a.push("#{variant_region["row"].join("\t")}\t# JV_SV0069 Warning: Copy number gain and loss in the same sample.")
+						variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0069 Warning: Copy number gain and loss in the same sample.")
 					end
 				end
 			end
 
 			# SUPPORTING_VARIANT_REGION
-			if variant_region["Supporting Variant Region IDs"].split(/ *, */).size > 0
-				for supporting_region_id in variant_region["Supporting Variant Region IDs"].split(/ *, */)
-					supporting_region_id_a.push(supporting_region_id)
-					variant_region_e.SUPPORTING_VARIANT_REGION("variant_region_id" => supporting_region_id)
+			if variant_region[:"Supporting Variant Region IDs"].split(/ *, */).size > 0
+				for supporting_region_id in variant_region[:"Supporting Variant Region IDs"].split(/ *, */)
+					supporting_region_id_a.push(:"#{supporting_region_id}")
+					variant_region_e.SUPPORTING_VARIANT_REGION(:variant_region_id => supporting_region_id)
 				end
 			end
 
 	        # PLACEMENT attributes
 	        placement_attr_h = {}
-	        # placement_attr_h.store("alt_status", "")
-	        # placement_attr_h.store("placement_method", "")
-	        # placement_attr_h.store("breakpoint_order", "")
+	        # placement_attr_h.store(:alt_status, "")
+	        # placement_attr_h.store(:placement_method, "")
+	        # placement_attr_h.store(:breakpoint_order, "")
 
 	        variant_region_e.PLACEMENT(placement_attr_h){|placement_e|
 
@@ -3247,57 +3189,57 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 				for chromosome_per_assembly_h in chromosome_per_assembly_a
 
 					# contig が sequence report の RefSeq/GenBank accession にあるかどうか、chr と contig 両方書いてある場合は contig を使用
-					if !variant_region["Contig"].empty? && variant_region["Chr"].empty? && (chromosome_per_assembly_h["refseqAccession"] == variant_region["Contig"] || chromosome_per_assembly_h["genbankAccession"] == variant_region["Contig"])
+					if !variant_region[:"Contig"].empty? && variant_region[:Chr].empty? && (chromosome_per_assembly_h[:refseqAccession] == variant_region[:Contig] || chromosome_per_assembly_h[:genbankAccession] == variant_region[:Contig])
 						chr_name = ""
 						chr_accession = ""
-						chr_length = chromosome_per_assembly_h["length"]
-						contig_accession = chromosome_per_assembly_h["refseqAccession"] # fna は refseqAccession 記載
+						chr_length = chromosome_per_assembly_h[:length]
+						contig_accession = chromosome_per_assembly_h[:refseqAccession] # fna は refseqAccession 記載
 						valid_contig_f = true
 					# contig が download ref にあるかどうか. download にある=assembly には含まれていない
-					elsif !variant_region["Contig"].empty? && variant_region["Chr"].empty? && $ref_download_h.has_key?(variant_region["Contig"].to_sym)
+					elsif !variant_region[:Contig].empty? && variant_region[:Chr].empty? && $ref_download_h.has_key?(variant_region[:Contig])
 						chr_name = ""
 						chr_accession = ""
-						chr_length = $ref_download_h[variant_region["Contig"].to_sym].to_i if $ref_download_h[variant_region["Contig"].to_sym].to_i
-						contig_accession = variant_region["Contig"]
+						chr_length = $ref_download_h[variant_region[:Contig]].to_i if $ref_download_h[variant_region[:Contig]].to_i
+						contig_accession = variant_region[:Contig]
 						valid_contig_f = true
 						ref_download_f = true
 					# chr が sequence report の chrName にあるかどうか
-					elsif !variant_region["Chr"].empty? && variant_region["Contig"].empty? && chromosome_per_assembly_h["chrName"] == variant_region["Chr"].sub(/chr/i, "") && chromosome_per_assembly_h["role"] == "assembled-molecule"
-						chr_name = chromosome_per_assembly_h["chrName"]
-						chr_accession = chromosome_per_assembly_h["refseqAccession"]
-						chr_length = chromosome_per_assembly_h["length"]
+					elsif !variant_region[:Chr].empty? && variant_region[:Contig].empty? && chromosome_per_assembly_h[:chrName] == variant_region[:Chr].sub(/chr/i, "") && chromosome_per_assembly_h[:role] == "assembled-molecule"
+						chr_name = chromosome_per_assembly_h[:chrName]
+						chr_accession = chromosome_per_assembly_h[:refseqAccession]
+						chr_length = chromosome_per_assembly_h[:length]
 						valid_chr_f = true
-					elsif !variant_region["Chr"].empty? && variant_region["Contig"].empty? && chromosome_per_assembly_h["ucscStyleName"].sub(/^chr/i, "") == variant_region["Chr"].sub(/^chr/i, "")
-						chr_name = chromosome_per_assembly_h["chrName"]
-						chr_accession = chromosome_per_assembly_h["refseqAccession"]
-						chr_length = chromosome_per_assembly_h["length"]
+					elsif !variant_region[:Chr].empty? && variant_region[:Contig].empty? && chromosome_per_assembly_h[:ucscStyleName].sub(/^chr/i, "") == variant_region[:Chr].sub(/^chr/i, "")
+						chr_name = chromosome_per_assembly_h[:chrName]
+						chr_accession = chromosome_per_assembly_h[:refseqAccession]
+						chr_length = chromosome_per_assembly_h[:length]
 						valid_chr_f = true
 					end
 
 				end
 
 				## JV_SV0077: Contig accession exists for chromosome accession
-				if !variant_region["Contig"].empty? && !variant_region["Chr"].empty?
+				if !variant_region[:Contig].empty? && !variant_region[:Chr].empty?
 					contig_acc_for_chr_acc_region_a.push(variant_region_id)
-					variant_region_tsv_log_a.push("#{variant_region["row"].join("\t")}\t# JV_SV0077 Error: Contig accession exists for chromosome accession.")
+					variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0077 Error: Contig accession exists for chromosome accession.")
 				end
 
 				## JV_SV0072: Invalid chromosome reference
-				if !variant_region["Chr"].empty? && !valid_chr_f
+				if !variant_region[:Chr].empty? && !valid_chr_f
 					invalid_chr_ref_region_a.push(variant_region_id)
-					variant_region_tsv_log_a.push("#{variant_region["row"].join("\t")}\t# JV_SV0072 Error: Contig accession exists for chromosome accession.")
+					variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0072 Error: Contig accession exists for chromosome accession.")
 				end
 
 				## JV_SV0074: Invalid contig accession reference
-				if !variant_region["Contig"].empty? && !valid_contig_f
+				if !variant_region[:Contig].empty? && !valid_contig_f
 					invalid_contig_acc_ref_region_a.push(variant_region_id)
-					variant_region_tsv_log_a.push("#{variant_region["row"].join("\t")}\t# JV_SV0074 Error: Contig accession must refer to a valid INSDC accession and version.")
+					variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0074 Error: Contig accession must refer to a valid INSDC accession and version.")
 				end
 
 				## JV_SV0076: Missing chromosome/contig accession
 				if chr_name.empty? && chr_accession.empty? && contig_accession.empty?
 					missing_chr_contig_acc_region_a.push(variant_region_id)
-					variant_region_tsv_log_a.push("#{variant_region["row"].join("\t")}\t# JV_SV0076 Error: Genomic placement must contain either a chr_name, chr_accession, or contig_accession unless it is on a novel sequence insertion or translocation.")
+					variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0076 Error: Genomic placement must contain either a chr_name, chr_accession, or contig_accession unless it is on a novel sequence insertion or translocation.")
 				end
 
 	            # GENOME
@@ -3305,155 +3247,155 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 				if ref_download_f
 					assembly = ""
-					genome_attr_h.store("assembly", "")
-	            elsif !variant_region["Assembly"].empty?
-					assembly = variant_region["Assembly"]
+					genome_attr_h.store(:assembly, "")
+	            elsif !variant_region[:Assembly].empty?
+					assembly = variant_region[:Assembly]
 					variant_region_assembly_a.push(assembly)
-					genome_attr_h.store("assembly", refseq_assembly)
+					genome_attr_h.store(:assembly, refseq_assembly)
 	            else
-					genome_attr_h.store("assembly", "")
+					genome_attr_h.store(:assembly, "")
 	            end
 
-				genome_attr_h.store("chr_name", chr_name)
-				genome_attr_h.store("chr_accession", chr_accession)
-				genome_attr_h.store("contig_accession", contig_accession)
+				genome_attr_h.store(:chr_name, chr_name)
+				genome_attr_h.store(:chr_accession, chr_accession)
+				genome_attr_h.store(:contig_accession, contig_accession)
 
 				## placement check
 				## JV_SV0078: Missing start
-				if variant_region["Outer Start"].empty? && variant_region["Start"].empty? && variant_region["Inner Start"].empty? && variant_region_type != "translocation" && variant_region_type != "novel sequence insertion"
+				if variant_region[:"Outer Start"].empty? && variant_region[:Start].empty? && variant_region[:"Inner Start"].empty? && variant_region_type != "translocation" && variant_region_type != "novel sequence insertion"
 					missing_start_region_a.push(variant_region_id)
-					variant_region_tsv_log_a.push("#{variant_region["row"].join("\t")}\t# JV_SV0078 Error: Genomic placement must contain either a start, outer_start, or inner_start unless it is a novel sequence insertion or translocation.")
+					variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0078 Error: Genomic placement must contain either a start, outer_start, or inner_start unless it is a novel sequence insertion or translocation.")
 				end
 
 				## JV_SV0079: Missing stop
-				if variant_region["Outer Stop"].empty? && variant_region["Stop"].empty? && variant_region["Inner Stop"].empty? && variant_region_type != "translocation" && variant_region_type != "novel sequence insertion
+				if variant_region[:"Outer Stop"].empty? && variant_region[:Stop].empty? && variant_region[:"Inner Stop"].empty? && variant_region_type != "translocation" && variant_region_type != "novel sequence insertion"
 					missing_stop_region_a.push(variant_region_id)
-					variant_region_tsv_log_a.push("#{variant_region["row"].join("\t")}\t# JV_SV0079 Error: Genomic placement must contain either a stop, outer_stop, or inner_stop unless it is a novel sequence insertion or translocation.")
+					variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0079 Error: Genomic placement must contain either a stop, outer_stop, or inner_stop unless it is a novel sequence insertion or translocation.")
 				end
 
 				# JV_SV0080: When on same sequence, start must be <= stop
-				if !variant_region["Start"].empty? && !variant_region["Stop"].empty? && (variant_region["Start"].to_i > variant_region["Stop"].to_i)
+				if !variant_region[:Start].empty? && !variant_region[:Stop].empty? && (variant_region[:Start].to_i > variant_region[:Stop].to_i)
 					invalid_start_stop_region_a.push(variant_region_id)
-					variant_region_tsv_log_a.push("#{variant_region["row"].join("\t")}\t# JV_SV0080 Error: When on same sequence, start must be <= stop.")
+					variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0080 Error: When on same sequence, start must be <= stop.")
 				end
 
 				# JV_SV0081: When on same sequence, outer_start must be <= outer_stop
-				if !variant_region["Outer Start"].empty? && !variant_region["Outer Stop"].empty? && (variant_region["Outer Start"].to_i > variant_region["Outer Stop"].to_i)
+				if !variant_region[:"Outer Start"].empty? && !variant_region[:"Outer Stop"].empty? && (variant_region[:"Outer Start"].to_i > variant_region[:"Outer Stop"].to_i)
 					invalid_outer_start_outer_stop_region_a.push(variant_region_id)
-					variant_region_tsv_log_a.push("#{variant_region["row"].join("\t")}\t# JV_SV0081 Error: When on same sequence, outer_start must be <= outer_stop.")
+					variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0081 Error: When on same sequence, outer_start must be <= outer_stop.")
 				end
 
 				# JV_SV0082: When on same sequence, outer_start must be <= inner_start
-				if !variant_region["Outer Start"].empty? && !variant_region["Inner Start"].empty? && (variant_region["Outer Start"].to_i > variant_region["Inner Start"].to_i)
+				if !variant_region[:"Outer Start"].empty? && !variant_region[:"Inner Start"].empty? && (variant_region[:"Outer Start"].to_i > variant_region[:"Inner Start"].to_i)
 					invalid_outer_start_inner_start_region_a.push(variant_region_id)
-					variant_region_tsv_log_a.push("#{variant_region["row"].join("\t")}\t# JV_SV0082 Error: When on same sequence, outer_start must be <= inner_start.")
+					variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0082 Error: When on same sequence, outer_start must be <= inner_start.")
 				end
 
 				# JV_SV0083: When on same sequence, inner_stop must be <= outer_stop
-				if !variant_region["Inner Stop"].empty? && !variant_region["Outer Stop"].empty? && (variant_region["Inner Stop"].to_i > variant_region["Outer Stop"].to_i)
+				if !variant_region[:"Inner Stop"].empty? && !variant_region[:"Outer Stop"].empty? && (variant_region[:"Inner Stop"].to_i > variant_region[:"Outer Stop"].to_i)
 					invalid_inner_stop_outer_stop_region_a.push(variant_region_id)
-					variant_region_tsv_log_a.push("#{variant_region["row"].join("\t")}\t# JV_SV0083 Error: When on same sequence, inner_stop must be <= outer_stop.")
+					variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0083 Error: When on same sequence, inner_stop must be <= outer_stop.")
 				end
 
 				# JV_SV0084: Invalid start and inner stop
-				if !variant_region["Start"].empty? && !variant_region["Inner Stop"].empty? && (variant_region["Start"].to_i >= variant_region["Inner Stop"].to_i) && !(!variant_region["Start"].empty? && !variant_region["Stop"].empty? && !variant_region["Outer Start"].empty? && !variant_region["Outer Stop"].empty? && !variant_region["Inner Start"].empty? && !variant_region["Inner Stop"].empty?)
+				if !variant_region[:Start].empty? && !variant_region[:"Inner Stop"].empty? && (variant_region[:Start].to_i >= variant_region[:"Inner Stop"].to_i) && !(!variant_region[:Start].empty? && !variant_region[:Stop].empty? && !variant_region[:"Outer Start"].empty? && !variant_region[:"Outer Stop"].empty? && !variant_region[:"Inner Start"].empty? && !variant_region[:"Inner Stop"].empty?)
 					invalid_start_inner_stop_region_a.push(variant_region_id)
-					variant_region_tsv_log_a.push("#{variant_region["row"].join("\t")}\t# JV_SV0084 Error: When on same sequence, start must be < inner_stop, unless placement contains all of the following: start, stop, outer_start, outer_stop, inner_start and inner_stop. Also, if using confidence intervals, start must be < (stop - ciendleft).")
+					variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0084 Error: When on same sequence, start must be < inner_stop, unless placement contains all of the following: start, stop, outer_start, outer_stop, inner_start and inner_stop. Also, if using confidence intervals, start must be < (stop - ciendleft).")
 				end
 
 				# JV_SV0085: Invalid inner start and stop
-				if !variant_region["Inner Start"].empty? && !variant_region["Stop"].empty? && (variant_region["Inner Start"].to_i >= variant_region["Stop"].to_i) && !(!variant_region["Start"].empty? && !variant_region["Stop"].empty? && !variant_region["Outer Start"].empty? && !variant_region["Outer Stop"].empty? && !variant_region["Inner Start"].empty? && !variant_region["Inner Stop"].empty?)
+				if !variant_region[:"Inner Start"].empty? && !variant_region[:Stop].empty? && (variant_region[:"Inner Start"].to_i >= variant_region[:Stop].to_i) && !(!variant_region[:Start].empty? && !variant_region[:Stop].empty? && !variant_region[:"Outer Start"].empty? && !variant_region[:"Outer Stop"].empty? && !variant_region[:"Inner Start"].empty? && !variant_region[:"Inner Stop"].empty?)
 					invalid_inner_start_stop_region_a.push(variant_region_id)
-					variant_region_tsv_log_a.push("#{variant_region["row"].join("\t")}\t# JV_SV0085 Error: When on same sequence, inner_start must be < stop, unless placement contains all of the following: start, stop, outer_start, outer_stop, inner_start and inner_stop. Also, if using confidence intervals, (start + ciposright) must be < stop.")
+					variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0085 Error: When on same sequence, inner_start must be < stop, unless placement contains all of the following: start, stop, outer_start, outer_stop, inner_start and inner_stop. Also, if using confidence intervals, (start + ciposright) must be < stop.")
 				end
 
 				# JV_SV0086: When on same sequence, inner_start must be <= inner_stop if there are only inner placements
-				if !variant_region["Inner Start"].empty? && !variant_region["Inner Stop"].empty? && (variant_region["Inner Start"].to_i > variant_region["Inner Stop"].to_i) && !(variant_region["Start"].empty? && variant_region["Stop"].empty? && variant_region["Outer Start"].empty? && variant_region["Outer Stop"].empty? && !variant_region["Inner Start"].empty? && !variant_region["Inner Stop"].empty?)
+				if !variant_region[:"Inner Start"].empty? && !variant_region[:"Inner Stop"].empty? && (variant_region[:"Inner Start"].to_i > variant_region[:"Inner Stop"].to_i) && !(variant_region[:Start].empty? && variant_region[:Stop].empty? && variant_region[:"Outer Start"].empty? && variant_region[:"Outer Stop"].empty? && !variant_region[:"Inner Start"].empty? && !variant_region[:"Inner Stop"].empty?)
 					invalid_inner_start_inner_stop_region_a.push(variant_region_id)
-					variant_region_tsv_log_a.push("#{variant_region["row"].join("\t")}\t# JV_SV0086 Error: When on same sequence, inner_start must be <= inner_stop if there are only inner placements.")
+					variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0086 Error: When on same sequence, inner_start must be <= inner_stop if there are only inner placements.")
 				end
 
 				# JV_SV0087: Multiple starts
-				if !variant_region["Start"].empty? && (!variant_region["Inner Start"].empty? || !variant_region["Outer Start"].empty?) || (!variant_region["Inner Start"].empty? && !variant_region["Outer Start"].empty?) && !variant_region["Start"].empty?
-					if (!variant_region["Start"].empty? && !variant_region["Outer Start"].empty? && variant_region["Start"] != variant_region["Outer Start"]) && (!variant_region["Start"].empty? && !variant_region["Inner Start"].empty? && variant_region["Start"] != variant_region["Inner Start"])
+				if !variant_region[:Start].empty? && (!variant_region[:"Inner Start"].empty? || !variant_region[:"Outer Start"].empty?) || (!variant_region[:"Inner Start"].empty? && !variant_region[:"Outer Start"].empty?) && !variant_region[:Start].empty?
+					if (!variant_region[:Start].empty? && !variant_region[:"Outer Start"].empty? && variant_region[:Start] != variant_region[:"Outer Start"]) && (!variant_region[:Start].empty? && !variant_region[:"Inner Start"].empty? && variant_region[:Start] != variant_region[:"Inner Start"])
 						multiple_starts_region_a.push(variant_region_id)
-						variant_region_tsv_log_a.push("#{variant_region["row"].join("\t")}\t# JV_SV0087 Error: Genomic placement with start must only contain start, or must also contain both outer_start and inner_start.")
+						variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0087 Error: Genomic placement with start must only contain start, or must also contain both outer_start and inner_start.")
 					end
 				end
 
 				# JV_SV0088: Multiple stops
-				if !variant_region["Stop"].empty? && (!variant_region["Inner Stop"].empty? || !variant_region["Outer Stop"].empty?) || (!variant_region["Inner Stop"].empty? && !variant_region["Outer Stop"].empty?) && !variant_region["Stop"].empty?
-					if (!variant_region["Stop"].empty? && !variant_region["Outer Stop"].empty? && variant_region["Stop"] != variant_region["Outer Stop"]) && (!variant_region["Stop"].empty? && !variant_region["Inner Stop"].empty? && variant_region["Stop"] != variant_region["Inner Stop"])
+				if !variant_region[:Stop].empty? && (!variant_region[:"Inner Stop"].empty? || !variant_region[:"Outer Stop"].empty?) || (!variant_region[:"Inner Stop"].empty? && !variant_region[:"Outer Stop"].empty?) && !variant_region[:Stop].empty?
+					if (!variant_region[:Stop].empty? && !variant_region[:"Outer Stop"].empty? && variant_region[:Stop] != variant_region[:"Outer Stop"]) && (!variant_region[:Stop].empty? && !variant_region[:"Inner Stop"].empty? && variant_region[:Stop] != variant_region[:"Inner Stop"])
 						multiple_stops_region_a.push(variant_region_id)
-						variant_region_tsv_log_a.push("#{variant_region["row"].join("\t")}\t# JV_SV0088 Error: Genomic placement with stop must only contain stop, or must also contain both outer_stop and inner_stop.")
+						variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0088 Error: Genomic placement with stop must only contain stop, or must also contain both outer_stop and inner_stop.")
 					end
 				end
 
 				# JV_SV0089: Inconsistent sequence length and start/stop
 				if chr_length != -1
-					if (!variant_region["Stop"].empty? && variant_region["Stop"].to_i > chr_length.to_i) || (!variant_region["Inner Stop"].empty? && variant_region["Inner Stop"].to_i > chr_length.to_i) || (!variant_region["Outer Stop"].empty? && variant_region["Outer Stop"].to_i > chr_length.to_i)
+					if (!variant_region[:Stop].empty? && variant_region[:Stop].to_i > chr_length.to_i) || (!variant_region[:"Inner Stop"].empty? && variant_region[:"Inner Stop"].to_i > chr_length.to_i) || (!variant_region[:"Outer Stop"].empty? && variant_region[:"Outer Stop"].to_i > chr_length.to_i)
 						inconsistent_length_start_stop_region_a.push(variant_region_id)
-						variant_region_tsv_log_a.push("#{variant_region["row"].join("\t")}\t# JV_SV0089 Error: Error if inner_stop, stop, or outer_stop are beyond the length of the sequence (chromosome or scaffold).")
+						variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0089 Error: Error if inner_stop, stop, or outer_stop are beyond the length of the sequence (chromosome or scaffold).")
 					end
 				end
 
 				# JV_SV0090: Inconsistent inner start and stop
-				if !variant_region["Inner Start"].empty? && !variant_region["Inner Stop"].empty? && (variant_region["Inner Start"].to_i > variant_region["Inner Stop"].to_i) && (!variant_region["Outer Start"].empty? || !variant_region["Outer Stop"].empty?)
+				if !variant_region[:"Inner Start"].empty? && !variant_region[:"Inner Stop"].empty? && (variant_region[:"Inner Start"].to_i > variant_region[:"Inner Stop"].to_i) && (!variant_region[:"Outer Start"].empty? || !variant_region[:"Outer Stop"].empty?)
 					inconsistent_inner_start_stop_region_a.push(variant_region_id)
 					warning_sv_a.push(["JV_SV0090", "Warning if when on same sequence, inner_start > inner_stop and there are also valid outer placements. Variant Region ID: #{variant_region_id}"])
 				end
 
 				# JV_SV0091: Start and outer/inner starts co-exist
-				if !variant_region["Inner Start"].empty? && !variant_region["Start"].empty? && !variant_region["Outer Start"].empty?
+				if !variant_region[:"Inner Start"].empty? && !variant_region[:Start].empty? && !variant_region[:"Outer Start"].empty?
 					start_outer_inner_start_coexist_region_a.push(variant_region_id)
 					warning_sv_a.push(["JV_SV0091", "Warning if genomic placement with start also contains outer_start and inner_start. Variant Region ID: #{variant_region_id}"])
 				end
 
 				# JV_SV0092: Stop and outer/inner stops co-exist
-				if !variant_region["Inner Stop"].empty? && !variant_region["Stop"].empty? && !variant_region["Outer Stop"].empty?
+				if !variant_region[:"Inner Stop"].empty? && !variant_region[:Stop].empty? && !variant_region[:"Outer Stop"].empty?
 					stop_outer_inner_stop_coexist_region_a.push(variant_region_id)
 					warning_sv_a.push(["JV_SV0092", "Warning if genomic placement with stop also contains outer_stop and inner_stop. Variant Region ID: #{variant_region_id}"])
 				end
 
 				# start
-	            genome_attr_h.store("outer_start", variant_region["Outer Start"]) unless variant_region["Outer Start"].empty?
-	            genome_attr_h.store("start", variant_region["Start"]) unless variant_region["Start"].empty?
-	            genome_attr_h.store("inner_start", variant_region["Inner Start"]) unless variant_region["Inner Start"].empty?
+	            genome_attr_h.store("outer_start", variant_region[:"Outer Start"]) unless variant_region[:"Outer Start"].empty?
+	            genome_attr_h.store("start", variant_region[:Start]) unless variant_region[:Start].empty?
+	            genome_attr_h.store("inner_start", variant_region[:"Inner Start"]) unless variant_region[:"Inner Start"].empty?
 
 	            # stop
-	            genome_attr_h.store("stop", variant_region["Stop"]) unless variant_region["Stop"].empty?
-	            genome_attr_h.store("inner_stop", variant_region["Inner Stop"]) unless variant_region["Inner Stop"].empty?
-	            genome_attr_h.store("outer_stop", variant_region["Outer Stop"]) unless variant_region["Outer Stop"].empty?
+	            genome_attr_h.store("stop", variant_region[:Stop]) unless variant_region[:Stop].empty?
+	            genome_attr_h.store("inner_stop", variant_region[:"Inner Stop"]) unless variant_region[:"Inner Stop"].empty?
+	            genome_attr_h.store("outer_stop", variant_region[:"Outer Stop"]) unless variant_region[:"Outer Stop"].empty?
 
-	            # genome_attr_h.store("ciposleft", "")
-	            # genome_attr_h.store("ciposright", "")
-	            # genome_attr_h.store("ciendleft", "")
-	            # genome_attr_h.store("ciendright", "")
-	            # genome_attr_h.store("remap_score", "")
-	            # genome_attr_h.store("strand", "")
-	            # genome_attr_h.store("assembly_unit", "")
-	            # genome_attr_h.store("alignment", "")
-	            # genome_attr_h.store("remap_failure_code", "")
-	            # genome_attr_h.store("placement_rank", "")
-	            # genome_attr_h.store("placements_per_assembly", "")
-	            # genome_attr_h.store("remap_diff_chr", "")
-	            # genome_attr_h.store("remap_best_within_cluster", "")
+	            # genome_attr_h.store(:ciposleft, "")
+	            # genome_attr_h.store(:ciposright, "")
+	            # genome_attr_h.store(:ciendleft, "")
+	            # genome_attr_h.store(:ciendright, "")
+	            # genome_attr_h.store(:remap_score, "")
+	            # genome_attr_h.store(:strand, "")
+	            # genome_attr_h.store(:assembly_unit, "")
+	            # genome_attr_h.store(:alignment, "")
+	            # genome_attr_h.store(:remap_failure_code, "")
+	            # genome_attr_h.store(:placement_rank, "")
+	            # genome_attr_h.store(:placements_per_assembly, "")
+	            # genome_attr_h.store(:remap_diff_chr, "")
+	            # genome_attr_h.store(:remap_best_within_cluster, "")
 
 				# min start
-				if [variant_region["Outer Start"], variant_region["Start"], variant_region["Inner Start"]].reject{|e| e.empty? }.map{|e| e.to_i}.min
-					start_pos = [variant_region["Outer Start"], variant_region["Start"], variant_region["Inner Start"]].reject{|e| e.empty? }.map{|e| e.to_i}.min
+				if [variant_region[:"Outer Start"], variant_region[:Start], variant_region[:"Inner Start"]].reject{|e| e.empty? }.map{|e| e.to_i}.min
+					start_pos = [variant_region[:"Outer Start"], variant_region[:Start], variant_region[:"Inner Start"]].reject{|e| e.empty? }.map{|e| e.to_i}.min
 				end
 				
 				# max stop
-				if [variant_region["Outer Stop"], variant_region["Stop"], variant_region["Inner Stop"]].reject{|e| e.empty? }.map{|e| e.to_i}.max
-					stop_pos = [variant_region["Outer Stop"], variant_region["Stop"], variant_region["Inner Stop"]].reject{|e| e.empty? }.map{|e| e.to_i}.max
+				if [variant_region[:"Outer Stop"], variant_region[:Stop], variant_region[:"Inner Stop"]].reject{|e| e.empty? }.map{|e| e.to_i}.max
+					stop_pos = [variant_region[:"Outer Stop"], variant_region[:Stop], variant_region[:"Inner Stop"]].reject{|e| e.empty? }.map{|e| e.to_i}.max
 				end
 
 	            ## JV_C0061: Chromosome position larger than chromosome size + 1
 				if chr_length != -1
 					if (start_pos != -1 && (start_pos > chr_length + 1)) || (stop_pos != -1 && (stop_pos > chr_length + 1))
 						pos_outside_chr_region_a.push(variant_region_id)
-						variant_region_tsv_log_a.push("#{variant_region["row"].join("\t")}\t# JV_C0061 Error: Chromosome position is larger than chromosome size + 1. Check if the position is correct.")
+						variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_C0061 Error: Chromosome position is larger than chromosome size + 1. Check if the position is correct.")
 					end
 				end
 
@@ -3470,29 +3412,29 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 	error_sv_a.push(["JV_SV0064", "Variant Region ID must be unique. Duplicated Variant Region ID(s): #{duplicated_variant_region_id_a.sort.uniq.size > 4? duplicated_variant_region_id_a.sort.uniq[0, limit_for_etc].join(",") + " etc" : duplicated_variant_region_id_a.sort.uniq.join(",")}"]) unless duplicated_variant_region_id_a.empty?
 
 	## JV_SV0062: Invalid supporting Variant Call ID
-	unless (supporting_call_id_a - variant_call_id_a).empty?
-		if (supporting_call_id_a - variant_call_id_a).sort.uniq.size < 6
-			error_sv_a.push(["JV_SV0062", "Supporting Variant Call ID must refer to a valid Variant Call ID. Invalid Variant Call ID(s): #{(supporting_call_id_a - variant_call_id_a).sort.uniq.join(",")}"])
+	unless (supporting_call_id_a - variant_call_id_h.keys).empty?
+		if (supporting_call_id_a - variant_call_id_h.keys).sort.uniq.size < 6
+			error_sv_a.push(["JV_SV0062", "Supporting Variant Call ID must refer to a valid Variant Call ID. Invalid Variant Call ID(s): #{(supporting_call_id_a - variant_call_id_h.keys).sort.uniq.map{|e| "#{e}"}.join(",")}"])
 		else
-			error_sv_a.push(["JV_SV0062", "Supporting Variant Call ID must refer to a valid Variant Call ID. Number of invalid Variant Call ID(s): #{(supporting_call_id_a - variant_call_id_a).sort.uniq.size}"])
+			error_sv_a.push(["JV_SV0062", "Supporting Variant Call ID must refer to a valid Variant Call ID. Number of invalid Variant Call ID(s): #{(supporting_call_id_a - variant_call_id_h.keys).sort.uniq.map{|e| "#{e}"}.size}"])
 		end
 	end
 
 	## JV_SV0056: Variant Call without parent Variant Region
-	unless (variant_call_id_a - supporting_call_id_a).empty?
-		if (variant_call_id_a - supporting_call_id_a).sort.uniq.size < 6
-			warning_sv_a.push(["JV_SV0056", "Variant Call without parent Variant Region. Variant Call ID(s): #{(variant_call_id_a - supporting_call_id_a).sort.uniq.join(",")}"])
+	unless (variant_call_id_h.keys - supporting_call_id_a).empty?
+		if (variant_call_id_h.keys - supporting_call_id_a).sort.uniq.size < 6
+			warning_sv_a.push(["JV_SV0056", "Variant Call without parent Variant Region. Variant Call ID(s): #{(variant_call_id_h.keys - supporting_call_id_a).sort.uniq.join(",")}"])
 		else
-			warning_sv_a.push(["JV_SV0056", "Variant Call without parent Variant Region. Number of such calls: #{(variant_call_id_a - supporting_call_id_a).sort.uniq.size}"])
+			warning_sv_a.push(["JV_SV0056", "Variant Call without parent Variant Region. Number of such calls: #{(variant_call_id_h.keys - supporting_call_id_a).sort.uniq.size}"])
 		end
 	end
 
 	## JV_SV0061: Invalid supporting Variant Region ID
-	unless (supporting_region_id_a - variant_region_id_a).empty?
-		if (supporting_region_id_a - variant_region_id_a).sort.uniq.size < 6
-			warning_sv_a.push(["JV_SV0061", "Supporting Variant Region ID must refer to a valid Variant Region ID. Variant Region ID(s): #{(supporting_region_id_a - variant_region_id_a).sort.uniq.join(",")}"])
+	unless (supporting_region_id_a - variant_region_id_h.keys).empty?
+		if (supporting_region_id_a - variant_region_id_h.keys).sort.uniq.size < 6
+			warning_sv_a.push(["JV_SV0061", "Supporting Variant Region ID must refer to a valid Variant Region ID. Variant Region ID(s): #{(supporting_region_id_a - variant_region_id_h.keys).sort.uniq.map{|e| "#{e}"}.join(",")}"])
 		else
-			warning_sv_a.push(["JV_SV0061", "Supporting Variant Region ID must refer to a valid Variant Region ID. Variant Region ID(s): #{(supporting_region_id_a - variant_region_id_a).sort.uniq.size}"])
+			warning_sv_a.push(["JV_SV0061", "Supporting Variant Region ID must refer to a valid Variant Region ID. Variant Region ID(s): #{(supporting_region_id_a - variant_region_id_h.keys).sort.uniq.map{|e| "#{e}"}.size}"])
 		end
 	end
 
@@ -3678,7 +3620,13 @@ snp_validation_result_s = ""
 sv_validation_result_s = ""
 
 ## SNP/SV Common
+unless $ref_check_f
 validation_result_s = <<EOS
+REF base identity check by samtools was skipped.
+EOS
+end
+
+validation_result_s += <<EOS
 JVar-SNP/SV common validation results
 ---------------------------------------------
 Error

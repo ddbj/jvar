@@ -1,9 +1,0 @@
-{
-	"Study": ["Hold/Release", "Submitter Last Name", "Study Title", "Study Description", "Study Type", "BioProject Accession"],
-	"SampleSet": ["SampleSet Size"],
-	"Sample": ["BioSample Accession", "SampleSet ID"],
-	"Experiment": ["Analysis Type", "Reference Type", "Reference Value", "Method Description", "Analysis Description"],
-	"Assay": ["SampleSet ID", "Number of Chromosomes Sampled", "Assay Description"],
-	"Variant Call": ["Variant Call Type", "Experiment ID", "SampleSet ID"],
-	"Variant Region": ["Variant Region Type", "Assertion Method"]
-}
