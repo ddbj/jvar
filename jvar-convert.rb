@@ -1821,6 +1821,24 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 		contig_accession = ""
 		assembly = ""
 
+		pre_assembly = ""
+		pre_chr_name = ""
+		pre_chr_accession = ""
+		pre_chr_length = ""
+		pre_contig_accession = ""
+
+		pre_from_assembly = ""
+		pre_from_chr_name = ""
+		pre_from_chr_accession = ""
+		pre_from_chr_length = -1
+		pre_from_contig_accession = ""
+
+		pre_to_assembly = ""
+		pre_to_chr_name = ""
+		pre_to_chr_accession = ""
+		pre_to_chr_length = -1
+		pre_to_contig_accession = ""
+
 		# error and warning counts
 		missing_variant_call_id_a = [] # JV_SV0001
 		duplicated_variant_call_id_a = [] # JV_SV0030
@@ -2053,7 +2071,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 						translocation_assembly_a.push(variant_call[:"Assembly for Translocation Breakpoint"])
 
 						# 最初の assembly で以降は同じと仮定して valid な chromosome list を構築。assembly 混在は最後にチェック
-						if variant_call[:"Assembly for Translocation Breakpoint"] && !variant_call[:"Assembly for Translocation Breakpoint"].empty? && refseq_assembly == "" && chromosome_per_assembly_a.empty?
+						if variant_call[:"Assembly for Translocation Breakpoint"] && !variant_call[:"Assembly for Translocation Breakpoint"].empty? && refseq_assembly.empty? && chromosome_per_assembly_a.empty?
 
 							## assembly から refseq accession 取得
 							$assembly_a.each{|assembly_h|
@@ -2088,7 +2106,8 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 							from_ref_download_f = false
 							from_found_f = false
 
-							# contig が download ref にあるかどうか. download にある = assembly には含まれていない
+							# contig が download ref にある場合 (assembly には含まれていない)
+							# contig は SV のみ。from/to は chr/contig がエクセルで分かれていないので、ここで download にある = contig として扱う
 							if !variant_call[:"From Chr"].empty? && $ref_download_h.has_key?(variant_call[:"From Chr"]) && !from_found_f
 								from_assembly = ""
 								from_chr_name = ""
@@ -2099,10 +2118,31 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 								from_valid_contig_f = true
 								from_ref_download_f = true
 								from_found_f = true
+							# contig accession が前と一致
+							elsif !variant_call[:"From Chr"].empty? && variant_call[:"From Chr"] == pre_from_contig_accession
+								from_assembly = pre_from_assembly
+								from_chr_name = ""
+								from_chr_accession = ""
+								from_chr_length = pre_from_chr_length
+								from_contig_accession = pre_from_contig_accession
+
+								from_valid_contig_f = true						
+								from_found_f = true
+							# chromosome name が前と一致
+							elsif !variant_call[:"From Chr"].empty? && variant_call[:"From Chr"] == pre_from_chr_name
+								from_assembly = pre_from_assembly
+								from_chr_name = pre_from_chr_name
+								from_chr_accession = pre_from_chr_accession
+								from_chr_length = pre_from_chr_length
+								from_contig_accession = ""
+								
+								from_valid_chr_f = true
+								from_found_f = true
+							# 前と一致しない場合
 							else
 								for chromosome_per_assembly_h in chromosome_per_assembly_a
 
-									## From Chr に sequence report にある RefSeq/GenBank accession が記載されているかどうか
+									## From Chr が chromosome ではなく RefSeq/GenBank アクセッション番号で指定された contig
 									if !variant_call[:"From Chr"].empty? && (chromosome_per_assembly_h[:refseqAccession] == variant_call[:"From Chr"] || chromosome_per_assembly_h[:genbankAccession] == variant_call[:"From Chr"]) && !from_found_f
 										from_assembly = variant_call[:"Assembly for Translocation Breakpoint"]
 										from_chr_name = ""
@@ -2112,6 +2152,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 										
 										from_valid_contig_f = true						
 										from_found_f = true
+									## From Chr が assembly で規定されている chromosome name (例 chr1, 1)
 									elsif !variant_call[:"From Chr"].empty? && chromosome_per_assembly_h[:chrName] == variant_call[:"From Chr"].sub(/chr/i, "") && chromosome_per_assembly_h[:role] == "assembled-molecule" && !from_found_f
 										from_assembly = variant_call[:"Assembly for Translocation Breakpoint"]
 										from_chr_name = chromosome_per_assembly_h[:chrName]
@@ -2121,6 +2162,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 										
 										from_valid_chr_f = true
 										from_found_f = true
+									## From Chr が UCSC stype の contig name (例 chr1_gl000191_random)
 									elsif !variant_call[:"From Chr"].empty? && chromosome_per_assembly_h[:ucscStyleName].sub(/^chr/i, "") == variant_call[:"From Chr"].sub(/^chr/i, "") && !from_found_f
 										from_assembly = variant_call[:"Assembly for Translocation Breakpoint"]
 										from_chr_name = chromosome_per_assembly_h[:ucscStyleName]
@@ -2134,11 +2176,16 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 								
 								end # for chromosome_per_assembly_h in chromosome_per_assembly_a						
 
+								pre_from_assembly = from_assembly
+								pre_from_chr_name = from_chr_name
+								pre_from_chr_accession = from_chr_accession
+								pre_from_chr_length = from_chr_length
+								pre_from_contig_accession = from_contig_accession
+
 							end # if !variant_call["From Chr"].empty? && $ref_download_h.has_key?(variant_call["From Chr"])
 
-
 							## JV_SV0072: Invalid chromosome reference, to/from は contig 列がなく一体
-							if !variant_call[:"From Chr"].empty? && !from_valid_chr_f && !from_valid_contig_f
+							if !variant_call[:"From Chr"].empty? && !from_valid_chr_f && !from_valid_contig_f && !from_ref_download_f
 								invalid_chr_ref_call_a.push(variant_call_id)
 								variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_SV0072 Error: Invalid chromosome reference.")
 							end
@@ -2208,6 +2255,27 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 								to_valid_contig_f = true
 								to_ref_download_f = true
 								to_found_f = true
+							# contig accession が前と一致
+							elsif !variant_call[:"To Chr"].empty? && variant_call[:"To Chr"] == pre_to_contig_accession
+								to_assembly = pre_to_assembly
+								to_chr_name = ""
+								to_chr_accession = ""
+								to_chr_length = pre_to_chr_length
+								to_contig_accession = pre_to_contig_accession
+
+								to_valid_contig_f = true						
+								to_found_f = true
+							# chromosome name が前と一致
+							elsif !variant_call[:"To Chr"].empty? && variant_call[:"To Chr"] == pre_to_chr_name
+								to_assembly = pre_to_assembly
+								to_chr_name = pre_to_chr_name
+								to_chr_accession = pre_to_chr_accession
+								to_chr_length = pre_to_chr_length
+								to_contig_accession = ""
+								
+								to_valid_chr_f = true
+								to_found_f = true
+							# 前と一致しない場合
 							else
 								for chromosome_per_assembly_h in chromosome_per_assembly_a
 									## From Chr に sequence report にある RefSeq/GenBank accession が記載されているかどうか
@@ -2242,10 +2310,16 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 								
 								end # for chromosome_per_assembly_h in chromosome_per_assembly_a						
 
+								pre_to_assembly = to_assembly
+								pre_to_chr_name = to_chr_name
+								pre_to_chr_accession = to_chr_accession
+								pre_to_chr_length = to_chr_length
+								pre_to_contig_accession = to_contig_accession
+
 							end # if !variant_call["To Chr"].empty? && $ref_download_h.has_key?(variant_call["To Chr"])
 
 							## JV_SV0072: Invalid chromosome reference, to/from は contig 列がなく一体
-							if !variant_call[:"To Chr"].empty? && !to_valid_chr_f && !to_valid_contig_f
+							if !variant_call[:"To Chr"].empty? && !to_valid_chr_f && !to_valid_contig_f && !to_ref_download_f
 								invalid_chr_ref_call_a.push(variant_call_id)
 								variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_SV0072 Error: Invalid chromosome reference.")
 							end
@@ -2365,6 +2439,27 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 								valid_contig_f = true
 								ref_download_f = true
 								found_f = true
+							# contig accession が前と一致
+							elsif !variant_call[:Chr].empty? && variant_call[:Chr] == pre_contig_accession
+								assembly = pre_assembly
+								chr_name = ""
+								chr_accession = ""
+								chr_length = pre_chr_length
+								contig_accession = pre_contig_accession
+
+								valid_contig_f = true						
+								found_f = true
+							# chromosome name が前と一致
+							elsif !variant_call[:Chr].empty? && variant_call[:Chr] == pre_chr_name
+								assembly = pre_assembly
+								chr_name = pre_chr_name
+								chr_accession = pre_chr_accession
+								chr_length = pre_chr_length
+								contig_accession = ""
+								
+								valid_chr_f = true
+								found_f = true
+							# 前と一致しない場合
 							else
 								for chromosome_per_assembly_h in chromosome_per_assembly_a
 									## From Chr に sequence report にある RefSeq/GenBank accession が記載されているかどうか
@@ -2399,16 +2494,24 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 								
 								end # for chromosome_per_assembly_h in chromosome_per_assembly_a						
 
+								variant_call[:Contig] = contig_accession unless contig_accession.empty?
+
+								pre_assembly = assembly
+								pre_chr_name = chr_name
+								pre_chr_accession = chr_accession
+								pre_chr_length = chr_length
+								pre_contig_accession = contig_accession
+
 							end # if !variant_call["Chr"].empty? && $ref_download_h.has_key?(variant_call["Chr"])
 
 						## JV_SV0077: Contig accession exists for chromosome accession
 						if !variant_call[:Contig].empty? && !variant_call[:Chr].empty?
 							contig_acc_for_chr_acc_call_a.push(variant_call_id)
 							variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_SV0077 Error: Contig accession exists for chromosome accession.")
-						end
+						end						
 
-						## JV_SV0072: Invalid chromosome reference
-						if !variant_call[:Chr].empty? && !valid_chr_f
+						## JV_SV0072: Invalid chromosome reference !valid_contig_f は chr に contig accession が書いてある場合を考慮
+						if !variant_call[:Chr].empty? && !valid_chr_f && !valid_contig_f
 							invalid_chr_ref_call_a.push(variant_call_id)
 							variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_SV0072 Error: Invalid chromosome reference.")
 						end

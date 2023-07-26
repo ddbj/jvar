@@ -6,7 +6,6 @@ require 'pp'
 require 'csv'
 require 'fileutils'
 require 'roo'
-require './lib/jvar-config.rb'
 
 #
 # Bioinformation and DDBJ Center
@@ -635,12 +634,14 @@ def vcf_parser(vcf_file, vcf_type, args)
 			end
 
 			# JV_VCF0021: Duplicated local IDs
-			if id && !id.empty?
-				if id_h.has_key?(:"#{id}")
-					vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_VCF0021 Error: Local IDs should be unique.")
-					duplicated_id_c += 1
+			if vcf_type == "SNP"
+				if id && !id.empty?
+					if id_h.has_key?(:"#{id}")
+						vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_VCF0021 Error: Local IDs should be unique in a dataset/VCF.")
+						duplicated_id_c += 1
+					end
+					id_h.store(:"#{id}", 1)
 				end
-				id_h.store(:"#{id}", 1)
 			end
 
 			# JV_VCF0036: Multi-allelic ALT allele
@@ -729,7 +730,7 @@ def vcf_parser(vcf_file, vcf_type, args)
 				ref_download_f = false
 				for chromosome_per_assembly_h in chromosome_per_assembly_a
 
-					## SNP chromosome
+					## chromosome
 					if chrom && chromosome_per_assembly_h[:chrName] == chrom.sub(/chr/i, "") && chromosome_per_assembly_h[:role] == "assembled-molecule"
 						chr_name = chromosome_per_assembly_h[:chrName]
 						chr_accession = chromosome_per_assembly_h[:refseqAccession]
@@ -1523,9 +1524,6 @@ def vcf_parser(vcf_file, vcf_type, args)
 	## JV_VCF0028: Empty line
 	warning_vcf_content_a.push(["JV_VCF0028", "The empty line is automatically removed. #{empty_line_c} lines"]) if empty_line_c > 0
 
-	## JV_VCF0021: Duplicated local IDs
-	error_vcf_content_a.push(["JV_VCF0021", "Local IDs should be unique in a dataset/VCF. #{duplicated_id_c} sites"]) if duplicated_id_c > 0
-
 	## JV_VCF0036: Multi-allelic ALT allele
 	error_vcf_content_a.push(["JV_VCF0036", "JVar only accepts mono-allelic ALT alleles (no commas in ALT). #{multi_allelic_c} sites"]) if multi_allelic_c > 0
 
@@ -1585,6 +1583,9 @@ def vcf_parser(vcf_file, vcf_type, args)
 
 	## SNP overall error & warning
 	if vcf_type == "SNP"
+
+		## JV_VCF0021: Duplicated local IDs
+		error_vcf_content_a.push(["JV_VCF0021", "Local IDs should be unique in a dataset/VCF. #{duplicated_id_c} sites"]) if duplicated_id_c > 0
 
 		# JV_VCFP0006: Variation type not in defined set
 		error_vcf_content_a.push(["JV_VCFP0006", "Provide variation type in the defined set. #{not_defined_vrt_c} sites"]) if not_defined_vrt_c > 0
