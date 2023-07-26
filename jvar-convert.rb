@@ -12,6 +12,7 @@ require 'open3'
 require './lib/jvar-method.rb'
 require './lib/jvar-config.rb'
 #sin require '/usr/local/bin/lib/jvar-method.rb'
+#sin require '/usr/local/bin/lib/jvar-config.rb'
 
 #
 # Bioinformation and DDBJ Center
