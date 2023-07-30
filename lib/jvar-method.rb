@@ -480,10 +480,15 @@ def vcf_parser(vcf_file, vcf_type, args)
 						end
 
 						if vcf_type == "SNP" # dbSNP VCF output
-							args[:sampleset_names].each{|population_id|
-								dbsnp_vcf_f.puts "##population_id=#{population_id}"
-							}
-
+							if $direct_sample_ref_f
+								args[:sample_names].each{|population_id|
+									dbsnp_vcf_f.puts "##population_id=#{population_id}"
+								}
+							else
+								args[:sampleset_names].each{|population_id|
+									dbsnp_vcf_f.puts "##population_id=#{population_id}"
+								}
+							end
 							dbsnp_vcf_f.puts "##{vcf_column_out_a.join("\t")}"
 						end
 

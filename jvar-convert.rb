@@ -813,7 +813,7 @@ for sample in sample_a
 	end
 
 	# sample name to biosample accession
-	if !sample[:"Sample Name"].empty? && !sample[:"BioSample Accession"].empty?
+	if !sample[:"Sample Name"].empty? && !sample[:"BioSample Accession"]
 		
 		sample_name_accession_h.store(:"#{sample[:"Sample Name"]}", sample[:"BioSample Accession"])
 		biosample_accession_a.push(sample[:"BioSample Accession"])
@@ -914,7 +914,7 @@ end
 ## JV_C0037: Different SampleSet Size
 for sampleset_id, sampleset_size in sampleset_id_size_h
 	## JV_C0037: Different SampleSet Size
-	warning_common_a.push(["JV_C0037", "SampleSet Size differs from number of samples in the SampleSet. SampleSet ID: #{sampleset_id}"]) if sampleset_size.to_i != sample_sampleset_id_a.tally[sampleset_id]
+	warning_common_a.push(["JV_C0037", "SampleSet Size differs from number of samples in the SampleSet. SampleSet ID: #{sampleset_id}"]) if sampleset_size.to_i != sample_sampleset_id_a.tally[sampleset_id] && sampleset_size.to_i != -1
 end
 
 # JV_C0006: Missing BioSample
@@ -1013,9 +1013,33 @@ EOS
 	##
 	## POPULATION
 	##
-	for sampleset in sampleset_a
+	# size == -1 is a flag for non-sampleset, HapMap population code references (not samples thus no BioSamples) from VCF.
+	$direct_sample_ref_f = false
+	$direct_sample_ref_f = true if sampleset_a[0] && sampleset_a[0][:"SampleSet Size"] == "-1"
+	if $direct_sample_ref_f
 
-		if !sampleset[:"SampleSet Name"].empty?
+		for sample in sample_a
+
+			if sample[:"Sample Name"]
+
+population_s += <<EOS
+TYPE:\tPOPULATION
+HANDLE:\t#{$submitter_handle}
+ID:\t#{sample[:"Sample Name"]}
+EOS
+
+				population_s += sample[:"Subject Population"].empty? ? "" : "POPULATION:\t\n#{sample[:"Subject Population"]}\n"
+				population_s += "||\n"
+
+			end
+
+		end
+
+	# usual sampleset and/or sample names references from VCF 
+	else
+		for sampleset in sampleset_a
+
+			if !sampleset[:"SampleSet Name"].empty?
 
 population_s += <<EOS
 TYPE:\tPOPULATION
@@ -1023,19 +1047,21 @@ HANDLE:\t#{$submitter_handle}
 ID:\t#{sampleset[:"SampleSet Name"]}
 EOS
 
-		population_s += sampleset[:"SampleSet Population"].empty? ? "POPULATION:\t\n" : "POPULATION:\t#{sampleset[:"SampleSet Population"]}\n"
-		population_s += sampleset[:"SampleSet Size"].empty? ? "" : "Size:#{sampleset[:"SampleSet Size"]}\n"
-		population_s += sampleset[:"SampleSet Type"].empty? ? "" : "Type:#{sampleset[:"SampleSet Type"]}\n"
-		population_s += sampleset[:"SampleSet Name"].empty? ? "" : "Name:#{sampleset[:"SampleSet Name"]}\n"
-		population_s += sampleset[:"SampleSet Description"].empty? ? "" : "Description:#{sampleset[:"SampleSet Description"]}\n"
-		population_s += sampleset[:"SampleSet Phenotype"].empty? ? "" : "Phenotype:#{sampleset[:"SampleSet Phenotype"]}\n"
-		population_s += sampleset[:"SampleSet Sex"].empty? ? "" : "Sex:#{sampleset[:"SampleSet Sex"]}\n"
+			population_s += sampleset[:"SampleSet Population"].empty? ? "POPULATION:\t\n" : "POPULATION:\t#{sampleset[:"SampleSet Population"]}\n"
+			population_s += sampleset[:"SampleSet Size"].empty? ? "" : "Size:#{sampleset[:"SampleSet Size"]}\n"
+			population_s += sampleset[:"SampleSet Type"].empty? ? "" : "Type:#{sampleset[:"SampleSet Type"]}\n"
+			population_s += sampleset[:"SampleSet Name"].empty? ? "" : "Name:#{sampleset[:"SampleSet Name"]}\n"
+			population_s += sampleset[:"SampleSet Description"].empty? ? "" : "Description:#{sampleset[:"SampleSet Description"]}\n"
+			population_s += sampleset[:"SampleSet Phenotype"].empty? ? "" : "Phenotype:#{sampleset[:"SampleSet Phenotype"]}\n"
+			population_s += sampleset[:"SampleSet Sex"].empty? ? "" : "Sex:#{sampleset[:"SampleSet Sex"]}\n"
 
-		population_s += "||\n"
+			population_s += "||\n"
 
-		end # if !sampleset["SampleSet Name"].empty?
+			end # if !sampleset["SampleSet Name"].empty?
 
-	end # for sampleset in sampleset_a
+		end # for sampleset in sampleset_a
+
+	end # sampleset size == -1
 
 	##
 	## ASSAY
@@ -1114,14 +1140,22 @@ EOS
 			biosample_accessions = ""
 			valid_sample_sampleset_refs = ""
 			sampleset_names = ""
+			sample_names = ""
  
 			batch_id = vcf_header_dataset_h[dataset[:"Dataset ID"].to_i][:batch_id] if vcf_header_dataset_h[dataset[:"Dataset ID"].to_i][:batch_id]
 			biosample_accessions = vcf_header_dataset_h[dataset[:"Dataset ID"].to_i][:biosample_ids].join(",") if vcf_header_dataset_h[dataset[:"Dataset ID"].to_i][:biosample_ids] && !vcf_header_dataset_h[dataset[:"Dataset ID"].to_i][:biosample_ids].empty?
-			valid_sample_sampleset_refs = sample_name_per_sampleset_h[dataset[:"SampleSet ID"].to_i] + biosample_accession_per_sampleset_h[dataset[:"SampleSet ID"].to_i] + sampleset_name_per_sampleset_h[dataset[:"SampleSet ID"].to_i] + defined_samples_list_h.keys
+
+			if biosample_accession_per_sampleset_h[dataset[:"SampleSet ID"].to_i].nil?
+				valid_sample_sampleset_refs = sample_name_per_sampleset_h[dataset[:"SampleSet ID"].to_i] + sampleset_name_per_sampleset_h[dataset[:"SampleSet ID"].to_i] + defined_samples_list_h.keys
+			else
+				valid_sample_sampleset_refs = sample_name_per_sampleset_h[dataset[:"SampleSet ID"].to_i] + biosample_accession_per_sampleset_h[dataset[:"SampleSet ID"].to_i] + sampleset_name_per_sampleset_h[dataset[:"SampleSet ID"].to_i] + defined_samples_list_h.keys
+			end
+
 			sampleset_names = sampleset_name_per_sampleset_h[dataset[:"SampleSet ID"].to_i] if sampleset_name_per_sampleset_h[dataset[:"SampleSet ID"].to_i]
+			sample_names = sample_name_per_sampleset_h[dataset[:"SampleSet ID"].to_i] if sample_name_per_sampleset_h[dataset[:"SampleSet ID"].to_i]
 
 			tmp_error_vcf_header_a, tmp_error_ignore_vcf_header_a, tmp_error_exchange_vcf_header_a, tmp_warning_vcf_header_a, tmp_error_vcf_content_a, tmp_error_ignore_vcf_content_a, tmp_error_exchange_vcf_content_a, tmp_warning_vcf_content_a = [], [], [], [], [], [], [], []
-			tmp_error_vcf_header_a, tmp_error_ignore_vcf_header_a, tmp_error_exchange_vcf_header_a, tmp_warning_vcf_header_a, tmp_error_vcf_content_a, tmp_error_ignore_vcf_content_a, tmp_error_exchange_vcf_content_a, tmp_warning_vcf_content_a = vcf_parser("#{vcf_path}/#{dataset[:"VCF Filename"]}", "SNP", {:batch_id => batch_id, :bioproject_accession => bioproject_accession, :biosample_accessions => biosample_accessions, :valid_sample_sampleset_refs => valid_sample_sampleset_refs, :sampleset_names => sampleset_names, :snp_vcf => "#{excel_path}/#{submission_id}_a#{dataset[:"Dataset ID"]}.vcf"})
+			tmp_error_vcf_header_a, tmp_error_ignore_vcf_header_a, tmp_error_exchange_vcf_header_a, tmp_warning_vcf_header_a, tmp_error_vcf_content_a, tmp_error_ignore_vcf_content_a, tmp_error_exchange_vcf_content_a, tmp_warning_vcf_content_a = vcf_parser("#{vcf_path}/#{dataset[:"VCF Filename"]}", "SNP", {:batch_id => batch_id, :bioproject_accession => bioproject_accession, :biosample_accessions => biosample_accessions, :valid_sample_sampleset_refs => valid_sample_sampleset_refs, :sampleset_names => sampleset_names, :sample_names => sample_names, :snp_vcf => "#{excel_path}/#{submission_id}_a#{dataset[:"Dataset ID"]}.vcf"})
 
 			# VCF 毎に格納
 			error_vcf_header_h.store(dataset[:"VCF Filename"], tmp_error_vcf_header_a)
