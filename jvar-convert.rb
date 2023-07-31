@@ -813,7 +813,7 @@ for sample in sample_a
 	end
 
 	# sample name to biosample accession
-	if !sample[:"Sample Name"].empty? && !sample[:"BioSample Accession"]
+	if !sample[:"Sample Name"].empty? && !sample[:"BioSample Accession"].empty?
 		
 		sample_name_accession_h.store(:"#{sample[:"Sample Name"]}", sample[:"BioSample Accession"])
 		biosample_accession_a.push(sample[:"BioSample Accession"])
@@ -1085,9 +1085,9 @@ MOLTYPE: Genomic
 METHOD:\t#{submission_id}_e#{dataset[:"Experiment ID"]}
 EOS
 
-		assay_s += dataset[:"Number of Chromosomes Sampled"].empty? ? "" : "SAMPLESIZE:\t#{dataset[:"Number of Chromosomes Sampled"]}\n"
+		assay_s += dataset[:"Number of Chromosomes Sampled"].empty? ? "" : "SAMPLESIZE:\t#{dataset[:"Number of Chromosomes Sampled"]}\n" unless $direct_sample_ref_f
 		assay_s += "ORGANISM:\tHomo sapiens\n"
-		assay_s += dataset[:"SampleSet ID"].empty? ? "" : "POPULATION:\t#{dataset[:"SampleSet ID"]}\n"
+		assay_s += dataset[:"SampleSet ID"].empty? ? "" : "POPULATION:\t#{dataset[:"SampleSet ID"]}\n" unless $direct_sample_ref_f
 		assay_s += dataset[:"Linkout URL"].empty? ? "" : "LINKOUT_URL:\t#{dataset[:"Linkout URL"]}\n"
 		assay_s += dataset[:"Dataset Description"].empty? ? "" : "COMMENT:\t#{dataset[:"Dataset Description"]}\n"
 
@@ -1963,8 +1963,8 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 				variant_call_id_type_h.store(:"#{variant_call_id}", variant_call_type)
 			end
 
-			# JV_SV0099: Invalid dataset reference
-			unless dataset_to_experiment_h.has_key?(variant_call[:"Dataset ID"].to_i)
+			# JV_SV0099: Invalid dataset reference, variant call が tsv で提供された場合、call と experiment/sampleset のリンクは dataset を介さなくなるのでチェックしない
+			if !vcf_sv_f.empty? && !dataset_to_experiment_h.has_key?(variant_call[:"Dataset ID"].to_i)
 				invalid_dataset_id_call_a.push(variant_call_id)
 				variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_SV0099 Error: Provide a valid dataset ID. #{variant_call[:"Dataset ID"]}")
 			end
@@ -3064,6 +3064,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 	## variant call と region で assembly は同じとする
 	## VARIANT_REGION
+
 	for variant_region in variant_region_a
 
 		# VARIANT_REGION attributes
@@ -3206,7 +3207,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 						if variant_region[:"Variant Region Type"].match?(/^complex/) || variant_region[:"Variant Region Type"] == "translocation"
 							if variant_call_mutation_h[:"#{supporting_call_id}"] && variant_call_mutation_h[:"#{supporting_call_id}"][:"Mutation Order"].empty?
 								missing_mutation_order_region_a.push(variant_region_id)
-								variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0066 Error: Variant regions with type ‘complex chromosomal rearrangement’ and 'translocation' must have Mutation Order in their supporting variant calls.")
+								variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0066 Error: Variant regions with type 'complex chromosomal rearrangement' and 'translocation' must have Mutation Order in their supporting variant calls.")
 							end
 
 							## region 単位で region type complex or translocation の call を格納
@@ -3310,235 +3311,242 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 				end
 			end
 
-	        # PLACEMENT attributes
-	        placement_attr_h = {}
-	        # placement_attr_h.store(:alt_status, "")
-	        # placement_attr_h.store(:placement_method, "")
-	        # placement_attr_h.store(:breakpoint_order, "")
+			# Placement
+	        #if variant_region_type == "complex chromosomal rearrangement" || variant_region_type == "translocation"
 
-	        variant_region_e.PLACEMENT(placement_attr_h){|placement_e|
+	        #else
 
-				## JV_SV0072: Invalid chromosome reference
-				valid_chr_f = false
-				valid_contig_f = false
-				ref_download_f = false
-				for chromosome_per_assembly_h in chromosome_per_assembly_a
+		        # PLACEMENT attributes
+		        placement_attr_h = {}
+		        # placement_attr_h.store(:alt_status, "")
+		        # placement_attr_h.store(:placement_method, "")
+		        # placement_attr_h.store(:breakpoint_order, "")
 
-					# contig が sequence report の RefSeq/GenBank accession にあるかどうか、chr と contig 両方書いてある場合は contig を使用
-					if !variant_region[:"Contig"].empty? && variant_region[:Chr].empty? && (chromosome_per_assembly_h[:refseqAccession] == variant_region[:Contig] || chromosome_per_assembly_h[:genbankAccession] == variant_region[:Contig])
-						chr_name = ""
-						chr_accession = ""
-						chr_length = chromosome_per_assembly_h[:length]
-						contig_accession = chromosome_per_assembly_h[:refseqAccession] # fna は refseqAccession 記載
-						valid_contig_f = true
-					# contig が download ref にあるかどうか. download にある=assembly には含まれていない
-					elsif !variant_region[:Contig].empty? && variant_region[:Chr].empty? && $ref_download_h.has_key?(variant_region[:Contig])
-						chr_name = ""
-						chr_accession = ""
-						chr_length = $ref_download_h[variant_region[:Contig]].to_i if $ref_download_h[variant_region[:Contig]].to_i
-						contig_accession = variant_region[:Contig]
-						valid_contig_f = true
-						ref_download_f = true
-					# chr が sequence report の chrName にあるかどうか
-					elsif !variant_region[:Chr].empty? && variant_region[:Contig].empty? && chromosome_per_assembly_h[:chrName] == variant_region[:Chr].sub(/chr/i, "") && chromosome_per_assembly_h[:role] == "assembled-molecule"
-						chr_name = chromosome_per_assembly_h[:chrName]
-						chr_accession = chromosome_per_assembly_h[:refseqAccession]
-						chr_length = chromosome_per_assembly_h[:length]
-						valid_chr_f = true
-					elsif !variant_region[:Chr].empty? && variant_region[:Contig].empty? && chromosome_per_assembly_h[:ucscStyleName].sub(/^chr/i, "") == variant_region[:Chr].sub(/^chr/i, "")
-						chr_name = chromosome_per_assembly_h[:chrName]
-						chr_accession = chromosome_per_assembly_h[:refseqAccession]
-						chr_length = chromosome_per_assembly_h[:length]
-						valid_chr_f = true
+		        variant_region_e.PLACEMENT(placement_attr_h){|placement_e|
+
+					## JV_SV0072: Invalid chromosome reference
+					valid_chr_f = false
+					valid_contig_f = false
+					ref_download_f = false
+					for chromosome_per_assembly_h in chromosome_per_assembly_a
+
+						# contig が sequence report の RefSeq/GenBank accession にあるかどうか、chr と contig 両方書いてある場合は contig を使用
+						if !variant_region[:"Contig"].empty? && variant_region[:Chr].empty? && (chromosome_per_assembly_h[:refseqAccession] == variant_region[:Contig] || chromosome_per_assembly_h[:genbankAccession] == variant_region[:Contig])
+							chr_name = ""
+							chr_accession = ""
+							chr_length = chromosome_per_assembly_h[:length]
+							contig_accession = chromosome_per_assembly_h[:refseqAccession] # fna は refseqAccession 記載
+							valid_contig_f = true
+						# contig が download ref にあるかどうか. download にある=assembly には含まれていない
+						elsif !variant_region[:Contig].empty? && variant_region[:Chr].empty? && $ref_download_h.has_key?(variant_region[:Contig])
+							chr_name = ""
+							chr_accession = ""
+							chr_length = $ref_download_h[variant_region[:Contig]].to_i if $ref_download_h[variant_region[:Contig]].to_i
+							contig_accession = variant_region[:Contig]
+							valid_contig_f = true
+							ref_download_f = true
+						# chr が sequence report の chrName にあるかどうか
+						elsif !variant_region[:Chr].empty? && variant_region[:Contig].empty? && chromosome_per_assembly_h[:chrName] == variant_region[:Chr].sub(/chr/i, "") && chromosome_per_assembly_h[:role] == "assembled-molecule"
+							chr_name = chromosome_per_assembly_h[:chrName]
+							chr_accession = chromosome_per_assembly_h[:refseqAccession]
+							chr_length = chromosome_per_assembly_h[:length]
+							valid_chr_f = true
+						elsif !variant_region[:Chr].empty? && variant_region[:Contig].empty? && chromosome_per_assembly_h[:ucscStyleName].sub(/^chr/i, "") == variant_region[:Chr].sub(/^chr/i, "")
+							chr_name = chromosome_per_assembly_h[:chrName]
+							chr_accession = chromosome_per_assembly_h[:refseqAccession]
+							chr_length = chromosome_per_assembly_h[:length]
+							valid_chr_f = true
+						end
+
 					end
 
-				end
-
-				## JV_SV0077: Contig accession exists for chromosome accession
-				if !variant_region[:Contig].empty? && !variant_region[:Chr].empty?
-					contig_acc_for_chr_acc_region_a.push(variant_region_id)
-					variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0077 Error: Contig accession exists for chromosome accession.")
-				end
-
-				## JV_SV0072: Invalid chromosome reference
-				if !variant_region[:Chr].empty? && !valid_chr_f
-					invalid_chr_ref_region_a.push(variant_region_id)
-					variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0072 Error: Contig accession exists for chromosome accession.")
-				end
-
-				## JV_SV0074: Invalid contig accession reference
-				if !variant_region[:Contig].empty? && !valid_contig_f
-					invalid_contig_acc_ref_region_a.push(variant_region_id)
-					variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0074 Error: Contig accession must refer to a valid INSDC accession and version.")
-				end
-
-				## JV_SV0076: Missing chromosome/contig accession
-				if chr_name.empty? && chr_accession.empty? && contig_accession.empty?
-					missing_chr_contig_acc_region_a.push(variant_region_id)
-					variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0076 Error: Genomic placement must contain either a chr_name, chr_accession, or contig_accession unless it is on a novel sequence insertion or translocation.")
-				end
-
-	            # GENOME
-	            genome_attr_h = {}
-
-				if ref_download_f
-					assembly = ""
-					genome_attr_h.store(:assembly, "")
-	            elsif !variant_region[:Assembly].empty?
-					assembly = variant_region[:Assembly]
-					variant_region_assembly_a.push(assembly)
-					genome_attr_h.store(:assembly, refseq_assembly)
-	            else
-					genome_attr_h.store(:assembly, "")
-	            end
-
-				genome_attr_h.store(:chr_name, chr_name)
-				genome_attr_h.store(:chr_accession, chr_accession)
-				genome_attr_h.store(:contig_accession, contig_accession)
-
-				## placement check
-				## JV_SV0078: Missing start
-				if variant_region[:"Outer Start"].empty? && variant_region[:Start].empty? && variant_region[:"Inner Start"].empty? && variant_region_type != "translocation" && variant_region_type != "novel sequence insertion"
-					missing_start_region_a.push(variant_region_id)
-					variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0078 Error: Genomic placement must contain either a start, outer_start, or inner_start unless it is a novel sequence insertion or translocation.")
-				end
-
-				## JV_SV0079: Missing stop
-				if variant_region[:"Outer Stop"].empty? && variant_region[:Stop].empty? && variant_region[:"Inner Stop"].empty? && variant_region_type != "translocation" && variant_region_type != "novel sequence insertion"
-					missing_stop_region_a.push(variant_region_id)
-					variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0079 Error: Genomic placement must contain either a stop, outer_stop, or inner_stop unless it is a novel sequence insertion or translocation.")
-				end
-
-				# JV_SV0080: When on same sequence, start must be <= stop
-				if !variant_region[:Start].empty? && !variant_region[:Stop].empty? && (variant_region[:Start].to_i > variant_region[:Stop].to_i)
-					invalid_start_stop_region_a.push(variant_region_id)
-					variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0080 Error: When on same sequence, start must be <= stop.")
-				end
-
-				# JV_SV0081: When on same sequence, outer_start must be <= outer_stop
-				if !variant_region[:"Outer Start"].empty? && !variant_region[:"Outer Stop"].empty? && (variant_region[:"Outer Start"].to_i > variant_region[:"Outer Stop"].to_i)
-					invalid_outer_start_outer_stop_region_a.push(variant_region_id)
-					variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0081 Error: When on same sequence, outer_start must be <= outer_stop.")
-				end
-
-				# JV_SV0082: When on same sequence, outer_start must be <= inner_start
-				if !variant_region[:"Outer Start"].empty? && !variant_region[:"Inner Start"].empty? && (variant_region[:"Outer Start"].to_i > variant_region[:"Inner Start"].to_i)
-					invalid_outer_start_inner_start_region_a.push(variant_region_id)
-					variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0082 Error: When on same sequence, outer_start must be <= inner_start.")
-				end
-
-				# JV_SV0083: When on same sequence, inner_stop must be <= outer_stop
-				if !variant_region[:"Inner Stop"].empty? && !variant_region[:"Outer Stop"].empty? && (variant_region[:"Inner Stop"].to_i > variant_region[:"Outer Stop"].to_i)
-					invalid_inner_stop_outer_stop_region_a.push(variant_region_id)
-					variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0083 Error: When on same sequence, inner_stop must be <= outer_stop.")
-				end
-
-				# JV_SV0084: Invalid start and inner stop
-				if !variant_region[:Start].empty? && !variant_region[:"Inner Stop"].empty? && (variant_region[:Start].to_i >= variant_region[:"Inner Stop"].to_i) && !(!variant_region[:Start].empty? && !variant_region[:Stop].empty? && !variant_region[:"Outer Start"].empty? && !variant_region[:"Outer Stop"].empty? && !variant_region[:"Inner Start"].empty? && !variant_region[:"Inner Stop"].empty?)
-					invalid_start_inner_stop_region_a.push(variant_region_id)
-					variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0084 Error: When on same sequence, start must be < inner_stop, unless placement contains all of the following: start, stop, outer_start, outer_stop, inner_start and inner_stop. Also, if using confidence intervals, start must be < (stop - ciendleft).")
-				end
-
-				# JV_SV0085: Invalid inner start and stop
-				if !variant_region[:"Inner Start"].empty? && !variant_region[:Stop].empty? && (variant_region[:"Inner Start"].to_i >= variant_region[:Stop].to_i) && !(!variant_region[:Start].empty? && !variant_region[:Stop].empty? && !variant_region[:"Outer Start"].empty? && !variant_region[:"Outer Stop"].empty? && !variant_region[:"Inner Start"].empty? && !variant_region[:"Inner Stop"].empty?)
-					invalid_inner_start_stop_region_a.push(variant_region_id)
-					variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0085 Error: When on same sequence, inner_start must be < stop, unless placement contains all of the following: start, stop, outer_start, outer_stop, inner_start and inner_stop. Also, if using confidence intervals, (start + ciposright) must be < stop.")
-				end
-
-				# JV_SV0086: When on same sequence, inner_start must be <= inner_stop if there are only inner placements
-				if !variant_region[:"Inner Start"].empty? && !variant_region[:"Inner Stop"].empty? && (variant_region[:"Inner Start"].to_i > variant_region[:"Inner Stop"].to_i) && !(variant_region[:Start].empty? && variant_region[:Stop].empty? && variant_region[:"Outer Start"].empty? && variant_region[:"Outer Stop"].empty? && !variant_region[:"Inner Start"].empty? && !variant_region[:"Inner Stop"].empty?)
-					invalid_inner_start_inner_stop_region_a.push(variant_region_id)
-					variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0086 Error: When on same sequence, inner_start must be <= inner_stop if there are only inner placements.")
-				end
-
-				# JV_SV0087: Multiple starts
-				if !variant_region[:Start].empty? && (!variant_region[:"Inner Start"].empty? || !variant_region[:"Outer Start"].empty?) || (!variant_region[:"Inner Start"].empty? && !variant_region[:"Outer Start"].empty?) && !variant_region[:Start].empty?
-					if (!variant_region[:Start].empty? && !variant_region[:"Outer Start"].empty? && variant_region[:Start] != variant_region[:"Outer Start"]) && (!variant_region[:Start].empty? && !variant_region[:"Inner Start"].empty? && variant_region[:Start] != variant_region[:"Inner Start"])
-						multiple_starts_region_a.push(variant_region_id)
-						variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0087 Error: Genomic placement with start must only contain start, or must also contain both outer_start and inner_start.")
+					## JV_SV0077: Contig accession exists for chromosome accession
+					if !variant_region[:Contig].empty? && !variant_region[:Chr].empty?
+						contig_acc_for_chr_acc_region_a.push(variant_region_id)
+						variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0077 Error: Contig accession exists for chromosome accession.")
 					end
-				end
 
-				# JV_SV0088: Multiple stops
-				if !variant_region[:Stop].empty? && (!variant_region[:"Inner Stop"].empty? || !variant_region[:"Outer Stop"].empty?) || (!variant_region[:"Inner Stop"].empty? && !variant_region[:"Outer Stop"].empty?) && !variant_region[:Stop].empty?
-					if (!variant_region[:Stop].empty? && !variant_region[:"Outer Stop"].empty? && variant_region[:Stop] != variant_region[:"Outer Stop"]) && (!variant_region[:Stop].empty? && !variant_region[:"Inner Stop"].empty? && variant_region[:Stop] != variant_region[:"Inner Stop"])
-						multiple_stops_region_a.push(variant_region_id)
-						variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0088 Error: Genomic placement with stop must only contain stop, or must also contain both outer_stop and inner_stop.")
+					## JV_SV0072: Invalid chromosome reference
+					if !variant_region[:Chr].empty? && !valid_chr_f
+						invalid_chr_ref_region_a.push(variant_region_id)
+						variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0072 Error: Contig accession exists for chromosome accession.")
 					end
-				end
 
-				# JV_SV0089: Inconsistent sequence length and start/stop
-				if chr_length != -1
-					if (!variant_region[:Stop].empty? && variant_region[:Stop].to_i > chr_length.to_i) || (!variant_region[:"Inner Stop"].empty? && variant_region[:"Inner Stop"].to_i > chr_length.to_i) || (!variant_region[:"Outer Stop"].empty? && variant_region[:"Outer Stop"].to_i > chr_length.to_i)
-						inconsistent_length_start_stop_region_a.push(variant_region_id)
-						variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0089 Error: Error if inner_stop, stop, or outer_stop are beyond the length of the sequence (chromosome or scaffold).")
+					## JV_SV0074: Invalid contig accession reference
+					if !variant_region[:Contig].empty? && !valid_contig_f
+						invalid_contig_acc_ref_region_a.push(variant_region_id)
+						variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0074 Error: Contig accession must refer to a valid INSDC accession and version.")
 					end
-				end
 
-				# JV_SV0090: Inconsistent inner start and stop
-				if !variant_region[:"Inner Start"].empty? && !variant_region[:"Inner Stop"].empty? && (variant_region[:"Inner Start"].to_i > variant_region[:"Inner Stop"].to_i) && (!variant_region[:"Outer Start"].empty? || !variant_region[:"Outer Stop"].empty?)
-					inconsistent_inner_start_stop_region_a.push(variant_region_id)
-					warning_sv_a.push(["JV_SV0090", "Warning if when on same sequence, inner_start > inner_stop and there are also valid outer placements. Variant Region ID: #{variant_region_id}"])
-				end
-
-				# JV_SV0091: Start and outer/inner starts co-exist
-				if !variant_region[:"Inner Start"].empty? && !variant_region[:Start].empty? && !variant_region[:"Outer Start"].empty?
-					start_outer_inner_start_coexist_region_a.push(variant_region_id)
-					warning_sv_a.push(["JV_SV0091", "Warning if genomic placement with start also contains outer_start and inner_start. Variant Region ID: #{variant_region_id}"])
-				end
-
-				# JV_SV0092: Stop and outer/inner stops co-exist
-				if !variant_region[:"Inner Stop"].empty? && !variant_region[:Stop].empty? && !variant_region[:"Outer Stop"].empty?
-					stop_outer_inner_stop_coexist_region_a.push(variant_region_id)
-					warning_sv_a.push(["JV_SV0092", "Warning if genomic placement with stop also contains outer_stop and inner_stop. Variant Region ID: #{variant_region_id}"])
-				end
-
-				# start
-	            genome_attr_h.store("outer_start", variant_region[:"Outer Start"]) unless variant_region[:"Outer Start"].empty?
-	            genome_attr_h.store("start", variant_region[:Start]) unless variant_region[:Start].empty?
-	            genome_attr_h.store("inner_start", variant_region[:"Inner Start"]) unless variant_region[:"Inner Start"].empty?
-
-	            # stop
-	            genome_attr_h.store("stop", variant_region[:Stop]) unless variant_region[:Stop].empty?
-	            genome_attr_h.store("inner_stop", variant_region[:"Inner Stop"]) unless variant_region[:"Inner Stop"].empty?
-	            genome_attr_h.store("outer_stop", variant_region[:"Outer Stop"]) unless variant_region[:"Outer Stop"].empty?
-
-	            # genome_attr_h.store(:ciposleft, "")
-	            # genome_attr_h.store(:ciposright, "")
-	            # genome_attr_h.store(:ciendleft, "")
-	            # genome_attr_h.store(:ciendright, "")
-	            # genome_attr_h.store(:remap_score, "")
-	            # genome_attr_h.store(:strand, "")
-	            # genome_attr_h.store(:assembly_unit, "")
-	            # genome_attr_h.store(:alignment, "")
-	            # genome_attr_h.store(:remap_failure_code, "")
-	            # genome_attr_h.store(:placement_rank, "")
-	            # genome_attr_h.store(:placements_per_assembly, "")
-	            # genome_attr_h.store(:remap_diff_chr, "")
-	            # genome_attr_h.store(:remap_best_within_cluster, "")
-
-				# min start
-				if [variant_region[:"Outer Start"], variant_region[:Start], variant_region[:"Inner Start"]].reject{|e| e.empty? }.map{|e| e.to_i}.min
-					start_pos = [variant_region[:"Outer Start"], variant_region[:Start], variant_region[:"Inner Start"]].reject{|e| e.empty? }.map{|e| e.to_i}.min
-				end
-				
-				# max stop
-				if [variant_region[:"Outer Stop"], variant_region[:Stop], variant_region[:"Inner Stop"]].reject{|e| e.empty? }.map{|e| e.to_i}.max
-					stop_pos = [variant_region[:"Outer Stop"], variant_region[:Stop], variant_region[:"Inner Stop"]].reject{|e| e.empty? }.map{|e| e.to_i}.max
-				end
-
-	            ## JV_C0061: Chromosome position larger than chromosome size + 1
-				if chr_length != -1
-					if (start_pos != -1 && (start_pos > chr_length + 1)) || (stop_pos != -1 && (stop_pos > chr_length + 1))
-						pos_outside_chr_region_a.push(variant_region_id)
-						variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_C0061 Error: Chromosome position is larger than chromosome size + 1. Check if the position is correct.")
+					## JV_SV0076: Missing chromosome/contig accession
+					if chr_name.empty? && chr_accession.empty? && contig_accession.empty?
+						missing_chr_contig_acc_region_a.push(variant_region_id)
+						variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0076 Error: Genomic placement must contain either a chr_name, chr_accession, or contig_accession unless it is on a novel sequence insertion or translocation.")
 					end
-				end
 
-	            # GENOME attributes
-	            placement_e.GENOME(genome_attr_h)
+		            # GENOME
+		            genome_attr_h = {}
 
-	        } # placement_e
+					if ref_download_f
+						assembly = ""
+						genome_attr_h.store(:assembly, "")
+		            elsif !variant_region[:Assembly].empty?
+						assembly = variant_region[:Assembly]
+						variant_region_assembly_a.push(assembly)
+						genome_attr_h.store(:assembly, refseq_assembly)
+		            else
+						genome_attr_h.store(:assembly, "")
+		            end
+
+					genome_attr_h.store(:chr_name, chr_name)
+					genome_attr_h.store(:chr_accession, chr_accession)
+					genome_attr_h.store(:contig_accession, contig_accession)
+
+					## placement check
+					## JV_SV0078: Missing start
+					if variant_region[:"Outer Start"].empty? && variant_region[:Start].empty? && variant_region[:"Inner Start"].empty? && variant_region_type != "translocation" && variant_region_type != "novel sequence insertion"
+						missing_start_region_a.push(variant_region_id)
+						variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0078 Error: Genomic placement must contain either a start, outer_start, or inner_start unless it is a novel sequence insertion or translocation.")
+					end
+
+					## JV_SV0079: Missing stop
+					if variant_region[:"Outer Stop"].empty? && variant_region[:Stop].empty? && variant_region[:"Inner Stop"].empty? && variant_region_type != "translocation" && variant_region_type != "novel sequence insertion"
+						missing_stop_region_a.push(variant_region_id)
+						variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0079 Error: Genomic placement must contain either a stop, outer_stop, or inner_stop unless it is a novel sequence insertion or translocation.")
+					end
+
+					# JV_SV0080: When on same sequence, start must be <= stop
+					if !variant_region[:Start].empty? && !variant_region[:Stop].empty? && (variant_region[:Start].to_i > variant_region[:Stop].to_i)
+						invalid_start_stop_region_a.push(variant_region_id)
+						variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0080 Error: When on same sequence, start must be <= stop.")
+					end
+
+					# JV_SV0081: When on same sequence, outer_start must be <= outer_stop
+					if !variant_region[:"Outer Start"].empty? && !variant_region[:"Outer Stop"].empty? && (variant_region[:"Outer Start"].to_i > variant_region[:"Outer Stop"].to_i)
+						invalid_outer_start_outer_stop_region_a.push(variant_region_id)
+						variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0081 Error: When on same sequence, outer_start must be <= outer_stop.")
+					end
+
+					# JV_SV0082: When on same sequence, outer_start must be <= inner_start
+					if !variant_region[:"Outer Start"].empty? && !variant_region[:"Inner Start"].empty? && (variant_region[:"Outer Start"].to_i > variant_region[:"Inner Start"].to_i)
+						invalid_outer_start_inner_start_region_a.push(variant_region_id)
+						variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0082 Error: When on same sequence, outer_start must be <= inner_start.")
+					end
+
+					# JV_SV0083: When on same sequence, inner_stop must be <= outer_stop
+					if !variant_region[:"Inner Stop"].empty? && !variant_region[:"Outer Stop"].empty? && (variant_region[:"Inner Stop"].to_i > variant_region[:"Outer Stop"].to_i)
+						invalid_inner_stop_outer_stop_region_a.push(variant_region_id)
+						variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0083 Error: When on same sequence, inner_stop must be <= outer_stop.")
+					end
+
+					# JV_SV0084: Invalid start and inner stop
+					if !variant_region[:Start].empty? && !variant_region[:"Inner Stop"].empty? && (variant_region[:Start].to_i >= variant_region[:"Inner Stop"].to_i) && !(!variant_region[:Start].empty? && !variant_region[:Stop].empty? && !variant_region[:"Outer Start"].empty? && !variant_region[:"Outer Stop"].empty? && !variant_region[:"Inner Start"].empty? && !variant_region[:"Inner Stop"].empty?)
+						invalid_start_inner_stop_region_a.push(variant_region_id)
+						variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0084 Error: When on same sequence, start must be < inner_stop, unless placement contains all of the following: start, stop, outer_start, outer_stop, inner_start and inner_stop. Also, if using confidence intervals, start must be < (stop - ciendleft).")
+					end
+
+					# JV_SV0085: Invalid inner start and stop
+					if !variant_region[:"Inner Start"].empty? && !variant_region[:Stop].empty? && (variant_region[:"Inner Start"].to_i >= variant_region[:Stop].to_i) && !(!variant_region[:Start].empty? && !variant_region[:Stop].empty? && !variant_region[:"Outer Start"].empty? && !variant_region[:"Outer Stop"].empty? && !variant_region[:"Inner Start"].empty? && !variant_region[:"Inner Stop"].empty?)
+						invalid_inner_start_stop_region_a.push(variant_region_id)
+						variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0085 Error: When on same sequence, inner_start must be < stop, unless placement contains all of the following: start, stop, outer_start, outer_stop, inner_start and inner_stop. Also, if using confidence intervals, (start + ciposright) must be < stop.")
+					end
+
+					# JV_SV0086: When on same sequence, inner_start must be <= inner_stop if there are only inner placements
+					if !variant_region[:"Inner Start"].empty? && !variant_region[:"Inner Stop"].empty? && (variant_region[:"Inner Start"].to_i > variant_region[:"Inner Stop"].to_i) && !(variant_region[:Start].empty? && variant_region[:Stop].empty? && variant_region[:"Outer Start"].empty? && variant_region[:"Outer Stop"].empty? && !variant_region[:"Inner Start"].empty? && !variant_region[:"Inner Stop"].empty?)
+						invalid_inner_start_inner_stop_region_a.push(variant_region_id)
+						variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0086 Error: When on same sequence, inner_start must be <= inner_stop if there are only inner placements.")
+					end
+
+					# JV_SV0087: Multiple starts
+					if !variant_region[:Start].empty? && (!variant_region[:"Inner Start"].empty? || !variant_region[:"Outer Start"].empty?) || (!variant_region[:"Inner Start"].empty? && !variant_region[:"Outer Start"].empty?) && !variant_region[:Start].empty?
+						if (!variant_region[:Start].empty? && !variant_region[:"Outer Start"].empty? && variant_region[:Start] != variant_region[:"Outer Start"]) && (!variant_region[:Start].empty? && !variant_region[:"Inner Start"].empty? && variant_region[:Start] != variant_region[:"Inner Start"])
+							multiple_starts_region_a.push(variant_region_id)
+							variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0087 Error: Genomic placement with start must only contain start, or must also contain both outer_start and inner_start.")
+						end
+					end
+
+					# JV_SV0088: Multiple stops
+					if !variant_region[:Stop].empty? && (!variant_region[:"Inner Stop"].empty? || !variant_region[:"Outer Stop"].empty?) || (!variant_region[:"Inner Stop"].empty? && !variant_region[:"Outer Stop"].empty?) && !variant_region[:Stop].empty?
+						if (!variant_region[:Stop].empty? && !variant_region[:"Outer Stop"].empty? && variant_region[:Stop] != variant_region[:"Outer Stop"]) && (!variant_region[:Stop].empty? && !variant_region[:"Inner Stop"].empty? && variant_region[:Stop] != variant_region[:"Inner Stop"])
+							multiple_stops_region_a.push(variant_region_id)
+							variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0088 Error: Genomic placement with stop must only contain stop, or must also contain both outer_stop and inner_stop.")
+						end
+					end
+
+					# JV_SV0089: Inconsistent sequence length and start/stop
+					if chr_length != -1
+						if (!variant_region[:Stop].empty? && variant_region[:Stop].to_i > chr_length.to_i) || (!variant_region[:"Inner Stop"].empty? && variant_region[:"Inner Stop"].to_i > chr_length.to_i) || (!variant_region[:"Outer Stop"].empty? && variant_region[:"Outer Stop"].to_i > chr_length.to_i)
+							inconsistent_length_start_stop_region_a.push(variant_region_id)
+							variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0089 Error: Error if inner_stop, stop, or outer_stop are beyond the length of the sequence (chromosome or scaffold).")
+						end
+					end
+
+					# JV_SV0090: Inconsistent inner start and stop
+					if !variant_region[:"Inner Start"].empty? && !variant_region[:"Inner Stop"].empty? && (variant_region[:"Inner Start"].to_i > variant_region[:"Inner Stop"].to_i) && (!variant_region[:"Outer Start"].empty? || !variant_region[:"Outer Stop"].empty?)
+						inconsistent_inner_start_stop_region_a.push(variant_region_id)
+						warning_sv_a.push(["JV_SV0090", "Warning if when on same sequence, inner_start > inner_stop and there are also valid outer placements. Variant Region ID: #{variant_region_id}"])
+					end
+
+					# JV_SV0091: Start and outer/inner starts co-exist
+					if !variant_region[:"Inner Start"].empty? && !variant_region[:Start].empty? && !variant_region[:"Outer Start"].empty?
+						start_outer_inner_start_coexist_region_a.push(variant_region_id)
+						warning_sv_a.push(["JV_SV0091", "Warning if genomic placement with start also contains outer_start and inner_start. Variant Region ID: #{variant_region_id}"])
+					end
+
+					# JV_SV0092: Stop and outer/inner stops co-exist
+					if !variant_region[:"Inner Stop"].empty? && !variant_region[:Stop].empty? && !variant_region[:"Outer Stop"].empty?
+						stop_outer_inner_stop_coexist_region_a.push(variant_region_id)
+						warning_sv_a.push(["JV_SV0092", "Warning if genomic placement with stop also contains outer_stop and inner_stop. Variant Region ID: #{variant_region_id}"])
+					end
+
+					# start
+		            genome_attr_h.store("outer_start", variant_region[:"Outer Start"]) unless variant_region[:"Outer Start"].empty?
+		            genome_attr_h.store("start", variant_region[:Start]) unless variant_region[:Start].empty?
+		            genome_attr_h.store("inner_start", variant_region[:"Inner Start"]) unless variant_region[:"Inner Start"].empty?
+
+		            # stop
+		            genome_attr_h.store("stop", variant_region[:Stop]) unless variant_region[:Stop].empty?
+		            genome_attr_h.store("inner_stop", variant_region[:"Inner Stop"]) unless variant_region[:"Inner Stop"].empty?
+		            genome_attr_h.store("outer_stop", variant_region[:"Outer Stop"]) unless variant_region[:"Outer Stop"].empty?
+
+		            # genome_attr_h.store(:ciposleft, "")
+		            # genome_attr_h.store(:ciposright, "")
+		            # genome_attr_h.store(:ciendleft, "")
+		            # genome_attr_h.store(:ciendright, "")
+		            # genome_attr_h.store(:remap_score, "")
+		            # genome_attr_h.store(:strand, "")
+		            # genome_attr_h.store(:assembly_unit, "")
+		            # genome_attr_h.store(:alignment, "")
+		            # genome_attr_h.store(:remap_failure_code, "")
+		            # genome_attr_h.store(:placement_rank, "")
+		            # genome_attr_h.store(:placements_per_assembly, "")
+		            # genome_attr_h.store(:remap_diff_chr, "")
+		            # genome_attr_h.store(:remap_best_within_cluster, "")
+
+		            # GENOME attributes
+		            placement_e.GENOME(genome_attr_h)
+
+					# min start
+					if [variant_region[:"Outer Start"], variant_region[:Start], variant_region[:"Inner Start"]].reject{|e| e.empty? }.map{|e| e.to_i}.min
+						start_pos = [variant_region[:"Outer Start"], variant_region[:Start], variant_region[:"Inner Start"]].reject{|e| e.empty? }.map{|e| e.to_i}.min
+					end
+					
+					# max stop
+					if [variant_region[:"Outer Stop"], variant_region[:Stop], variant_region[:"Inner Stop"]].reject{|e| e.empty? }.map{|e| e.to_i}.max
+						stop_pos = [variant_region[:"Outer Stop"], variant_region[:Stop], variant_region[:"Inner Stop"]].reject{|e| e.empty? }.map{|e| e.to_i}.max
+					end
+
+		            ## JV_C0061: Chromosome position larger than chromosome size + 1
+					if chr_length != -1
+						if (start_pos != -1 && (start_pos > chr_length + 1)) || (stop_pos != -1 && (stop_pos > chr_length + 1))
+							pos_outside_chr_region_a.push(variant_region_id)
+							variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_C0061 Error: Chromosome position is larger than chromosome size + 1. Check if the position is correct.")
+						end
+					end
+
+		        } # placement_e
+
+		    #end # if variant_region_type == "complex chromosomal rearrangement" || variant_region_type == "translocation"
 
 	    } # variant_region_e
 
@@ -3759,6 +3767,7 @@ sv_validation_result_s = ""
 unless $ref_check_f
 validation_result_s = <<EOS
 REF base identity check by samtools was skipped.
+
 EOS
 end
 

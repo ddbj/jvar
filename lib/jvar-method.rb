@@ -1046,9 +1046,6 @@ def vcf_parser(vcf_file, vcf_type, args)
 				# Variant Call ID
 				vcf_variant_call_h.store(:"Variant Call ID", id)
 
-				# Chr
-				vcf_variant_call_h.store(:"Chr", chrom)
-
 				# JV_VCFS0009: Invalid REF allele
 				if !ref.empty? && !ref.match?(/^[ATGCN]+$/)
 					vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_VCFS0009 Error: Remove non-ATGCN base from REF allele.")
@@ -1282,6 +1279,9 @@ def vcf_parser(vcf_file, vcf_type, args)
 					# Assembly
 					vcf_variant_call_h.store(:Assembly, reference)
 
+					# Chr
+					vcf_variant_call_h.store(:"Chr", chrom)
+
 					vcf_variant_call_h.store(:"From Chr", "")
 					vcf_variant_call_h.store(:"From Coord", "")
 					vcf_variant_call_h.store(:"From Strand", "")
@@ -1389,40 +1389,45 @@ def vcf_parser(vcf_file, vcf_type, args)
 					invalid_endrange_c += 1
 				end
 
-				if outer_start == -1
-					vcf_variant_call_h.store(:"Outer Start", "")
-				else
-					vcf_variant_call_h.store(:"Outer Start", outer_start.to_s)
-				end
+				# translocation 以外の場合に start/stop を格納
+				unless valid_translocation_f
 
-				if start == -1
-					vcf_variant_call_h.store(:Start, "")
-				else
-					vcf_variant_call_h.store(:Start, start.to_s)
-				end
+					if outer_start == -1
+						vcf_variant_call_h.store(:"Outer Start", "")
+					else
+						vcf_variant_call_h.store(:"Outer Start", outer_start.to_s)
+					end
 
-				if inner_start == -1
-					vcf_variant_call_h.store(:"Inner Start", "")
-				else
-					vcf_variant_call_h.store(:"Inner Start", inner_start.to_s)
-				end
+					if start == -1
+						vcf_variant_call_h.store(:Start, "")
+					else
+						vcf_variant_call_h.store(:Start, start.to_s)
+					end
 
-				if inner_stop == -1
-					vcf_variant_call_h.store(:"Inner Stop", "")
-				else
-					vcf_variant_call_h.store(:"Inner Stop", inner_stop.to_s)
-				end
+					if inner_start == -1
+						vcf_variant_call_h.store(:"Inner Start", "")
+					else
+						vcf_variant_call_h.store(:"Inner Start", inner_start.to_s)
+					end
 
-				if stop == -1
-					vcf_variant_call_h.store(:Stop, "")
-				else
-					vcf_variant_call_h.store(:Stop, stop.to_s)
-				end
+					if inner_stop == -1
+						vcf_variant_call_h.store(:"Inner Stop", "")
+					else
+						vcf_variant_call_h.store(:"Inner Stop", inner_stop.to_s)
+					end
 
-				if outer_stop == -1
-					vcf_variant_call_h.store(:"Outer Stop", "")
-				else
-					vcf_variant_call_h.store(:"Outer Stop", outer_stop.to_s)
+					if stop == -1
+						vcf_variant_call_h.store(:Stop, "")
+					else
+						vcf_variant_call_h.store(:Stop, stop.to_s)
+					end
+
+					if outer_stop == -1
+						vcf_variant_call_h.store(:"Outer Stop", "")
+					else
+						vcf_variant_call_h.store(:"Outer Stop", outer_stop.to_s)
+					end
+
 				end
 
 				## CIPOS CIEND
