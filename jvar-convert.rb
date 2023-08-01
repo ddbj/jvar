@@ -1815,6 +1815,8 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 	validation_result_regex = "Fail|Pass|Inconclusive"
 
 	variant_call_id_h = {}
+	variant_call_site_h = {}
+	identical_variant_call_site_id_h = {}
 	object = "Variant Call"
 	all_variant_call_tsv_s = ""
 
@@ -1840,6 +1842,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 		variant_call_id_sampleset_h = {}
 		variant_call_translocation_h = {}
 		variant_call_mutation_h = {}
+		variant_calls_by_mutation_id_h = {}
 		variant_call_placement_h = {}
 
 		# assembly チェック用に格納
@@ -2067,7 +2070,14 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 				end # unless sample["Subject Phenotype"].empty?
 
 				## mutation ID, order チェック用に格納
-				variant_call_mutation_h.store(:"#{variant_call_id}", {:"Variant Call ID" => variant_call_id, :"Assembly for Translocation Breakpoint" => variant_call[:"Assembly for Translocation Breakpoint"], :"From Chr" => variant_call[:"From Chr"], :"From Coord" => variant_call[:"From Coord"], :"From Strand" => variant_call[:"From Strand"], :"To Chr" => variant_call[:"To Chr"], :"To Coord" => variant_call[:"To Coord"], :"To Strand" => variant_call[:"To Strand"], :"Mutation ID" => variant_call[:"Mutation ID"], :"Mutation Order" => variant_call[:"Mutation Order"], :"Mutation Molecule" => variant_call[:"Mutation Molecule"]})
+				if variant_call[:"Mutation ID"] && !variant_call[:"Mutation ID"].empty?
+					variant_call_mutation_h.store(:"#{variant_call_id}", variant_call)			
+					if variant_calls_by_mutation_id_h[variant_call[:"Mutation ID"]].nil?
+						variant_calls_by_mutation_id_h[variant_call[:"Mutation ID"]] = [variant_call_id]
+					else
+						variant_calls_by_mutation_id_h[variant_call[:"Mutation ID"]].push(variant_call_id)
+					end
+				end
 
 				# PLACEMENT attributes
 				placement_attr_h = {}
@@ -2075,6 +2085,22 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 				## translocation
 				if variant_call[:"Variant Call Type"].match?(/translocation/)
+
+					from_chr_name = ""
+					from_chr_accession = ""
+					from_chr_length = -1
+					from_coord = -1
+					from_contig_accession = ""
+					from_assembly = ""
+					from_strand = ""
+
+					to_chr_name = ""
+					to_chr_accession = ""
+					to_chr_length = -1
+					to_coord = -1
+					to_contig_accession = ""
+					to_assembly = ""
+					to_strand = ""
 
 					## JV_SV0094: Missing strand for translocation
 					if variant_call[:"From Strand"].empty? || variant_call[:"To Strand"].empty?
@@ -2086,6 +2112,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 					if variant_call[:"Assembly for Translocation Breakpoint"] && variant_call[:"Assembly for Translocation Breakpoint"].empty? || variant_call[:"From Chr"].empty? || variant_call[:"From Coord"].empty? || variant_call[:"From Strand"].empty? || variant_call[:"To Chr"].empty? || variant_call[:"To Coord"].empty? || variant_call[:"To Strand"].empty?
 						invalid_from_to_call_a.push(variant_call_id)
 						variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_SV0045 Error: Invalid translocation from and to.")
+					
 					else
 
 						## translocation call を格納
@@ -2134,6 +2161,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 							from_coord = -1
 							from_contig_accession = ""
 							from_assembly = ""
+							from_strand = ""
 
 							## JV_SV0072: Invalid chromosome reference
 							from_valid_chr_f = false
@@ -2225,6 +2253,8 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 								variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_SV0072 Error: Invalid chromosome reference.")
 							end
 
+							from_strand = variant_call[:"From Strand"]
+
 							# FROM GENOME
 							from_genome_attr_h = {}
 							from_genome_attr_h.store(:assembly, refseq_assembly)
@@ -2232,7 +2262,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 							from_genome_attr_h.store(:chr_name, from_chr_name)
 							from_genome_attr_h.store(:chr_accession, from_chr_accession)
 							from_genome_attr_h.store(:contig_accession, from_contig_accession)
-							from_genome_attr_h.store(:strand, variant_call[:"From Strand"])
+							from_genome_attr_h.store(:strand, from_strand)
 													
 							# FROM COORD
 							if variant_call[:"From Coord"] && variant_call[:"From Coord"].to_i
@@ -2272,6 +2302,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 							to_coord = -1
 							to_contig_accession = ""
 							to_assembly = ""
+							to_strand = ""
 
 							## JV_SV0072: Invalid chromosome reference
 							to_valid_chr_f = false
@@ -2359,6 +2390,8 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 								variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_SV0072 Error: Invalid chromosome reference.")
 							end
 
+							to_strand = variant_call[:"To Strand"]
+
 							# TO GENOME
 							to_genome_attr_h = {}
 							to_genome_attr_h.store(:assembly, refseq_assembly)
@@ -2366,7 +2399,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 							to_genome_attr_h.store(:chr_name, to_chr_name)
 							to_genome_attr_h.store(:chr_accession, to_chr_accession)
 							to_genome_attr_h.store(:contig_accession, to_contig_accession)
-							to_genome_attr_h.store(:strand, variant_call[:"To Strand"])
+							to_genome_attr_h.store(:strand, to_strand)
 
 							# TO COORD
 							if variant_call[:"To Coord"] && variant_call[:"To Coord"].to_i
@@ -2399,6 +2432,15 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 						if variant_call[:"variant_sequence"] && !variant_call[:"variant_sequence"].empty?
 							variant_call_e.VARIANT_SEQUENCE(variant_call[:"variant_sequence"])
 						end
+						
+						# duplicated translocation SVs to be merged into a region
+						# https://ddbj-dev.atlassian.net/wiki/spaces/jvar/pages/2470674436/Variant+region+assertion
+						if variant_call_site_h.has_key?(:"#{variant_call_type}:FROM:#{from_chr_name}:#{from_contig_accession}:#{from_coord}:#{variant_call[:ciposleft]}:#{variant_call[:ciposright]}:TO:#{to_chr_name}:#{to_contig_accession}:#{to_coord}:#{variant_call[:ciendleft]}:#{variant_call[:ciendright]}")
+							identical_variant_call_site_id_h[:"#{variant_call_type}:FROM:#{from_chr_name}:#{from_contig_accession}:#{from_coord}:#{variant_call[:ciposleft]}:#{variant_call[:ciposright]}:TO:#{to_chr_name}:#{to_contig_accession}:#{to_coord}:#{variant_call[:ciendleft]}:#{variant_call[:ciendright]}"] = [variant_call_site_h[:"#{variant_call_type}:FROM:#{from_chr_name}:#{from_contig_accession}:#{from_coord}:#{variant_call[:ciposleft]}:#{variant_call[:ciposright]}:TO:#{to_chr_name}:#{to_contig_accession}:#{to_coord}:#{variant_call[:ciendleft]}:#{variant_call[:ciendright]}"]] if identical_variant_call_site_id_h[:"#{variant_call_type}:FROM:#{from_chr_name}:#{from_contig_accession}:#{from_coord}:#{variant_call[:ciposleft]}:#{variant_call[:ciposright]}:TO:#{to_chr_name}:#{to_contig_accession}:#{to_coord}:#{variant_call[:ciendleft]}:#{variant_call[:ciendright]}"].nil?
+							identical_variant_call_site_id_h[:"#{variant_call_type}:FROM:#{from_chr_name}:#{from_contig_accession}:#{from_coord}:#{variant_call[:ciposleft]}:#{variant_call[:ciposright]}:TO:#{to_chr_name}:#{to_contig_accession}:#{to_coord}:#{variant_call[:ciendleft]}:#{variant_call[:ciendright]}"].push(variant_call_id)							
+						end
+						
+						variant_call_site_h.store(:"#{variant_call_type}:FROM:#{from_chr_name}:#{from_contig_accession}:#{from_coord}:#{variant_call[:ciposleft]}:#{variant_call[:ciposright]}:TO:#{to_chr_name}:#{to_contig_accession}:#{to_coord}:#{variant_call[:ciendleft]}:#{variant_call[:ciendright]}", variant_call_id)
 
 					end # if there are translocation placements
 
@@ -2695,6 +2737,14 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 						# genome_attr_h.store(:placements_per_assembly, "")
 						# genome_attr_h.store(:remap_diff_chr, "")
 						# genome_attr_h.store(:remap_best_within_cluster, "")
+
+						# duplicated SVs to be merged into a region
+						# https://ddbj-dev.atlassian.net/wiki/spaces/jvar/pages/2470674436/Variant+region+assertion
+						if variant_call_site_h.has_key?(:"#{variant_call_type}:#{chr_accession}:#{contig_accession}:#{variant_call[:"Outer Start"]}:#{variant_call[:Start]}:#{variant_call[:"Inner Start"]}:#{variant_call[:"Inner Stop"]}:#{variant_call[:Stop]}:#{variant_call[:"Outer Stop"]}:#{variant_call[:ciposleft]}:#{variant_call[:ciposright]}:#{variant_call[:ciendleft]}:#{variant_call[:ciendright]}:#{variant_call[:"Insertion Length"]}")
+							identical_variant_call_site_id_h[:"#{variant_call_type}:#{chr_accession}:#{contig_accession}:#{variant_call[:"Outer Start"]}:#{variant_call[:Start]}:#{variant_call[:"Inner Start"]}:#{variant_call[:"Inner Stop"]}:#{variant_call[:Stop]}:#{variant_call[:"Outer Stop"]}:#{variant_call[:ciposleft]}:#{variant_call[:ciposright]}:#{variant_call[:ciendleft]}:#{variant_call[:ciendright]}:#{variant_call[:"Insertion Length"]}"] = [variant_call_site_h[:"#{variant_call_type}:#{chr_accession}:#{contig_accession}:#{variant_call[:"Outer Start"]}:#{variant_call[:Start]}:#{variant_call[:"Inner Start"]}:#{variant_call[:"Inner Stop"]}:#{variant_call[:Stop]}:#{variant_call[:"Outer Stop"]}:#{variant_call[:ciposleft]}:#{variant_call[:ciposright]}:#{variant_call[:ciendleft]}:#{variant_call[:ciendright]}:#{variant_call[:"Insertion Length"]}"]] if identical_variant_call_site_id_h[:"#{variant_call_type}:#{chr_accession}:#{contig_accession}:#{variant_call[:"Outer Start"]}:#{variant_call[:Start]}:#{variant_call[:"Inner Start"]}:#{variant_call[:"Inner Stop"]}:#{variant_call[:Stop]}:#{variant_call[:"Outer Stop"]}:#{variant_call[:ciposleft]}:#{variant_call[:ciposright]}:#{variant_call[:ciendleft]}:#{variant_call[:ciendright]}:#{variant_call[:"Insertion Length"]}"].nil?
+							identical_variant_call_site_id_h[:"#{variant_call_type}:#{chr_accession}:#{contig_accession}:#{variant_call[:"Outer Start"]}:#{variant_call[:Start]}:#{variant_call[:"Inner Start"]}:#{variant_call[:"Inner Stop"]}:#{variant_call[:Stop]}:#{variant_call[:"Outer Stop"]}:#{variant_call[:ciposleft]}:#{variant_call[:ciposright]}:#{variant_call[:ciendleft]}:#{variant_call[:ciendright]}:#{variant_call[:"Insertion Length"]}"].push(variant_call_id)							
+						end
+						variant_call_site_h.store(:"#{variant_call_type}:#{chr_accession}:#{contig_accession}:#{variant_call[:"Outer Start"]}:#{variant_call[:Start]}:#{variant_call[:"Inner Start"]}:#{variant_call[:"Inner Stop"]}:#{variant_call[:Stop]}:#{variant_call[:"Outer Stop"]}:#{variant_call[:ciposleft]}:#{variant_call[:ciposright]}:#{variant_call[:ciendleft]}:#{variant_call[:ciendright]}:#{variant_call[:"Insertion Length"]}", variant_call_id)
 
 						# GENOME attributes
 						placement_e.GENOME(genome_attr_h)
@@ -2998,10 +3048,161 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 		variant_call_tsv_f.close
 	end
 
-	if variant_region_a.empty?
+	# JV_SV0101: Mutation ID for single variant call
+	mutation_id_for_single_call_a = []
+	for r_mutation_id, r_calls_by_mutation_id_a in variant_calls_by_mutation_id_h
+		if r_calls_by_mutation_id_a.size == 1
+			mutation_id_for_single_call_a.push(r_mutation_id)
+		end
+	end
+
+	unless mutation_id_for_single_call_a.empty?
+		warning_sv_a.push(["JV_SV0101", "A Mutation ID used to group single variant call. Mutation ID(s): #{mutation_id_for_single_call_a.join(",")}"])
+	end
+
+	# if there is no variant region
+	if variant_region_a.empty? && !variant_call_a.empty?
+		
 		# JV_VCFS0007: Missing variant region
 		warning_sv_a.push(["JV_VCFS0007", "Variant regions are not submitted. JVar will generate variant regions from variant calls."])
-	end
+		
+		# generate variant region tsv 
+		# 1. complex と translocation 以外、same pos and type regardless of mutation id - merge 
+		# 2. complex と translocation は mutation id でまとめる。mutation_order >= 1, calls = 1 translocation, > 1 complex	
+		variant_region_tsv_a = []
+		variant_region_tsv_a.push(["# #{$variant_region_field_a[0]}"] + $variant_region_field_a[1..-1] + ["supporting_call_json"])
+		merged_variant_call_ids_h = {}
+		r_first = true
+		for variant_call in variant_call_a
+
+			variant_region_tsv_each_a = []
+			supporting_variant_call_id_a = []
+
+			r_variant_call_id = variant_call[:"Variant Call ID"]
+			r_variant_region_id = "region_#{variant_call[:"Variant Call ID"]}"
+			r_variant_call_type = variant_call[:"Variant Call Type"]
+			r_variant_region_type = ""
+			r_assertion_method = ""
+
+			# merge された call はスキップ
+			next if merged_variant_call_ids_h.has_key?(r_variant_call_id)
+
+			# calls with a mutation id
+			group_by_mutation_id_f = false
+			call_locations_a = []
+			call_locations_s = ""
+			for r_mutation_id, r_calls_by_mutation_id_a in variant_calls_by_mutation_id_h
+				if r_calls_by_mutation_id_a.include?(r_variant_call_id)
+					
+					group_by_mutation_id_f = true
+					supporting_variant_call_id_a = r_calls_by_mutation_id_a
+					supporting_variant_call_id_a.each{|supporting_variant_call_id|
+						if variant_call_mutation_h[:"#{supporting_variant_call_id}"]
+							call_locations_a.push(variant_call_mutation_h[:"#{supporting_variant_call_id}"])
+						else
+							raise "No variant call found by mutation ID."
+						end
+					}
+
+					call_locations_s = call_locations_a.to_json
+
+					if r_variant_call_type.include?("translocation")
+						r_variant_region_type = "complex chromosomal rearrangement"
+						r_assertion_method = "Breakpoint calls grouped by submitter, and merged into regions by JVar staff (no regions submitted)"
+					else
+						r_variant_region_type = $variant_call_type_to_region_type_h[:"#{r_variant_call_type}"] if $variant_call_type_to_region_type_h[:"#{r_variant_call_type}"]
+						r_assertion_method = "Calls grouped by submitter, and merged into regions by JVar staff (no regions submitted)"		
+					end
+
+					# merge された call を除くため格納
+					r_calls_by_mutation_id_a.each{|e|
+						merged_variant_call_ids_h.store(e, 1) if e != r_variant_call_id
+					}
+
+				end
+			end
+
+			# identical pos and type
+			identical_pos_type_f = false
+			unless group_by_mutation_id_f # mutation id 優先
+				for hash_key, r_calls_by_identity_a in identical_variant_call_site_id_h
+					if r_calls_by_identity_a.include?(r_variant_call_id)
+						
+						identical_pos_type_f = true
+						supporting_variant_call_id_a = r_calls_by_identity_a
+
+						# translocation は identity では merge せず、mutation id でのみ merge
+						unless r_variant_call_type.include?("translocation")
+							r_variant_region_type = $variant_call_type_to_region_type_h[:"#{r_variant_call_type}"] if $variant_call_type_to_region_type_h[:"#{r_variant_call_type}"]
+							r_assertion_method = "Identical calls merged by JVar staff (no regions submitted)"
+						end
+
+						# merge された call を除くため格納
+						r_calls_by_identity_a.each{|e|
+							merged_variant_call_ids_h.store(e, 1) if e != r_variant_call_id
+						}
+
+					end			
+				end
+			end
+
+			# no mutation id, no identity 
+			if !group_by_mutation_id_f && !identical_pos_type_f
+
+				supporting_variant_call_id_a.push(r_variant_call_id)
+				
+				if r_variant_call_type.include?("translocation")
+					r_variant_region_type = "translocation"
+				else
+					r_variant_region_type = $variant_call_type_to_region_type_h[:"#{r_variant_call_type}"] if $variant_call_type_to_region_type_h[:"#{r_variant_call_type}"]
+				end
+
+				r_assertion_method = "Identical to variant call (no regions submitted)"
+			end
+
+			# region 出力			
+			# assembly - outer stop		
+			for field in $variant_region_field_a[3..11]						
+				if variant_call[:"#{field}"]
+					variant_region_tsv_each_a.push(variant_call[:"#{field}"])
+				else
+					variant_region_tsv_each_a.push("")
+				end
+			end
+
+			variant_region_tsv_each_a.push(supporting_variant_call_id_a.join(","))
+			variant_region_tsv_each_a.push("") # supporting variant region ids
+			variant_region_tsv_each_a.push("") # description
+
+			# assembly for breakpoint to 
+			for field in $variant_region_field_a[15..-1]				
+				if variant_call[:"#{field}"]
+					variant_region_tsv_each_a.push(variant_call[:"#{field}"])
+				else
+					variant_region_tsv_each_a.push("")
+				end
+			end
+
+			# 最後尾に追加
+			variant_region_tsv_each_a.push(call_locations_s)
+
+			# fixed 先頭に追加
+			variant_region_tsv_each_a.unshift(r_assertion_method)
+			variant_region_tsv_each_a.unshift(r_variant_region_type)
+			variant_region_tsv_each_a.unshift(r_variant_region_id)
+
+			variant_region_tsv_a.push(variant_region_tsv_each_a)
+			r_first = false
+
+		end # for variant_call in variant_call_a
+
+		variant_region_tsv_f = open("#{excel_path}/#{submission_id}_variant_region.tsv", "w")
+		variant_region_tsv_a.each{|r_line_a|
+			variant_region_tsv_f.puts r_line_a.join("\t")
+		}
+		variant_region_tsv_f.close
+
+	end # if variant_region_a.empty?
 
 	##
 	## Variant Region
@@ -3036,7 +3237,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 	invalid_translocation_placement_SV0044_region_a = [] # JV_SV0044
 	invalid_translocation_placement_SV0097_region_a = [] # JV_SV0097
 	invalid_translocation_placement_SV0098_region_a = [] # JV_SV0098
-	mixed_mutation_id_region_a = [] # JV_SV0096
+	mixed_mutation_id_region_a = [] # JV_SV0100
 	missing_serial_mutation_order_region_a = [] # JV_SV0067
 	contig_acc_for_chr_acc_region_a = [] # JV_SV0077
 	invalid_chr_ref_region_a = [] # JV_SV0072
@@ -3257,10 +3458,10 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 			end
 
-			## JV_SV0096: Mixed mutation ID for complex chromosomal rearrangement and translocation
+			## JV_SV0100: Mixed mutation ID for complex chromosomal rearrangement and translocation
 			if translocation_mutation_id_a.sort.uniq.size > 1
 				mixed_mutation_id_region_a.push(variant_region_id)
-				variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0096 Error: Mixed mutation ID for complex chromosomal rearrangement and translocation.")
+				variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0100 Error: Mixed mutation ID for complex chromosomal rearrangement and translocation.")
 			end
 
 			## JV_SV0067: Missing serial mutation order number for complex chromosomal rearrangement and translocation
@@ -3279,10 +3480,10 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 				complex_mutation_order_a.push(complex_call_h[:"Mutation Order"])
 			end
 
-			## JV_SV0096: Mixed mutation ID for complex chromosomal rearrangement and translocation
+			## JV_SV0100: Mixed mutation ID for complex chromosomal rearrangement and translocation
 			if complex_mutation_id_a.sort.uniq.size > 1
 				mixed_mutation_id_region_a.push(variant_region_id)
-				variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0096 Error: Mixed mutation ID for complex chromosomal rearrangement and translocation.")
+				variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0100 Error: Mixed mutation ID for complex chromosomal rearrangement and translocation.")
 			end
 
 			## JV_SV0067: Missing serial mutation order number for complex chromosomal rearrangement and translocation
@@ -3644,8 +3845,8 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 	## JV_SV0098: Invalid translocation placements
 	error_ignore_sv_a.push(["JV_SV0098", "In translocation calls supporting the same variant region, the chromosome placement of the To placement must be greater than the chromosome placement of the From placement of the next variant call (based on mutation_order) if their strand is '-'. Variant Call: #{invalid_translocation_placement_SV0098_region_a.size} sites, #{invalid_translocation_placement_SV0098_region_a.size > 4? invalid_translocation_placement_SV0098_region_a[0, limit_for_etc].join(",") + " etc" : invalid_translocation_placement_SV0098_region_a.join(",")}"]) unless invalid_translocation_placement_SV0098_region_a.empty?
 
-	## JV_SV0096: Mixed mutation ID for complex chromosomal rearrangement and translocation
-	error_ignore_sv_a.push(["JV_SV0096", "Within a variant region with type 'complex chromosomal rearrangement' and 'translocation', each supporting variant call must have a unique value for Mutation ID. Variant Region: #{mixed_mutation_id_region_a.size} sites, #{mixed_mutation_id_region_a.size > 4? mixed_mutation_id_region_a[0, limit_for_etc].join(",") + " etc" : mixed_mutation_id_region_a.join(",")}"]) unless mixed_mutation_id_region_a.empty?
+	## JV_SV0100: Mixed mutation ID for complex chromosomal rearrangement and translocation
+	error_ignore_sv_a.push(["JV_SV0100", "Within a variant region with type 'complex chromosomal rearrangement' and 'translocation', each supporting variant call must have a unique value for Mutation ID. Variant Region: #{mixed_mutation_id_region_a.size} sites, #{mixed_mutation_id_region_a.size > 4? mixed_mutation_id_region_a[0, limit_for_etc].join(",") + " etc" : mixed_mutation_id_region_a.join(",")}"]) unless mixed_mutation_id_region_a.empty?
 
 	## JV_SV0067: Missing serial mutation order number for complex chromosomal rearrangement and translocation
 	error_ignore_sv_a.push(["JV_SV0067", "Missing serial mutation order number for complex chromosomal rearrangement and translocation. Variant Region: #{missing_serial_mutation_order_region_a.size} sites, #{missing_serial_mutation_order_region_a.size > 4? missing_serial_mutation_order_region_a[0, limit_for_etc].join(",") + " etc" : missing_serial_mutation_order_region_a.join(",")}"]) unless missing_serial_mutation_order_region_a.empty?

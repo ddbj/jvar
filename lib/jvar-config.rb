@@ -121,6 +121,33 @@ $variant_region_call_type_h =
 	:"complex chromosomal rearrangement" => ["interchromosomal translocation", "intrachromosomal translocation"]
 }
 
+$variant_call_type_to_region_type_h = 
+{
+	:"complex substitution" => "complex substitution",
+	:"copy number gain" => "copy number variation",
+	:"copy number loss" => "copy number variation",
+	:"copy number variation" => "copy number variation",
+	:deletion => "copy number variation",
+	:duplication => "copy number variation",
+	:indel => "indel",
+	:insertion => "insertion",
+	:inversion => "inversion",
+	:"mobile element deletion" => "mobile element deletion",
+	:"Alu deletion" => "mobile element deletion",
+	:"HERV deletion" => "mobile element deletion",
+	:"LINE1 deletion" => "mobile element deletion",
+	:"SVA deletion" => "mobile element deletion",
+	:"mobile element insertion" => "mobile element insertion",
+	:"Alu insertion" => "mobile element insertion",
+	:"HERV insertion" => "mobile element insertion",
+	:"LINE1 insertion" => "mobile element insertion",
+	:"SVA insertion" => "mobile element insertion",
+	:"novel sequence insertion" => "novel sequence insertion",
+	:"sequence alteration" => "sequence alteration",
+	:"short tandem repeat variation" => "short tandem repeat variation",
+	:"tandem duplication" => "tandem duplication"
+}
+
 $variant_call_field_a =
 [
 	"Variant Call ID",
@@ -167,6 +194,39 @@ $variant_call_field_a =
 	"reference_copy_number",
 	"submitted_genotype",
 	"FORMAT"
+]
+
+$variant_region_field_a =
+[
+	"Variant Region ID",
+	"Variant Region Type",
+	"Assertion Method",
+	"Assembly",
+	"Chr",
+	"Contig",
+	"Outer Start",
+	"Start",
+	"Inner Start",
+	"Inner Stop",
+	"Stop",
+	"Outer Stop",
+	"Supporting Variant Call IDs",
+	"Supporting Variant Region IDs",
+	"Description",
+	"Assembly for Translocation Breakpoint",
+	"From Chr",
+	"From Coord",
+	"From Strand",
+	"To Chr",
+	"To Coord",
+	"To Strand",
+	"Mutation ID",
+	"Mutation Order",
+	"Mutation Molecule",
+	"ciposleft",
+	"ciposright",
+	"ciendleft",
+	"ciendright"
 ]
 
 $cv_h =

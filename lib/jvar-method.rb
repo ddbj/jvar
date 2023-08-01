@@ -999,7 +999,7 @@ def vcf_parser(vcf_file, vcf_type, args)
 				duplicated_site_f = false
 
 				unless vrt.empty?
-					if sites_h.has_key?(:"#{id}:#{chrom}:#{pos}:#{ref}:#{alt}:#{vrt}")
+					if sites_h.has_key?(:"#{chr_accession}:#{pos}:#{ref}:#{alt}:#{vrt}")
 						duplicated_site_c += 1
 						duplicated_site_f = true
 					end
@@ -1008,7 +1008,7 @@ def vcf_parser(vcf_file, vcf_type, args)
 					vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_VCF0011 Error: Remove duplicated sites.") if duplicated_site_f
 
 					# 重複チェック用に site を格納
-					sites_h.store(:"#{id}:#{chrom}:#{pos}:#{ref}:#{alt}:#{vrt}", 1)
+					sites_h.store(:"#{chr_accession}:#{pos}:#{ref}:#{alt}:#{vrt}", 1)
 
 				end
 
