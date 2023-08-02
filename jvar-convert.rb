@@ -1939,9 +1939,6 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 				variant_call_id = variant_call[:"Variant Call ID"]
 				variant_call_attr_h.store(:variant_call_id, variant_call_id)
 
-				# variant region からの参照用に格納
-				variant_call_by_id_h.store(:"#{variant_call_id}", variant_call)
-
 				if variant_call_id_h.has_key?(:"#{variant_call_id}")
 					# JV_SV0030: Duplicated Variant Call ID
 					duplicated_variant_call_id_a.push(variant_call_id)
@@ -2153,6 +2150,8 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 						end
 
+						variant_call.store(:refseq_assembly_breakpoint, refseq_assembly)
+
 						# FROM
 						placement_attr_h.store(:breakpoint_order, "From")
 
@@ -2268,6 +2267,9 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 							from_genome_attr_h.store(:contig_accession, from_contig_accession)
 							from_genome_attr_h.store(:strand, from_strand)
 													
+							variant_call.store(:from_chr_accession, from_chr_accession)
+							variant_call.store(:from_contig_accession, from_contig_accession)
+
 							# FROM COORD
 							if variant_call[:"From Coord"] && variant_call[:"From Coord"].to_i
 								from_coord = variant_call[:"From Coord"].to_i
@@ -2405,6 +2407,9 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 							to_genome_attr_h.store(:contig_accession, to_contig_accession)
 							to_genome_attr_h.store(:strand, to_strand)
 
+							variant_call.store(:to_chr_accession, to_chr_accession)
+							variant_call.store(:to_contig_accession, to_contig_accession)
+
 							# TO COORD
 							if variant_call[:"To Coord"] && variant_call[:"To Coord"].to_i
 								to_coord = variant_call[:"To Coord"].to_i
@@ -2420,7 +2425,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 							to_genome_attr_h.store(:ciendright, variant_call[:ciendright]) if variant_call[:ciendright] && !variant_call[:ciendright].empty?
 
 							# GENOME attributes
-							placement_e.GENOME(to_genome_attr_h)
+							placement_e.GENOME(to_genome_attr_h)							
 
 							## JV_C0061: Chromosome position larger than chromosome size + 1
 							if to_chr_length != -1
@@ -2476,6 +2481,8 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 						}
 
 					end
+
+					variant_call.store(:refseq_assembly, refseq_assembly)
 
 					# deletion
 					if variant_call[:"Variant Call Type"] == "deletion"
@@ -2628,6 +2635,9 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 						genome_attr_h.store(:chr_name, chr_name)
 						genome_attr_h.store(:chr_accession, chr_accession)
 						genome_attr_h.store(:contig_accession, contig_accession)
+
+						variant_call.store(:chr_accession, chr_accession)
+						variant_call.store(:contig_accession, contig_accession)
 
 						## placement check
 						## JV_SV0078: Missing start
@@ -2943,6 +2953,9 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 			end
 
 			vc_line += 1
+
+			# variant region からの参照用に格納
+			variant_call_by_id_h.store(:"#{variant_call_id}", variant_call.reject{|k| k == :row || k == :FORMAT })
 			
 		end # for variant_call in variant_call_a
 
@@ -3066,7 +3079,9 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 		variant_call_tsv_f.close
 	end
 
-	# if there is no variant region
+	#
+	# if there is no variant region, generate region tsv
+	#
 	if variant_region_a.empty? && !variant_call_a.empty?
 		
 		# JV_VCFS0007: Missing variant region
@@ -3158,38 +3173,36 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 			end
 
 			# region 出力			
-			# from assembly - to outer stop		
+			# from Assembly - to Outer Stop
 			for field in $variant_region_field_a[3..11]						
 				if variant_call[:"#{field}"]
 					variant_region_tsv_each_a.push(variant_call[:"#{field}"])
 				else
 					variant_region_tsv_each_a.push("")
-				end
+				end				
 			end
 
 			variant_region_tsv_each_a.push(supporting_variant_call_id_a.join(","))
 			variant_region_tsv_each_a.push("") # supporting variant region ids
 			variant_region_tsv_each_a.push("") # description
 
-			# from assembly to breakpoint
-			for field in $variant_region_field_a[15..-1]				
+			# from Assembly for Translocation Breakpoint - to ciendright
+			for field in $variant_region_field_a[15..-1]								
 				if variant_call[:"#{field}"]
 					variant_region_tsv_each_a.push(variant_call[:"#{field}"])
 				else
 					variant_region_tsv_each_a.push("")
-				end
+				end				
 			end
 
-			# complex chromosomal rearrangement と translocation の場合、mutation order が必須
-			if r_variant_region_type == "complex chromosomal rearrangement" || r_variant_region_type == "translocation"
-				supporting_variant_call_id_a.each{|supporting_variant_call_id|
-					if variant_call_by_id_h[:"#{supporting_variant_call_id}"]
-						supporting_call_json_a.push(variant_call_by_id_h[:"#{supporting_variant_call_id}"])
-					end
-				}
-				
-				supporting_call_json_s = supporting_call_json_a.to_json
-			end
+			# call の全情報を region で利用できるように call hash を出力
+			supporting_variant_call_id_a.each{|supporting_variant_call_id|
+				if variant_call_by_id_h[:"#{supporting_variant_call_id}"]
+					supporting_call_json_a.push(variant_call_by_id_h[:"#{supporting_variant_call_id}"])
+				end
+			}
+			
+			supporting_call_json_s = supporting_call_json_a.to_json
 			
 			# 最後尾に追加
 			variant_region_tsv_each_a.push(supporting_call_json_s)
@@ -3352,119 +3365,43 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 			region_stop_a.push(variant_region[:"Outer Stop"].to_i) if !variant_region[:"Outer Stop"].empty? && variant_region[:"Outer Stop"].to_i
 			region_max_stop = region_stop_a.max
 
-			# SUPPORTING_VARIANT_CALL
-			sampleset_id_of_variant_call_a = []
-			complex_variant_call_per_region_a = []
-			m_order = 1
-			unless variant_region[:"Supporting Variant Call IDs"].empty?
-				for supporting_call_id in variant_region[:"Supporting Variant Call IDs"].split(/,/)
-
-					supporting_call_id_a.push(:"#{supporting_call_id}")
-					variant_region_e.SUPPORTING_VARIANT_CALL(:variant_call_id => supporting_call_id)
-
-					## JV_SV0050: Inconsistent Variant Call Type and Variant Region Type
-					if (variant_call_id_type_h[:"#{supporting_call_id}"] == "copy number gain" || variant_call_id_type_h[:"#{supporting_call_id}"] == "copy number loss") && variant_region[:"Variant Region Type"] != "copy number variation"
-						inconsistent_type_region_a.push(variant_region_id)
-						variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0050 Warning: Inconsistent Variant Call Type and Variant Region Type.")
-					end
-
-					## JV_SV0051: Mixed Variant Region Type
-					supporting_variant_call_type = ""
-					supporting_variant_call_type = variant_call_id_type_h[:"#{supporting_call_id}"] unless variant_call_id_type_h[:"#{supporting_call_id}"].empty?
-					if variant_region_type != supporting_variant_call_type && (!$variant_region_call_type_h[:"#{variant_region_type}"].nil? && !$variant_region_call_type_h[:"#{variant_region_type}"].include?(supporting_variant_call_type))
-						mixed_type_region_a.push(variant_region_id)
-						variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0051 Warning: Warning if variant call is in a variant region with different type UNLESS the region type is 'copy number variation' and the call type is ('copy number gain','copy number loss','deletion', or 'duplication'), OR the region type is 'mobile element insertion' and the call type is ('alu insertion', 'herv insertion', 'line1 insertion', or 'sva insertion'), OR the region type is 'mobile element deletion' and the call type is ('alu deletion', 'herv deletion', 'line1 deletion', or 'sva deletion'), OR the region type is ('translocation' or 'complex chromosomal rearrangement') and the call type is ('interchromosomal translocation' or 'intrachromosomal translocation').")
-					end
-
-					## JV_SV0069: Copy number gain and loss in the same sample
-					# supporting variant call が属する sampleset ID が異なる場合は warning
-					if supporting_variant_call_type == "copy number gain" || supporting_variant_call_type == "copy number loss"
-						sampleset_id_of_variant_call_a.push(variant_call_id_sampleset_h[:"#{supporting_call_id}"])
-					end
-
-					## min max で境界を比較 JV_SV0053: Variant Call is outside of parent Variant Region
-					call_start_a = []
-					call_stop_a = []
-					call_min_start = ""
-					call_max_stop = ""
-					if !variant_region[:"Variant Region Type"].match?(/translocation/) && variant_region[:"Variant Region Type"] != "complex chromosomal rearrangement"
-
-						# start of call
-						call_start_a.push(variant_call_placement_h[:"#{supporting_call_id}"][:"Outer Start"].to_i) if variant_call_placement_h[:"#{supporting_call_id}"] && variant_call_placement_h[:"#{supporting_call_id}"][:"Outer Start"] && !variant_call_placement_h[:"#{supporting_call_id}"][:"Outer Start"].empty? && variant_call_placement_h[:"#{supporting_call_id}"][:"Outer Start"].to_i
-						call_start_a.push(variant_call_placement_h[:"#{supporting_call_id}"][:"Start"].to_i) if variant_call_placement_h[:"#{supporting_call_id}"] && variant_call_placement_h[:"#{supporting_call_id}"][:Start] && !variant_call_placement_h[:"#{supporting_call_id}"][:Start].empty? && variant_call_placement_h[:"#{supporting_call_id}"][:Start].to_i
-						call_start_a.push(variant_call_placement_h[:"#{supporting_call_id}"][:"Inner Start"].to_i) if variant_call_placement_h[:"#{supporting_call_id}"] && variant_call_placement_h[:"#{supporting_call_id}"][:"Inner Start"] && !variant_call_placement_h[:"#{supporting_call_id}"][:"Inner Start"].empty? && variant_call_placement_h[:"#{supporting_call_id}"][:"Inner Start"].to_i
-
-						# stop of call
-						call_stop_a.push(variant_call_placement_h[:"#{supporting_call_id}"][:Stop].to_i) if variant_call_placement_h[:"#{supporting_call_id}"] && variant_call_placement_h[:"#{supporting_call_id}"][:Stop] && !variant_call_placement_h[:"#{supporting_call_id}"][:Stop].empty? && variant_call_placement_h[:"#{supporting_call_id}"][:Stop].to_i
-						call_stop_a.push(variant_call_placement_h[:"#{supporting_call_id}"][:"Inner Stop"].to_i) if variant_call_placement_h[:"#{supporting_call_id}"] && variant_call_placement_h[:"#{supporting_call_id}"][:"Inner Stop"] && !variant_call_placement_h[:"#{supporting_call_id}"][:"Inner Stop"].empty? && variant_call_placement_h[:"#{supporting_call_id}"][:"Inner Stop"].to_i
-						call_stop_a.push(variant_call_placement_h[:"#{supporting_call_id}"][:"Outer Stop"].to_i) if variant_call_placement_h[:"#{supporting_call_id}"] && variant_call_placement_h[:"#{supporting_call_id}"][:"Outer Stop"] && !variant_call_placement_h[:"#{supporting_call_id}"][:"Outer Stop"].empty? && variant_call_placement_h[:"#{supporting_call_id}"][:"Outer Stop"].to_i
-
-					end
-
-					## call と parent region で境界を比較
-					call_min_start = call_start_a.min
-					call_max_stop = call_stop_a.max
-
-					## JV_SV0053: Variant Call is outside of parent Variant Region
-					if (call_min_start.to_s.match?(/^[0-9]+$/) && call_max_stop.to_s.match?(/^[0-9]+$/) && region_min_start.to_s.match?(/^[0-9]+$/) && region_max_stop.to_s.match?(/^[0-9]+$/)) && (call_min_start < region_min_start || region_max_stop < call_max_stop)
-						call_outside_parent_region_a.push(variant_region_id)
-						variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0053 Warning: Warning if variant call is outside of range of parent variant region, unless region is of type translocation or 'complex chromosomal rearrangement'.")
-					end
-
-					## region type complex, translocation で supporting call に mutation ID 無いとエラー
-					## JV_SV0066: Missing mutation order for complex chromosomal rearrangement and translocation
-					if variant_region_type == "complex chromosomal rearrangement" || variant_region_type == "translocation"
-						if variant_region["dd"]
-							missing_mutation_order_region_a.push(variant_region_id)
-							variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0066 Error: Variant regions with type 'complex chromosomal rearrangement' and 'translocation' must have mutation order in their supporting variant calls. JVar will embed order(s)")
-							
-							m_order += 1
-						end
-
-						## region 単位で region type complex or translocation の call を格納
-						complex_variant_call_per_region_a.push(variant_call_mutation_h[:"#{supporting_call_id}"]) if variant_call_mutation_h[:"#{supporting_call_id}"]
-
-					end
-
-				end
-
-			else  # unless variant_region["Supporting Variant Call IDs"].empty?
-				## JV_SV0065: Missing variant call for region
-				missing_variant_call_for_region_a.push(variant_region_id)
-				variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0065 Error: Region MUST have a child variant call.")
-			end # unless variant_region["Supporting Variant Call IDs"].empty?
-
-			# sampleset ids of copy number gain and loss supporting calls
-			if sampleset_id_of_variant_call_a.sort.uniq.size > 1
-				copy_number_gain_loss_same_sample_region_a.push(variant_region_id)
-				variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0069 Warning: Copy number gain and loss in the same sample.")
-			end
-
 			## translocation: mutation ID and mutation order
+			# supporting_variant_call hash
 			supporting_variant_call_a = []
+			supporting_variant_call_a = JSON.load(variant_region[:supporting_calls_json])
+
 			mutation_id_exist = true
 			mutation_order = 1
 			mutation_id_a = []
+			mutation_order_a = []
 			if variant_region_type == "complex chromosomal rearrangement" || variant_region_type == "translocation"
 
-				# supporting_variant_call hash
-				supporting_variant_call_a = JSON.load(variant_region[:supporting_calls_json])
-				supporting_variant_call_a.each{|h|
-					h["Mutation Order"] = h["Mutation Order"].to_i if h["Mutation Order"].to_i
-					mutation_id_a.push(h["Mutation ID"]) if !h["Mutation ID"].nil? && !h["Mutation ID"].empty?
+				supporting_variant_call_a.each{|supporting_variant_call_h|
+					
+					supporting_variant_call_h["Mutation Order"] = supporting_variant_call_h["Mutation Order"].to_i if supporting_variant_call_h["Mutation Order"].match?(/^[0-9]+$/) && supporting_variant_call_h["Mutation Order"].to_i
+					mutation_id_a.push(supporting_variant_call_h["Mutation ID"]) if !supporting_variant_call_h["Mutation ID"].nil? && !supporting_variant_call_h["Mutation ID"].empty?
+
+					if supporting_variant_call_h["Mutation Order"].is_a?(Integer)
+						mutation_order_a.push(supporting_variant_call_h["Mutation Order"])						
+					else
+						mutation_id_exist = false
+					end
+
 				}
 
+				## JV_SV0100 Mixed mutation ID for complex chromosomal rearrangement and translocation.
 				if !mutation_id_a.empty? && mutation_id_a.sort.uniq.size != 1
 					mixed_mutation_id_region_a.push(variant_region_id)
 					variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0100 Error: Mixed mutation ID for complex chromosomal rearrangement and translocation.")
 				end
 
-				# mutation order がない call が一つでもあれば自動アサイン
-				supporting_variant_call_a.each{|supporting_variant_call_h|
-					if !supporting_variant_call_h["Mutation Order"].is_a?(Integer)
-						mutation_id_exist = false
+				## JV_SV0067: Missing serial mutation order number for complex chromosomal rearrangement and translocation
+				if mutation_id_exist
+					if [*1..mutation_order_a.size] != mutation_order_a
+						missing_serial_mutation_order_region_a.push(variant_region_id)
+						variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0067 Error: Missing serial mutation order number for complex chromosomal rearrangement and translocation.")
 					end
-				}
+				end
 
 				# mutation id の自動埋め込み
 				from_strand_a = []
@@ -3505,7 +3442,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 							}													
 						# 揃っていない
 						else
-							m_order += 1
+							m_order = 1
 							supporting_variant_call_a.sort_by{|h| h["From Chr"] }.each{|supporting_variant_call_h|
 								supporting_variant_call_h.store("Mutation Order", m_order)
 								m_order += 1
@@ -3514,8 +3451,6 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 						
 					end # if supporting_variant_call_a.size == 1
 				
-
-
 				end # if !mutation_id_exist
 
 			end # if variant_region_type == "complex chromosomal rearrangement" || variant_region_type == "translocation"
@@ -3551,61 +3486,201 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 			end # if !supporting_variant_call_a.empty? && supporting_variant_call_a[0]["Mutation Order"].is_a?(Integer)			
 
-
-
-
-
-
-=begin
-			## JV_SV0100: Mixed mutation ID for complex chromosomal rearrangement and translocation
-			if translocation_mutation_id_a.sort.uniq.size > 1
-				mixed_mutation_id_region_a.push(variant_region_id)
-				variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0100 Error: Mixed mutation ID for complex chromosomal rearrangement and translocation.")
-			end
-
-			## JV_SV0067: Missing serial mutation order number for complex chromosomal rearrangement and translocation
-			unless translocation_mutation_order_a.empty?
-				if [*1..translocation_mutation_order_a.size] != translocation_mutation_order_a.map{|e| e.to_i}
-					missing_serial_mutation_order_region_a.push(variant_region_id)
-					variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0067 Error: Missing serial mutation order number for complex chromosomal rearrangement and translocation.")
-				end
-			end
-
-			## region type: complex or translocation: mutation ID and mutation order
-			complex_mutation_id_a = []
-			complex_mutation_order_a = []
-			for complex_call_h in complex_variant_call_per_region_a.sort_by{|e| [e[:"Mutation ID"], e[:"Mutation Order"]]}
-				complex_mutation_id_a.push(complex_call_h[:"Mutation ID"])
-				complex_mutation_order_a.push(complex_call_h[:"Mutation Order"])
-			end
-
-			## JV_SV0100: Mixed mutation ID for complex chromosomal rearrangement and translocation
-			if complex_mutation_id_a.sort.uniq.size > 1
-				mixed_mutation_id_region_a.push(variant_region_id)
-				variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0100 Error: Mixed mutation ID for complex chromosomal rearrangement and translocation.")
-			end
-
-			## JV_SV0067: Missing serial mutation order number for complex chromosomal rearrangement and translocation
-			unless complex_mutation_order_a.empty?
-				if [*1..complex_mutation_order_a.size] != complex_mutation_order_a.map{|e| e.to_i}
-					missing_serial_mutation_order_region_a.push(variant_region_id)
-					variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0067 Error: Missing serial mutation order number for complex chromosomal rearrangement and translocation.")
-				end
-			end
-=end
-
 			# SUPPORTING_VARIANT_REGION
-			if variant_region[:"Supporting Variant Region IDs"].split(/ *, */).size > 0
-				for supporting_region_id in variant_region[:"Supporting Variant Region IDs"].split(/ *, */)
+			if variant_region[:"Supporting Variant Region IDs"].split(/,/).size > 0
+				for supporting_region_id in variant_region[:"Supporting Variant Region IDs"].split(/,/)
 					supporting_region_id_a.push(:"#{supporting_region_id}")
 					variant_region_e.SUPPORTING_VARIANT_REGION(:variant_region_id => supporting_region_id)
+
+					# TODO: suporting region id の実在チェック
 				end
 			end
 
-			# Placement
-	        #if variant_region_type == "complex chromosomal rearrangement" || variant_region_type == "translocation"
+			#
+			# SUPPORTING_VARIANT_CALL elements
+			#
+			sampleset_id_of_variant_call_a = []
+			unless supporting_variant_call_a.empty?
+				for supporting_variant_call_h in supporting_variant_call_a
 
-	        #else
+					supporting_call_id = ""
+					supporting_call_id = supporting_variant_call_h["Variant Call ID"] unless supporting_variant_call_h["Variant Call ID"].empty?
+					supporting_call_id_a.push(supporting_call_id)
+					
+					supporting_variant_call_attr_h = {}
+					supporting_variant_call_attr_h.store(:variant_call_id, supporting_call_id)
+					supporting_variant_call_attr_h.store(:mutation_order, supporting_variant_call_h["Mutation Order"]) if supporting_variant_call_h["Mutation Order"] && supporting_variant_call_h["Mutation Order"].is_a?(Integer)
+					supporting_variant_call_attr_h.store(:mutation_molecule, supporting_variant_call_h["Mutation Molecule"]) if supporting_variant_call_h["Mutation Molecule"] && !supporting_variant_call_h["Mutation Molecule"].empty?
+
+					variant_region_e.SUPPORTING_VARIANT_CALL(supporting_variant_call_attr_h)
+
+					## JV_SV0050: Inconsistent Variant Call Type and Variant Region Type
+					if (variant_call_id_type_h[:"#{supporting_call_id}"] == "copy number gain" || variant_call_id_type_h[:"#{supporting_call_id}"] == "copy number loss") && variant_region_type != "copy number variation"
+						inconsistent_type_region_a.push(variant_region_id)
+						variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0050 Warning: Inconsistent Variant Call Type and Variant Region Type.")
+					end
+
+					## JV_SV0051: Mixed Variant Region Type
+					supporting_variant_call_type = ""
+					supporting_variant_call_type = supporting_variant_call_h["Variant Call Type"] unless supporting_variant_call_h["Variant Call Type"] && supporting_variant_call_h["Variant Call Type"].empty?
+					if variant_region_type != supporting_variant_call_type && (!$variant_region_call_type_h[:"#{variant_region_type}"].nil? && !$variant_region_call_type_h[:"#{variant_region_type}"].include?(supporting_variant_call_type))
+						mixed_type_region_a.push(variant_region_id)
+						variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0051 Warning: Warning if variant call is in a variant region with different type UNLESS the region type is 'copy number variation' and the call type is ('copy number gain','copy number loss','deletion', or 'duplication'), OR the region type is 'mobile element insertion' and the call type is ('alu insertion', 'herv insertion', 'line1 insertion', or 'sva insertion'), OR the region type is 'mobile element deletion' and the call type is ('alu deletion', 'herv deletion', 'line1 deletion', or 'sva deletion'), OR the region type is ('translocation' or 'complex chromosomal rearrangement') and the call type is ('interchromosomal translocation' or 'intrachromosomal translocation').")
+					end
+
+					## JV_SV0069: Copy number gain and loss in the same sample
+					# supporting variant call が属する sampleset ID が異なる場合は warning
+					if supporting_variant_call_type == "copy number gain" || supporting_variant_call_type == "copy number loss"
+						sampleset_id_of_variant_call_a.push(variant_call_id_sampleset_h[:"#{supporting_call_id}"])
+					end
+
+					## min max で境界を比較 JV_SV0053: Variant Call is outside of parent Variant Region
+					call_start_a = []
+					call_stop_a = []
+					call_min_start = ""
+					call_max_stop = ""
+					if variant_region_type.match?(/translocation/) && variant_region_type != "complex chromosomal rearrangement"
+
+						# start of call
+						call_start_a.push(supporting_variant_call_h["Outer Start"].to_i) if supporting_variant_call_h["Outer Start"] && !supporting_variant_call_h["Outer Start"].empty? && supporting_variant_call_h["Outer Start"].to_i
+						call_start_a.push(supporting_variant_call_h["Start"].to_i) if supporting_variant_call_h["Start"] && !supporting_variant_call_h["Start"].empty? && supporting_variant_call_h["Start"].to_i
+						call_start_a.push(supporting_variant_call_h["Inner Start"].to_i) if supporting_variant_call_h["Inner Start"] && !supporting_variant_call_h["Inner Start"].empty? && supporting_variant_call_h["Inner Start"].to_i
+
+						# stop of call
+						call_stop_a.push(supporting_variant_call_h["Outer Stop"].to_i) if supporting_variant_call_h["Outer Stop"] && !supporting_variant_call_h["Outer Stop"].empty? && supporting_variant_call_h["Outer Stop"].to_i
+						call_stop_a.push(supporting_variant_call_h["Stop"].to_i) if supporting_variant_call_h["Stop"] && !supporting_variant_call_h["Stop"].empty? && supporting_variant_call_h["Stop"].to_i
+						call_stop_a.push(supporting_variant_call_h["Inner Stop"].to_i) if supporting_variant_call_h["Inner Stop"] && !supporting_variant_call_h["Inner Stop"].empty? && supporting_variant_call_h["Inner Stop"].to_i
+
+					end
+
+					## call と parent region で境界を比較
+					call_min_start = call_start_a.min
+					call_max_stop = call_stop_a.max
+
+					## JV_SV0053: Variant Call is outside of parent Variant Region
+					if (call_min_start.to_s.match?(/^[0-9]+$/) && call_max_stop.to_s.match?(/^[0-9]+$/) && region_min_start.to_s.match?(/^[0-9]+$/) && region_max_stop.to_s.match?(/^[0-9]+$/)) && (call_min_start < region_min_start || region_max_stop < call_max_stop)
+						call_outside_parent_region_a.push(variant_region_id)
+						variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0053 Warning: Warning if variant call is outside of range of parent variant region, unless region is of type translocation or 'complex chromosomal rearrangement'.")
+					end
+
+					## region type complex, translocation で supporting call に mutation ID 無いとエラー
+					## JV_SV0066: Missing mutation order for complex chromosomal rearrangement and translocation
+					if variant_region_type == "complex chromosomal rearrangement" || variant_region_type == "translocation"
+						if supporting_variant_call_h["Mutation ID"].nil? || supporting_variant_call_h["Mutation ID"].empty?
+							missing_mutation_order_region_a.push(variant_region_id)
+							variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0066 Error: Variant regions with type 'complex chromosomal rearrangement' and 'translocation' must have mutation order in their supporting variant calls. JVar will embed order(s)")
+						end
+					end
+				end
+
+			else  # unless supporting_variant_call_a.empty?
+				## JV_SV0065: Missing variant call for region
+				missing_variant_call_for_region_a.push(variant_region_id)
+				variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0065 Error: Region MUST have a child variant call.")
+			end # unless variant_region["Supporting Variant Call IDs"].empty?
+
+			# sampleset ids of copy number gain and loss supporting calls
+			if sampleset_id_of_variant_call_a.sort.uniq.size > 1
+				copy_number_gain_loss_same_sample_region_a.push(variant_region_id)
+				variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0069 Warning: Copy number gain and loss in the same sample.")
+			end
+
+			##
+			## Placement
+			##				
+	        if variant_region_type == "complex chromosomal rearrangement" || variant_region_type == "translocation"
+			
+	        	supporting_variant_call_a.each{|supporting_variant_call_h|
+
+			        # PLACEMENT attributes
+			        from_placement_attr_h = {}
+			        # from_placement_attr_h.store(:alt_status, "")
+			        # from_placement_attr_h.store(:placement_method, "")
+			        from_placement_attr_h.store(:breakpoint_order, "From")
+			        from_placement_attr_h.store(:variant_call_id, supporting_variant_call_h["Variant Call ID"]) if supporting_variant_call_h["Variant Call ID"] && !supporting_variant_call_h["Variant Call ID"].empty?
+			        from_placement_attr_h.store(:mutation_order, supporting_variant_call_h["Mutation Order"]) if supporting_variant_call_h["Mutation Order"] && supporting_variant_call_h["Mutation Order"].is_a?(Integer)
+			        from_placement_attr_h.store(:mutation_molecule, supporting_variant_call_h["Mutation Molecule"]) if supporting_variant_call_h["Mutation Molecule"] && !supporting_variant_call_h["Mutation Molecule"].empty?
+
+			        variant_region_e.PLACEMENT(from_placement_attr_h){|from_placement_e|
+
+			            # GENOME
+			            from_genome_attr_h = {}					
+						from_genome_attr_h.store(:assembly, supporting_variant_call_h["refseq_assembly_breakpoint"])
+
+						from_genome_attr_h.store(:chr_name, supporting_variant_call_h["From Chr"])
+						from_genome_attr_h.store(:chr_accession, supporting_variant_call_h["from_chr_accession"])
+						from_genome_attr_h.store(:contig_accession, supporting_variant_call_h["from_contig_accession"])
+
+						# start, stop
+			            if supporting_variant_call_h["From Coord"] && !supporting_variant_call_h["From Coord"].empty?
+			            	from_genome_attr_h.store("start", supporting_variant_call_h["From Coord"])
+							from_genome_attr_h.store("stop", supporting_variant_call_h["From Coord"]) unless supporting_variant_call_h["From Coord"].empty?
+						end			            			           
+
+			            from_genome_attr_h.store(:ciposleft, supporting_variant_call_h["ciposleft"]) if supporting_variant_call_h["ciposleft"] && !supporting_variant_call_h["ciposleft"].empty?
+			            from_genome_attr_h.store(:ciposright, supporting_variant_call_h["ciposright"]) if supporting_variant_call_h["ciposright"] && !supporting_variant_call_h["ciposright"].empty?
+			            from_genome_attr_h.store(:ciendleft, supporting_variant_call_h["ciendleft"]) if supporting_variant_call_h["ciendleft"] && !supporting_variant_call_h["ciendleft"].empty?
+			            from_genome_attr_h.store(:ciendright, supporting_variant_call_h["ciendright"]) if supporting_variant_call_h["ciendright"] && !supporting_variant_call_h["ciendright"].empty?
+			            from_genome_attr_h.store(:strand, supporting_variant_call_h["From Strand"]) if supporting_variant_call_h["From Strand"] && !supporting_variant_call_h["From Strand"].empty?
+			            # genome_attr_h.store(:remap_score, "")			            
+			            # genome_attr_h.store(:assembly_unit, "")
+			            # genome_attr_h.store(:alignment, "")
+			            # genome_attr_h.store(:remap_failure_code, "")
+			            # genome_attr_h.store(:placement_rank, "")
+			            # genome_attr_h.store(:placements_per_assembly, "")
+			            # genome_attr_h.store(:remap_diff_chr, "")
+			            # genome_attr_h.store(:remap_best_within_cluster, "")
+
+			            # GENOME attributes
+			            from_placement_e.GENOME(from_genome_attr_h)
+
+			        } # from_placement_e
+
+			        to_placement_attr_h = {}
+			        # to_placement_attr_h.store(:alt_status, "")
+			        # to_placement_attr_h.store(:placement_method, "")
+			        to_placement_attr_h.store(:breakpoint_order, "To")				
+			        to_placement_attr_h.store(:variant_call_id, supporting_variant_call_h["Variant Call ID"]) if supporting_variant_call_h["Variant Call ID"] && !supporting_variant_call_h["Variant Call ID"].empty?	
+			        to_placement_attr_h.store(:mutation_order, supporting_variant_call_h["Mutation Order"]) if supporting_variant_call_h["Mutation Order"] && supporting_variant_call_h["Mutation Order"].is_a?(Integer)
+			        to_placement_attr_h.store(:mutation_molecule, supporting_variant_call_h["Mutation Molecule"]) if supporting_variant_call_h["Mutation Molecule"] && !supporting_variant_call_h["Mutation Molecule"].empty?
+
+			        variant_region_e.PLACEMENT(to_placement_attr_h){|to_placement_e|
+
+			            # GENOME
+			            to_genome_attr_h = {}					
+						to_genome_attr_h.store(:assembly, supporting_variant_call_h["refseq_assembly_breakpoint"])
+
+						to_genome_attr_h.store(:chr_name, supporting_variant_call_h["To Chr"])
+						to_genome_attr_h.store(:chr_accession, supporting_variant_call_h["to_chr_accession"])
+						to_genome_attr_h.store(:contig_accession, supporting_variant_call_h["to_contig_accession"])
+
+						# start, stop
+			            if supporting_variant_call_h["To Coord"] && !supporting_variant_call_h["To Coord"].empty?
+			            	to_genome_attr_h.store("start", supporting_variant_call_h["To Coord"])
+							to_genome_attr_h.store("stop", supporting_variant_call_h["To Coord"])
+						end			            
+
+			            to_genome_attr_h.store(:ciposleft, supporting_variant_call_h["ciposleft"]) if supporting_variant_call_h["ciposleft"] && !supporting_variant_call_h["ciposleft"].empty?
+			            to_genome_attr_h.store(:ciposright, supporting_variant_call_h["ciposright"]) if supporting_variant_call_h["ciposright"] && !supporting_variant_call_h["ciposright"].empty?
+			            to_genome_attr_h.store(:ciendleft, supporting_variant_call_h["ciendleft"]) if supporting_variant_call_h["ciendleft"] && !supporting_variant_call_h["ciendleft"].empty?
+			            to_genome_attr_h.store(:ciendright, supporting_variant_call_h["ciendright"]) if supporting_variant_call_h["ciendright"] && !supporting_variant_call_h["ciendright"].empty?
+			            to_genome_attr_h.store(:strand, supporting_variant_call_h["To Strand"]) if supporting_variant_call_h["To Strand"] && !supporting_variant_call_h["To Strand"].empty?
+			            # genome_attr_h.store(:remap_score, "")			            
+			            # genome_attr_h.store(:assembly_unit, "")
+			            # genome_attr_h.store(:alignment, "")
+			            # genome_attr_h.store(:remap_failure_code, "")
+			            # genome_attr_h.store(:placement_rank, "")
+			            # genome_attr_h.store(:placements_per_assembly, "")
+			            # genome_attr_h.store(:remap_diff_chr, "")
+			            # genome_attr_h.store(:remap_best_within_cluster, "")
+
+			            # GENOME attributes
+			            to_placement_e.GENOME(to_genome_attr_h)
+
+			        } # to_placement_e
+	        	}
+
+	        else # if variant_region_type == "complex chromosomal rearrangement" || variant_region_type == "translocation"
 
 		        # PLACEMENT attributes
 		        placement_attr_h = {}
@@ -3615,83 +3690,15 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 		        variant_region_e.PLACEMENT(placement_attr_h){|placement_e|
 
-					## JV_SV0072: Invalid chromosome reference
-					valid_chr_f = false
-					valid_contig_f = false
-					ref_download_f = false
-					for chromosome_per_assembly_h in chromosome_per_assembly_a
-
-						# contig が sequence report の RefSeq/GenBank accession にあるかどうか、chr と contig 両方書いてある場合は contig を使用
-						if !variant_region[:"Contig"].empty? && variant_region[:Chr].empty? && (chromosome_per_assembly_h[:refseqAccession] == variant_region[:Contig] || chromosome_per_assembly_h[:genbankAccession] == variant_region[:Contig])
-							chr_name = ""
-							chr_accession = ""
-							chr_length = chromosome_per_assembly_h[:length]
-							contig_accession = chromosome_per_assembly_h[:refseqAccession] # fna は refseqAccession 記載
-							valid_contig_f = true
-						# contig が download ref にあるかどうか. download にある=assembly には含まれていない
-						elsif !variant_region[:Contig].empty? && variant_region[:Chr].empty? && $ref_download_h.has_key?(variant_region[:Contig])
-							chr_name = ""
-							chr_accession = ""
-							chr_length = $ref_download_h[variant_region[:Contig]].to_i if $ref_download_h[variant_region[:Contig]].to_i
-							contig_accession = variant_region[:Contig]
-							valid_contig_f = true
-							ref_download_f = true
-						# chr が sequence report の chrName にあるかどうか
-						elsif !variant_region[:Chr].empty? && variant_region[:Contig].empty? && chromosome_per_assembly_h[:chrName] == variant_region[:Chr].sub(/chr/i, "") && chromosome_per_assembly_h[:role] == "assembled-molecule"
-							chr_name = chromosome_per_assembly_h[:chrName]
-							chr_accession = chromosome_per_assembly_h[:refseqAccession]
-							chr_length = chromosome_per_assembly_h[:length]
-							valid_chr_f = true
-						elsif !variant_region[:Chr].empty? && variant_region[:Contig].empty? && chromosome_per_assembly_h[:ucscStyleName].sub(/^chr/i, "") == variant_region[:Chr].sub(/^chr/i, "")
-							chr_name = chromosome_per_assembly_h[:chrName]
-							chr_accession = chromosome_per_assembly_h[:refseqAccession]
-							chr_length = chromosome_per_assembly_h[:length]
-							valid_chr_f = true
-						end
-
-					end
-
-					## JV_SV0077: Contig accession exists for chromosome accession
-					if !variant_region[:Contig].empty? && !variant_region[:Chr].empty?
-						contig_acc_for_chr_acc_region_a.push(variant_region_id)
-						variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0077 Error: Contig accession exists for chromosome accession.")
-					end
-
-					## JV_SV0072: Invalid chromosome reference
-					if !variant_region[:Chr].empty? && !valid_chr_f
-						invalid_chr_ref_region_a.push(variant_region_id)
-						variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0072 Error: Contig accession exists for chromosome accession.")
-					end
-
-					## JV_SV0074: Invalid contig accession reference
-					if !variant_region[:Contig].empty? && !valid_contig_f
-						invalid_contig_acc_ref_region_a.push(variant_region_id)
-						variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0074 Error: Contig accession must refer to a valid INSDC accession and version.")
-					end
-
-					## JV_SV0076: Missing chromosome/contig accession
-					if chr_name.empty? && chr_accession.empty? && contig_accession.empty?
-						missing_chr_contig_acc_region_a.push(variant_region_id)
-						variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0076 Error: Genomic placement must contain either a chr_name, chr_accession, or contig_accession unless it is on a novel sequence insertion or translocation.")
-					end
+					supporting_calls_json_a = JSON.load(variant_region[:supporting_calls_json])
 
 		            # GENOME
-		            genome_attr_h = {}
+		            genome_attr_h = {}					
+					genome_attr_h.store(:assembly, supporting_calls_json_a[0]["refseq_assembly"]) if supporting_calls_json_a[0]["refseq_assembly"]
 
-					if ref_download_f
-						assembly = ""
-						genome_attr_h.store(:assembly, "")
-		            elsif !variant_region[:Assembly].empty?
-						assembly = variant_region[:Assembly]
-						variant_region_assembly_a.push(assembly)
-						genome_attr_h.store(:assembly, refseq_assembly)
-		            else
-						genome_attr_h.store(:assembly, "")
-		            end
-
-					genome_attr_h.store(:chr_name, chr_name)
-					genome_attr_h.store(:chr_accession, chr_accession)
-					genome_attr_h.store(:contig_accession, contig_accession)
+					genome_attr_h.store(:chr_name, variant_region[:Chr])
+					genome_attr_h.store(:chr_accession, supporting_calls_json_a[0]["chr_accession"]) if supporting_calls_json_a[0]["chr_accession"]
+					genome_attr_h.store(:contig_accession, supporting_calls_json_a[0]["contig_accession"]) if supporting_calls_json_a[0]["contig_accession"]
 
 					## placement check
 					## JV_SV0078: Missing start
@@ -3800,10 +3807,10 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 		            genome_attr_h.store("inner_stop", variant_region[:"Inner Stop"]) unless variant_region[:"Inner Stop"].empty?
 		            genome_attr_h.store("outer_stop", variant_region[:"Outer Stop"]) unless variant_region[:"Outer Stop"].empty?
 
-		            # genome_attr_h.store(:ciposleft, "")
-		            # genome_attr_h.store(:ciposright, "")
-		            # genome_attr_h.store(:ciendleft, "")
-		            # genome_attr_h.store(:ciendright, "")
+		            # 	genome_attr_h.store(:ciposleft, variant_region[:ciposleft]) if variant_region[:ciposleft] && !variant_region[:ciposleft].empty?
+		            # 	genome_attr_h.store(:ciposright, variant_region[:ciposright]) if variant_region[:ciposright] && !variant_region[:ciposright].empty?
+		            # 	genome_attr_h.store(:ciendleft, variant_region[:ciendleft]) if variant_region[:ciendleft] && !variant_region[:ciendleft].empty?
+		            # 	genome_attr_h.store(:ciendright, variant_region[:ciendright]) if variant_region[:ciendright] && !variant_region[:ciendright].empty?
 		            # genome_attr_h.store(:remap_score, "")
 		            # genome_attr_h.store(:strand, "")
 		            # genome_attr_h.store(:assembly_unit, "")
@@ -3837,10 +3844,10 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 		        } # placement_e
 
-		    #end # if variant_region_type == "complex chromosomal rearrangement" || variant_region_type == "translocation"
+			end # if variant_region_type == "complex chromosomal rearrangement" || variant_region_type == "translocation"
 
 	    } # variant_region_e
-
+	
 	end # for variant_region in variant_region_a
 
 	## JV_SV0064: Duplicated Variant Region ID
@@ -4389,5 +4396,33 @@ unless contig_download_s.empty?
 	puts contig_download_s
 end
 
+=begin
 
+以下の region チェックは call と重複しているので省略。
+
+					## JV_SV0077: Contig accession exists for chromosome accession
+					if !variant_region[:Contig].empty? && !variant_region[:Chr].empty?
+						contig_acc_for_chr_acc_region_a.push(variant_region_id)
+						variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0077 Error: Contig accession exists for chromosome accession.")
+					end
+
+					## JV_SV0072: Invalid chromosome reference
+					if !variant_region[:Chr].empty? && !valid_chr_f
+						invalid_chr_ref_region_a.push(variant_region_id)
+						variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0072 Error: Contig accession exists for chromosome accession.")
+					end
+
+					## JV_SV0074: Invalid contig accession reference
+					if !variant_region[:Contig].empty? && !valid_contig_f
+						invalid_contig_acc_ref_region_a.push(variant_region_id)
+						variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0074 Error: Contig accession must refer to a valid INSDC accession and version.")
+					end
+
+					## JV_SV0076: Missing chromosome/contig accession
+					if chr_name.empty? && chr_accession.empty? && contig_accession.empty?
+						missing_chr_contig_acc_region_a.push(variant_region_id)
+						variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0076 Error: Genomic placement must contain either a chr_name, chr_accession, or contig_accession unless it is on a novel sequence insertion or translocation.")
+					end
+
+=end
 

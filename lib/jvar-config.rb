@@ -219,14 +219,7 @@ $variant_region_field_a =
 	"From Strand",
 	"To Chr",
 	"To Coord",
-	"To Strand",
-	"Mutation ID",
-	"Mutation Order",
-	"Mutation Molecule",
-	"ciposleft",
-	"ciposright",
-	"ciendleft",
-	"ciendright"
+	"To Strand"
 ]
 
 $cv_h =
