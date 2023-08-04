@@ -20,7 +20,7 @@ require 'roo'
 # Update history
 # 2023-07-25 created
 
-$xref_db_h = 
+$xref_db_h =
 {
   :Archives => ["AE", "dbGaP", "dbSNP", "dbSNP-batch", "DDBJ", "DGV", "EGA", "ENA", "GENBANK", "GENE", "GEO", "SRA", "TRACE", "GEA", "JGA"],
   :Phenotypes => ["HP", "MedGen", "MeSH", "OMIM", "SNOMED", "UMLS"],
@@ -29,7 +29,7 @@ $xref_db_h =
 
 $vtype_h =
 {
-	:"Variant Call Type" => 
+	:"Variant Call Type" =>
 	{
 		:"complex substitution" => "complex substitution",
 		:"copy number gain" => "copy number gain",
@@ -37,7 +37,7 @@ $vtype_h =
 		:"copy number variation" => "copy number variation",
 		:deletion => "deletion",
 		:"mobile element deletion" => "mobile element deletion",
-		:"alu deletion" => "alu deletion",
+		:"Alu deletion" => "alu deletion",
 		:"LINE1 deletion" => "line1 deletion",
 		:"SVA deletion" => "sva deletion",
 		:"HERV deletion" => "herv deletion",
@@ -48,16 +48,16 @@ $vtype_h =
 		:"intrachromosomal translocation" => "intrachromosomal translocation",
 		:inversion => "inversion",
 		:"mobile element insertion" => "mobile element insertion",
-		:"alu insertion" => "alu insertion",
+		:"Alu insertion" => "alu insertion",
 		:"HERV insertion" => "herv insertion",
 		:"LINE1 insertion" => "line1 insertion",
 		:"SVA insertion" => "sva insertion",
 		:"novel sequence insertion" => "novel sequence insertion",
 		:"sequence alteration" => "sequence alteration",
 		:"short tandem repeat variation" => "short tandem repeat",
-		:"tandem duplication" => "tandem duplication"  	
+		:"tandem duplication" => "tandem duplication"
 	},
-	:"Variant Region Type" => 
+	:"Variant Region Type" =>
 	{
 		:"complex substitution" => "complex substitution",
 		:"complex chromosomal rearrangement" => "complex chromosomal rearrangement",
@@ -91,7 +91,7 @@ $inapp_method_analysis_types_a =
 	{:"Method Type" => ["Southern", "Western"], :"Analysis Type" => ["Manual observation"]}
 ]
 
-$required_fields_error_h = 
+$required_fields_error_h =
 {
 	"Study" => ["Submission Type", "Submitter First Name", "Submitter Email", "Submitter Affiliation"],
 	"Sample" => ["Subject ID"],
@@ -112,7 +112,7 @@ $required_fields_error_ignore_h =
 	"Variant Region": ["Variant Region Type", "Assertion Method"]
 }
 
-$variant_region_call_type_h = 
+$variant_region_call_type_h =
 {
 	:"copy number variation" => ["copy number gain", "copy number loss", "deletion", "duplication"],
 	:"mobile element insertion" => ["alu insertion", "herv insertion", "line1 insertion", "sva insertion"],
@@ -121,7 +121,7 @@ $variant_region_call_type_h =
 	:"complex chromosomal rearrangement" => ["interchromosomal translocation", "intrachromosomal translocation"]
 }
 
-$variant_call_type_to_region_type_h = 
+$variant_call_type_to_region_type_h =
 {
 	:"complex substitution" => "complex substitution",
 	:"copy number gain" => "copy number variation",
@@ -253,7 +253,7 @@ $cv_h =
 	}
 }
 
-$assembly_a = 
+$assembly_a =
 [
 	{:refseq_assembly => "GCF_000001405.40", :insdc_assembly => "GCA_000001405.29", :grch_version => "GRCh38.p14", :grch => "GRCh38", :ucsc => "hg38"},
 	{:refseq_assembly => "GCF_000001405.39", :insdc_assembly => "GCA_000001405.28", :grch_version => "GRCh38.p13"},
@@ -1277,7 +1277,7 @@ $sequence_a = [
 	{:assemblyAccession => "GCF_000001405.40", :assemblyUnit => "non-nuclear", :assignedMoleculeLocationType => "Mitochondrion", :chrName => "MT","gcCount":"7350","gcPercent":44.0, :genbankAccession => "J01415.2", :length => 16569, :refseqAccession => "NC_012920.1", :role => "assembled-molecule", :ucscStyleName => "chrM"}
 ]
 
-$defined_samples_h = 
+$defined_samples_h =
 {
   :HG00271 => {
     :sample_name => "HG00271",

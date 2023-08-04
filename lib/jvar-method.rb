@@ -105,7 +105,7 @@ def vcf_parser(vcf_file, vcf_type, args)
 		:CNV => "copy number variation"
 	}
 
-	# SV VCF INFO EVENTYPE 
+	# SV VCF INFO EVENTYPE
 	sv_type_event_type_h = {
 		:DEL => "deletion",
 		:"DEL:ME" => "mobile element deletion",
@@ -136,7 +136,8 @@ def vcf_parser(vcf_file, vcf_type, args)
 		:ORIGIN => "([^;=]+)",
 		:PHENO => "([^;=]+)",
 		:LINKS => "([A-Za-z]+:[-A-Za-z0-9]+)",
-		:EVENT => "([^;=]+)"
+		:EVENT => "([^;=]+)",
+		:MATEID => "([^;=]+)"
 	}
 
 	# Archive target SV VCF FORMAT
@@ -158,7 +159,7 @@ def vcf_parser(vcf_file, vcf_type, args)
 	warning_vcf_header_a = []
 	error_vcf_header_a = []
 	error_ignore_vcf_header_a = []
-	error_exchange_vcf_header_a = []	
+	error_exchange_vcf_header_a = []
 
 	## VCF lines
 	vcf_header_a = []
@@ -179,8 +180,6 @@ def vcf_parser(vcf_file, vcf_type, args)
 
 	# VCF file open
 	vcf_f = open(vcf_file)
-
-
 
 	# directory
 	vcf_path = File.dirname(vcf_file)
@@ -297,6 +296,10 @@ def vcf_parser(vcf_file, vcf_type, args)
 	invalid_posrange_c = 0
 	invalid_endrange_c = 0
 	not_supported_c = 0
+	skipped_mate_c = 0
+
+	mate_id_h = {}
+	invalid_mate_id_a = []
 
 	# INFO
 	invalid_info_c = 0
@@ -321,7 +324,7 @@ def vcf_parser(vcf_file, vcf_type, args)
 	# assembly
 	chromosome_per_assembly_a = []
 
-	# dbSNP VCF 
+	# dbSNP VCF
 	# keep: FILTER
 	# keep: pre-defined INFO & FORMAT tags
 	# keep: contig used
@@ -329,11 +332,14 @@ def vcf_parser(vcf_file, vcf_type, args)
 
 	# INFO first line
 	first_info_f = true
-	
+
 	vcf_f.each_line{|line|
 
 		line.strip!
 		vcf_line_a = line.split("\t")
+
+		skipped_mate_f = false
+		invalid_translocation_f = false
 
 		## first line should be fileformat
 		if line_c == 0
@@ -357,7 +363,7 @@ def vcf_parser(vcf_file, vcf_type, args)
 
 				# fileformat and reference
 				if line =~ /^##reference=(\S+)/ && refseq_assembly.empty?
-					
+
 					reference = $1
 					required_header_tag_h["reference"] += 1
 
@@ -372,7 +378,7 @@ def vcf_parser(vcf_file, vcf_type, args)
 							chromosome_per_assembly_a.push({:chrName => sequence_h[:chrName], :ucscStyleName => sequence_h[:ucscStyleName], :refseqAccession => sequence_h[:refseqAccession], :genbankAccession => sequence_h[:genbankAccession], :role => sequence_h[:role], :length => sequence_h[:length]})
 						end
 					}
-					
+
 					if vcf_type == "SNP" # dbSNP VCF
 						dbsnp_vcf_f.puts "##handle=#{$submitter_handle}"
 						dbsnp_vcf_f.puts "##batch_id=#{args[:batch_id]}" if args[:batch_id] && !args[:batch_id].empty?
@@ -387,7 +393,7 @@ def vcf_parser(vcf_file, vcf_type, args)
 					# INFO definition
 					if line =~ /^##INFO=<ID=([^,]+),/
 						if info_def_h.has_key?($1.to_sym)
-							error_vcf_header_a.push(["JV_VCF0044", "INFO tag ID must be unique in VCF. #{$1}"]) 
+							error_vcf_header_a.push(["JV_VCF0044", "INFO tag ID must be unique in VCF. #{$1}"])
 						end
 						info_def_h.store($1.to_sym, line)
 					end
@@ -399,7 +405,7 @@ def vcf_parser(vcf_file, vcf_type, args)
 							end
 						end
 					end
-				
+
 					if vcf_type == "SNP"
 						if first_info_f
 							dbsnp_vcf_f.puts '##INFO=<ID=VRT,Number=1,Type=Integer,Description="Variation type,1 - SNV: single nucleotide variation,2 - DIV: deletion/insertion variation,3 - HETEROZYGOUS: variable, but undefined at nucleotide level,4 - STR: short tandem repeat (microsatellite) variation, 5 - NAMED: insertion/deletion variation of named repetitive element,6 - NO VARIATION: sequence scanned for variation, but none observed,7 - MIXED: cluster contains submissions from 2 or more allelic classes (not used),8 - MNV: multiple nucleotide variation with alleles of common length greater than 1,9 - Exception">'
@@ -417,14 +423,14 @@ def vcf_parser(vcf_file, vcf_type, args)
 					# FORMAT definition
 					if line =~ /^##FORMAT=<ID=([^,]+),/
 						if format_def_h.has_key?(:"#{$1}")
-							error_vcf_header_a.push(["JV_VCF0045", "FORMAT tag ID must be unique in VCF. #{$1}"]) 
+							error_vcf_header_a.push(["JV_VCF0045", "FORMAT tag ID must be unique in VCF. #{$1}"])
 						end
 						format_def_h.store(:"#{$1}", line)
 					end
-					
+
 					dbsnp_vcf_f.puts line if vcf_type == "SNP"
 
-				elsif line.start_with?("##fileformat=")					
+				elsif line.start_with?("##fileformat=")
 					required_header_tag_h["fileformat"] += 1
 					dbsnp_vcf_f.puts line if vcf_type == "SNP"
 
@@ -466,14 +472,14 @@ def vcf_parser(vcf_file, vcf_type, args)
 					end
 
 					## sample columns
-					if vcf_column_out_a.empty?				
+					if vcf_column_out_a.empty?
 						vcf_sample_a = vcf_column_a[9..-1] if vcf_column_a[9..-1]
 					else
 						vcf_sample_a = vcf_column_out_a[9..-1] if vcf_column_out_a[9..-1]
 					end
 
 					if vcf_type == "SNP"
-					
+
 						# JV_VCF0042: Invalid sample reference in VCF
 						unless (vcf_sample_a - args[:valid_sample_sampleset_refs]).empty?
 							error_vcf_header_a.push(["JV_VCF0042", "Reference a Sample Name of a Sample in the SampleSet or a SampleSet Name in the VCF sample column. #{(vcf_sample_a - args[:valid_sample_sampleset_refs]).sort.uniq.join(",")}"])
@@ -522,6 +528,7 @@ def vcf_parser(vcf_file, vcf_type, args)
 			vrt = ""
 			vrt_number = ""
 			sv_type = ""
+			variant_sequence = ""
 
 			# chromosome
 			chr_name = ""
@@ -540,7 +547,7 @@ def vcf_parser(vcf_file, vcf_type, args)
 			end
 
 			# field 前後の whitespace 削除
-			unless vcf_field_whitespaces_a.empty?			
+			unless vcf_field_whitespaces_a.empty?
 				field_whitespaces_c += 1
 				vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_VCF0005 Warning: White space characters before/after fields are automatically removed.")
 				vcf_line_a = vcf_line_a.collect{|e| e.strip }
@@ -588,7 +595,7 @@ def vcf_parser(vcf_file, vcf_type, args)
 			sample_a = vcf_line_a[9..-1] if vcf_line_a[9..-1]
 
 			info_h = {}
-			if info && info.split(";").size > 0				
+			if info && info.split(";").size > 0
 				info.split(";").each{|info_item|
 					key, value = "", ""
 					key = info_item.split("=")[0].strip if info_item.split("=")[0]
@@ -639,14 +646,13 @@ def vcf_parser(vcf_file, vcf_type, args)
 			end
 
 			# JV_VCF0021: Duplicated local IDs
-			if vcf_type == "SNP"
-				if id && !id.empty?
-					if id_h.has_key?(:"#{id}")
-						vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_VCF0021 Error: Local IDs should be unique in a dataset/VCF.")
-						duplicated_id_c += 1
-					end
-					id_h.store(:"#{id}", 1)
+			# JV_VCFS0012: MATEID not found
+			if id && !id.empty?
+				if id_h.has_key?(:"#{id}")
+					vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_VCF0021 Error: Local IDs should be unique in a dataset/VCF.")
+					duplicated_id_c += 1
 				end
+				id_h.store(:"#{id}", 1)
 			end
 
 			# JV_VCF0036: Multi-allelic ALT allele
@@ -686,7 +692,7 @@ def vcf_parser(vcf_file, vcf_type, args)
 
 				if snp_in_window_c > 10
 					vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_VCFP0001 Warning: Too many SNPs (more than 10 SNPs in 50bp). Verify these regions are legitimate.")
-					dense_snp_c += 1				
+					dense_snp_c += 1
 				end
 
 			end
@@ -770,7 +776,7 @@ def vcf_parser(vcf_file, vcf_type, args)
 
 			# JV_VCF0035: Variant at telomere
 			# VCF spec と dbSNP VCF guideline では telomere 0 or N+1
-			# dbVar VCF guideline では 1 (p-arm), N (q-arm) となっているが dbSNP/VCF spec に準拠する 
+			# dbVar VCF guideline では 1 (p-arm), N (q-arm) となっているが dbSNP/VCF spec に準拠する
 			if chr_length != -1 && (pos == 0 || pos == chr_length + 1)
 				vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_VCF0035 Warning: Variant at telomere.")
 				telomere_c += 1
@@ -784,13 +790,13 @@ def vcf_parser(vcf_file, vcf_type, args)
 
 				ref_fasta = ""
 				ref_fasta_extracted = ""
-				
+
 				if !ref_download_f
 					ref_fasta_extracted = `#{sin_path}samtools faidx reference/#{refseq_assembly}.fna #{chr_accession}:#{pos}-#{pos+ref.size-1}`
-				elsif ref_download_f				
+				elsif ref_download_f
 					ref_fasta_extracted = `#{sin_path}samtools faidx reference-download/#{chr_accession}.fna #{chr_accession}:#{pos}-#{pos+ref.size-1}`
 				end
-								
+
 				ref_fasta = ref_fasta_extracted.split("\n").drop(1).join("").upcase if ref_fasta_extracted.split("\n").drop(1).join("").upcase
 
 				# JV_VCF0014: REF allele mismatch with reference
@@ -839,7 +845,7 @@ def vcf_parser(vcf_file, vcf_type, args)
 
 						# archive target のみ格納
 						if vcf_type == "SNP"
-							target_format_tag_snp_h.keys.each{|target_ft_key_sym|							
+							target_format_tag_snp_h.keys.each{|target_ft_key_sym|
 								tmp_format_data_h.store(target_ft_key_sym, sample_value.split(":")[k]) if key == "#{target_ft_key_sym}" && sample_value.split(":")[k] && sample_value.split(":")[k].gsub(".", "") # per SampleSet this VCF/dataset belongs to.
 							}
 						elsif vcf_type == "SV"
@@ -901,7 +907,7 @@ def vcf_parser(vcf_file, vcf_type, args)
 				ac_greater_than_an_f = false
 				if info_h[:AC].to_i > info_h[:AN].to_i
 					ac_greater_than_an_c += 1
-					vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_C0063 Error: Allele count is greater than allele number.")				
+					vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_C0063 Error: Allele count is greater than allele number.")
 					ac_greater_than_an_f = true
 				end
 
@@ -911,7 +917,7 @@ def vcf_parser(vcf_file, vcf_type, args)
 				else
 					if info_h[:AC].to_i.fdiv(info_h[:AN].to_i).floor(6).to_s && !ac_greater_than_an_f
 						af = info_h[:AC].to_i.fdiv(info_h[:AN].to_i).floor(6).to_s
-						
+
 						calculated_af_c += 1
 						vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_C0062 Warning: Allele frequency was calculated as allele count/allele number. #{af}")
 
@@ -965,7 +971,7 @@ def vcf_parser(vcf_file, vcf_type, args)
 					vrt_number = info_h[:VRT]
 					vrt = snp_vrt_h[info_h[:VRT].to_i]
 
-				elsif !ref.empty? && !alt.empty? && !alt.include?(",") && ref.size == 1 && alt.size == 1 && ref != alt					 
+				elsif !ref.empty? && !alt.empty? && !alt.include?(",") && ref.size == 1 && alt.size == 1 && ref != alt
 
 					vrt_number = "1"
 					vrt = "SNV"
@@ -1130,33 +1136,49 @@ def vcf_parser(vcf_file, vcf_type, args)
 				from_chr = ""
 				from_coord = -1
 				from_strand = ""
-				variant_sequence = ""
 				to_chr = ""
 				to_coord = -1
 				to_strand = ""
 				mutation_molecule = ""
 				mutation_id = ""
+				mate_id = ""
 
-				mutation_id = info_h[:EVENT] if info_h[:EVENT] && info_h[:EVENT]
+				if info_h[:EVENT] && info_h[:EVENT]
+					mutation_id = info_h[:EVENT]
+				end
+
+				if info_h[:MATEID] && info_h[:MATEID]
+					mate_id = info_h[:MATEID]
+					mate_id_h.store(:"#{id}", :"#{mate_id}")
+				end
+
+				# EVENT がない mateid の片方 (VCF で下に書いてる方) は実質的に同一 SV なのでスキップ
+				if mate_id_h.has_value?(:"#{id}") && mutation_id.empty?
+					vcf_log_a.push("#{line.strip}\t# JV_VCFS0013 Warning: Identical breakend mate skipped.")
+					skipped_mate_f = true
+					skipped_mate_c += 1
+				end
 
 				chr_trans_regex = "([A-Za-z0-9_.]+):([0-9]+)"
+
 				# if translocation
 				if alt.match?(/\[.*\[/) || alt.match?(/\].*\]/)
 
 					valid_translocation_f = false
 					translocation_f = true
 
+					# single breakend は未対応
 					if pos > 0
 						if alt =~ /#{ref}([ATGCN]*)\[#{chr_trans_regex}\[/i
 							from_chr = chrom
 							from_coord = pos
 							from_strand = "+"
-							
+
 							variant_sequence = $1
 							to_coord = $3.to_i
 							to_chr = $2.sub(/chr/i, "")
 							to_strand = "+"
-							
+
 							valid_translocation_f = true
 						elsif alt =~ /#{ref}([ATGCN]*)\]#{chr_trans_regex}\]/i
 							from_chr = chrom
@@ -1242,14 +1264,14 @@ def vcf_parser(vcf_file, vcf_type, args)
 
 						telomere_translocation_f = true
 
-					end
+					end # if pos > 0
 
 					# translocation && valid translocation、より深いチェックは convert で.
 					if valid_translocation_f
 
 						# Assembly
 						vcf_variant_call_h.store(:"Assembly for Translocation Breakpoint", reference)
-						
+
 						vcf_variant_call_h.store(:"From Chr", from_chr)
 						vcf_variant_call_h.store(:"From Coord", from_coord.to_s)
 						vcf_variant_call_h.store(:"From Strand", from_strand)
@@ -1258,6 +1280,7 @@ def vcf_parser(vcf_file, vcf_type, args)
 						vcf_variant_call_h.store(:"To Strand", to_strand)
 						vcf_variant_call_h.store(:"Mutation ID", mutation_id)
 						vcf_variant_call_h.store(:variant_sequence, variant_sequence)
+						vcf_variant_call_h.store(:mate_id, mate_id)
 
 						if from_chr == to_chr
 							sv_type = "intrachromosomal translocation"
@@ -1272,6 +1295,7 @@ def vcf_parser(vcf_file, vcf_type, args)
 						# JV_VCFS0003: Invalid chromosome rearrangement
 						vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_VCFS0003 Error: Describe chromosome translocations according to the VCF specification and the JVar guideline.")
 						invalid_translocation_c += 1
+						invalid_translocation_f = true # translocation ALT [] であるがパースできないものは error を出してエラー回避のため取り込まない
 					end
 
 				else # if alt =~ /\[.*\[/ || alt =~ /\].*\]/
@@ -1280,8 +1304,9 @@ def vcf_parser(vcf_file, vcf_type, args)
 					vcf_variant_call_h.store(:Assembly, reference)
 
 					# Chr
-					vcf_variant_call_h.store(:"Chr", chrom)
+					vcf_variant_call_h.store(:Chr, chrom)
 
+					# empty を格納しておく
 					vcf_variant_call_h.store(:"From Chr", "")
 					vcf_variant_call_h.store(:"From Coord", "")
 					vcf_variant_call_h.store(:"From Strand", "")
@@ -1296,23 +1321,40 @@ def vcf_parser(vcf_file, vcf_type, args)
 					if !alt.include?("<") && alt.include?(".")
 						# JV_VCFS0010: Invalid ALT allele
 						vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_VCFS0010 Error: Remove invalid ALT allele other than ATGCN bases, symbolic allele and translocations.")
-						invalid_sv_alt_c += 1					
+						invalid_sv_alt_c += 1
 					end
 
 				end # if translocation
 
 				## SV TYPE
 				# 優先順位 [[/]] in ALT > ALT > SVTYPE > if there is GATK-SV INFO CPX_TYPE --> sequence alteration
-				unless sv_type.match?(/translocation/) && translocation_f
+				# insertion REF 複数 - indel (delin)
+
+				# translocation 以外
+				if sv_type != "intrachromosomal translocation" && sv_type != "interchromosomal translocation" && !translocation_f
 
 					# ALT, graphtyper のような <DEL:SVSIZE=129:COVERAGE> を想定して前方一致。より specific な type が後でマッチされるのでより特異的な type が選択される
 					sv_type_alt_h.each{|sv_type_symbol_key, sv_type_symbol_value|
 						sv_type = sv_type_symbol_value if alt.match?(/^\<#{sv_type_symbol_key}/)
 					}
-					
+
 					# SVTYPE
 					if sv_type == "" && info_h[:SVTYPE] && sv_type_svtype_h[:"#{info_h[:SVTYPE]}"]
 						sv_type = sv_type_svtype_h[:"#{info_h[:SVTYPE]}"]
+					end
+
+					# REF:CA ALT:CGCCCTTGTGACGTCACGGAAGGCGCGCGCTTGCGACGTCACGGAAGGCGCGCCCTTGTGACGTCACGGAAGGCGCT END=778706;SVTYPE=INS;SVLEN=76;CIGAR=1M76I1D のような indel
+					if ref.size > 1 && ref[0] == alt[0] && !alt[1].nil? && ref[1] != alt[1] && ref.size < alt.size && sv_type == "insertion"
+						sv_type = "indel"
+						variant_sequence = alt[ref.size, alt.size - ref.size]
+						vcf_variant_call_h.store(:variant_sequence, variant_sequence)
+					end
+
+					# REF:GCGGCCGCCTCCTCCTCCGAACGCGGCCGCCTCCTCCTCCGAACGTGGCCTCCTCCGAACGTGGCCGCCTCCTCCTCCGAACGTGGCCTCCTCCGAACGCGGCCGCCGCCTCCTCCGAACGCGGCCT ALT:GTGG END=904656;SVTYPE=DEL;SVLEN=-126;CIGAR=1M3I126D のような indel
+					if ref.size > 1 && ref[0] == alt[0] && !alt[1].nil? && ref[1] != alt[1] && ref.size > alt.size && sv_type == "deletion"
+						sv_type = "indel"
+						#variant_sequence = alt[ref.size, alt.size - ref.size]
+						#vcf_variant_call_h.store(:variant_sequence, variant_sequence)
 					end
 
 				end # unless sv_type =~ /translocation/
@@ -1335,7 +1377,7 @@ def vcf_parser(vcf_file, vcf_type, args)
 				# SVLEN
 				if info_h[:SVLEN] && !info_h[:SVLEN].empty?
 					svlen = info_h[:SVLEN].sub(/^-/, "") if info_h[:SVLEN].sub(/^-/, "")
-					if sv_type.match?(/deletion|insertion/)
+					if sv_type == "deletion" || sv_type == "insertion"
 						vcf_variant_call_h.store(:"Insertion Length", svlen)
 					else
 						vcf_variant_call_h.store(:"Insertion Length", "")
@@ -1376,7 +1418,7 @@ def vcf_parser(vcf_file, vcf_type, args)
 						stop = start + svlen.to_i.abs
 					end
 				end
-		
+
 				# JV_VCFS0005: Invalid POSrange
 				if posrange_f && pos != inner_start && pos != outer_start
 					vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_VCFS0005 Error: One POSrange value must be the same as the POS value.")
@@ -1480,8 +1522,12 @@ def vcf_parser(vcf_file, vcf_type, args)
 				vcf_variant_call_h.store(:"Mutation Molecule", "")
 
 				# FORMAT data を格納
-				vcf_variant_call_h.store(:FORMAT, format_data_a)			
-				vcf_variant_call_a.push(vcf_variant_call_h)
+				vcf_variant_call_h.store(:FORMAT, format_data_a)
+
+				# SV hash を配列に格納 mate id 指定 and invalid translocation は取り込まない
+				if !skipped_mate_f && !invalid_translocation_f
+					vcf_variant_call_a.push(vcf_variant_call_h)
+				end
 
 			end # if vcf_type == "SV"
 
@@ -1490,7 +1536,7 @@ def vcf_parser(vcf_file, vcf_type, args)
 
 				# dbSNP VCF 用に VRT を挿入
 				if !vcf_line_a[7].match?(/VRT=[0-9]/) && !vrt_number.empty?
-			
+
 					if vcf_line_a[7].nil? || vcf_line_a[7].empty?
 						vcf_line_a[7] = "VRT=#{vrt_number}"
 					else
@@ -1543,12 +1589,12 @@ def vcf_parser(vcf_file, vcf_type, args)
 	## JV_VCF0027: Data not sorted based on positions
 	error_vcf_content_a.push(["JV_VCF0027", "Sort data based on their positions. #{not_sorted_pos_c} sites"]) if not_sorted_pos_c > 0
 
-	## JV_VCF0008: Invalid position (POS)	
+	## JV_VCF0008: Invalid position (POS)
 	error_vcf_content_a.push(["JV_VCF0008", "Positions (POS) should be numbers. #{pos_not_number_c} sites"]) if pos_not_number_c > 0
-	
+
 	## JV_VCF0009: Local ID longer than 64 characters
 	error_vcf_content_a.push(["JV_VCF0009", "Provide unique local IDs shorter than 64 characters. #{id_not_within_size_c} sites"]) if id_not_within_size_c > 0
-	
+
 	## JV_VCF0010: Missing local ID
 	error_vcf_content_a.push(["JV_VCF0010", "Provide unique local IDs shorter than 64 characters. #{missing_id_c} sites"]) if missing_id_c > 0
 
@@ -1657,6 +1703,20 @@ def vcf_parser(vcf_file, vcf_type, args)
 
 		# JV_VCFS0003: Invalid chromosome translocation
 		error_vcf_content_a.push(["JV_VCFS0003", "Describe chromosome translocations according to the VCF specification and the JVar guideline. #{invalid_translocation_c} sites"]) if invalid_translocation_c > 0
+
+		# JV_VCFS0013: Identical breakend mate skipped
+		warning_vcf_content_a.push(["JV_VCFS0013", "An identical breakend mate of the MATEID without EVENT was skipped. #{skipped_mate_c} sites"]) if skipped_mate_c > 0
+
+		# mate id does not exist
+		not_found_mate_id_c = 0
+		mate_id_h.each{|id, mate_id|
+			unless id_h.has_key?(:"#{mate_id}")
+				not_found_mate_id_c += 1
+			end
+		}
+
+		# JV_VCFS0012: MATEID not found
+		warning_vcf_content_a.push(["JV_VCFS0012", "A breakend mate of the MATEID does not exist. #{not_found_mate_id_c} sites"]) if not_found_mate_id_c > 0
 
 	end
 
@@ -1839,7 +1899,7 @@ def pubinfo_pmid(pmid_a)
 		if pmid =~ /^\d{1,}$/
 
 			uri = URI.parse("https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&rettype=docsum&retmode=json&id=#{pmid}")
-			response = Net::HTTP.get(uri)		
+			response = Net::HTTP.get(uri)
 
 			pub_h = JSON.parse(response)
 
