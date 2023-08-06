@@ -2267,6 +2267,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 							from_genome_attr_h.store(:contig_accession, from_contig_accession)
 							from_genome_attr_h.store(:strand, from_strand)
 
+							variant_call.store(:refseq_assembly_breakpoint, refseq_assembly)
 							variant_call.store(:from_chr_accession, from_chr_accession)
 							variant_call.store(:from_contig_accession, from_contig_accession)
 
@@ -2621,6 +2622,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 						genome_attr_h.store(:chr_accession, chr_accession)
 						genome_attr_h.store(:contig_accession, contig_accession)
 
+						variant_call.store(:refseq_assembly, refseq_assembly)
 						variant_call.store(:chr_accession, chr_accession)
 						variant_call.store(:contig_accession, contig_accession)
 
@@ -3245,6 +3247,29 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 		}
 		variant_region_tsv_f.close
 
+	elsif !variant_region_a.empty? && !variant_call_a.empty?
+
+		for variant_region in variant_region_a
+
+			if variant_region[:"Supporting Variant Call IDs"] && variant_region[:"Supporting Variant Call IDs"].split(",")
+				variant_region[:"Supporting Variant Call IDs"].split(",").each{|supporting_variant_call_id|
+					if variant_call_by_id_h[:"#{supporting_variant_call_id}"]
+						supporting_variant_call_h = variant_call_by_id_h[:"#{supporting_variant_call_id}"]
+
+						variant_region.store(:refseq_assembly, supporting_variant_call_h[:refseq_assembly]) if supporting_variant_call_h[:refseq_assembly]
+						variant_region.store(:chr_accession, supporting_variant_call_h[:chr_accession]) if supporting_variant_call_h[:chr_accession]
+						variant_region.store(:contig_accession, supporting_variant_call_h[:contig_accession]) if supporting_variant_call_h[:contig_accession]
+						variant_region.store(:refseq_assembly_breakpoint, supporting_variant_call_h[:refseq_assembly_breakpoint]) if supporting_variant_call_h[:refseq_assembly_breakpoint]
+						variant_region.store(:from_chr_accession, supporting_variant_call_h[:from_chr_accession]) if supporting_variant_call_h[:from_chr_accession]
+						variant_region.store(:from_contig_accession, supporting_variant_call_h[:from_contig_accession]) if supporting_variant_call_h[:from_contig_accession]
+						variant_region.store(:to_chr_accession, supporting_variant_call_h[:to_chr_accession]) if supporting_variant_call_h[:to_chr_accession]
+						variant_region.store(:to_contig_accession, supporting_variant_call_h[:to_contig_accession]) if supporting_variant_call_h[:to_contig_accession]
+					end
+				}
+			end
+
+		end
+
 	end # if variant_region_a.empty?
 
 	##
@@ -3546,8 +3571,6 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 				for supporting_region_id in variant_region[:"Supporting Variant Region IDs"].split(/,/)
 					supporting_region_id_a.push(:"#{supporting_region_id}")
 					variant_region_e.SUPPORTING_VARIANT_REGION(:variant_region_id => supporting_region_id)
-
-					# TODO: suporting region id の実在チェック
 				end
 			end
 
@@ -3838,8 +3861,6 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 			        # placement_attr_h.store(:breakpoint_order, "")
 
 			        variant_region_e.PLACEMENT(placement_attr_h){|placement_e|
-
-pp variant_region
 
 			            # GENOME
 			            genome_attr_h = {}
