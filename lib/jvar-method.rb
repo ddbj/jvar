@@ -611,7 +611,7 @@ def vcf_parser(vcf_file, vcf_type, args)
 					end
 
 					# header INFO で定義されているかどうか
-					unless info_def_h.has_key?(:"#{key}")
+					if key != "." && !info_def_h.has_key?(:"#{key}")
 						undefined_info_key_a.push(key)
 					end
 
