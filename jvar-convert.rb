@@ -3222,6 +3222,12 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 			variant_region_from_call_h.store(:to_chr_accession, variant_call[:to_chr_accession]) if variant_call[:to_chr_accession]
 			variant_region_from_call_h.store(:to_contig_accession, variant_call[:to_contig_accession]) if variant_call[:to_contig_accession]
 
+			# cipos ciend
+			variant_region_from_call_h.store(:ciposleft, variant_call[:ciposleft]) if variant_call[:ciposleft]
+			variant_region_from_call_h.store(:ciposright, variant_call[:ciposright]) if variant_call[:ciposright]
+			variant_region_from_call_h.store(:ciendleft, variant_call[:ciendleft]) if variant_call[:ciendleft]
+			variant_region_from_call_h.store(:ciendright, variant_call[:ciendright]) if variant_call[:ciendright]
+
 			# tsv log 出力用 row
 			r_line_a = []
 			$variant_region_field_a.each{|field|

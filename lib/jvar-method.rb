@@ -1152,9 +1152,9 @@ def vcf_parser(vcf_file, vcf_type, args)
 					mate_id_h.store(:"#{id}", :"#{mate_id}")
 				end
 
-				# EVENT がない mateid の片方 (VCF で下に書いてる方) は実質的に同一 SV なのでスキップ
-				if mate_id_h.has_value?(:"#{id}") && mutation_id.empty?
-					vcf_log_a.push("#{line.strip}\t# JV_VCFS0013 Warning: Identical breakend mate skipped.")
+				# EVENT (Mutation ID) の有る無しに関わらず MATEID の片方 (VCF で下に書いてある方) は同一 SV を双方向から記載したものなのでスキップ
+				if mate_id_h.has_value?(:"#{id}")
+					vcf_log_a.push("#{line.strip}\t# JV_VCFS0013 Warning: One of identical breakend mates of the same MATEID was skipped.")
 					skipped_mate_f = true
 					skipped_mate_c += 1
 				end
@@ -1478,15 +1478,19 @@ def vcf_parser(vcf_file, vcf_type, args)
 				if info_h[:CIPOS] && info_h[:CIPOS].split(",")[0] && info_h[:CIPOS].split(",")[1]
 					ciposleft = info_h[:CIPOS].split(",")[0].sub(/^-/, "") unless info_h[:CIPOS].split(",")[0] == "."
 					ciposright = info_h[:CIPOS].split(",")[1] unless info_h[:CIPOS].split(",")[1] == "."
-					posrange_f = true
+					cipos_f = true
 				end
 
 				# End CIEND
+				# VCF spec v4.4 p14 If CIEND is missing, it is assumed to match CIPOS.
 				ciend_f = false
 				if info_h[:CIEND] && info_h[:CIEND].split(",")[0] && info_h[:CIEND].split(",")[1]
 					ciendleft = info_h[:CIEND].split(",")[0].sub(/^-/, "") unless info_h[:CIEND].split(",")[0] == "."
 					ciendright = info_h[:CIEND].split(",")[1] unless info_h[:CIEND].split(",")[1] == "."
 					ciend_f = true
+				elsif cipos_f
+					ciendleft = ciposleft
+					ciendright = ciposright
 				end
 
 				if ciposleft == -1
@@ -1705,7 +1709,7 @@ def vcf_parser(vcf_file, vcf_type, args)
 		error_vcf_content_a.push(["JV_VCFS0003", "Describe chromosome translocations according to the VCF specification and the JVar guideline. #{invalid_translocation_c} sites"]) if invalid_translocation_c > 0
 
 		# JV_VCFS0013: Identical breakend mate skipped
-		warning_vcf_content_a.push(["JV_VCFS0013", "An identical breakend mate of the MATEID without EVENT was skipped. #{skipped_mate_c} sites"]) if skipped_mate_c > 0
+		warning_vcf_content_a.push(["JV_VCFS0013", "One of identical breakend mates of the same MATEID was skipped. #{skipped_mate_c} sites"]) if skipped_mate_c > 0
 
 		# mate id does not exist
 		not_found_mate_id_c = 0
@@ -1716,7 +1720,7 @@ def vcf_parser(vcf_file, vcf_type, args)
 		}
 
 		# JV_VCFS0012: MATEID not found
-		warning_vcf_content_a.push(["JV_VCFS0012", "A breakend mate of the MATEID does not exist. #{not_found_mate_id_c} sites"]) if not_found_mate_id_c > 0
+		warning_vcf_content_a.push(["JV_VCFS0012", "An ID corresponds to the MATEID does not exist. #{not_found_mate_id_c} sites"]) if not_found_mate_id_c > 0
 
 	end
 
