@@ -19,8 +19,8 @@ dbVar のデータモデルに dbSNP の Assay を Dataset として取り込ん
 
 SampleSet, Experiment, Dataset は内部的に連番 ID で参照。dbSNP メタデータ中では、それぞれ、ss1、e1、a1 のように区別して参照。　　
 
-variant は mono-allelic で受付。取り扱いをシンプルにするのと TogoVar と粒度を揃えるため。  
-dbSNP/dbVar は pos + variation type が同じ multi-allelic を許容。dbSNP rs と Variant region は multi。
+variant は bi-allelic で受付。取り扱いをシンプルにするのと TogoVar と粒度を揃えるため。  
+dbSNP/dbVar は pos + variation type が同じ multi-allelic を許容。dbSNP rs と Variant region は multi-allelic。
 
 JVar-SNP variant は公開後 dbSNP に取り込まれると、dbSNP により ss が発行され、次の build で rs にマージされる （新規であれば rs 発行）。
 
@@ -54,9 +54,17 @@ VCF Guidelines
 
 [download-assembly.sh](download-assembly.sh)
 
-* NCBI Dataset から GRCh37 latest と GRCh38 の全バージョンをダウンロード  
+* NCBI Dataset から GRCh37 latest と GRCh38 latest をダウンロード  
 * REF 塩基配列チェック用に [samtools faidx](http://www.htslib.org/doc/samtools-faidx.html) で fasta のインデックス作成
 * [Genome sequence report](https://www.ncbi.nlm.nih.gov/datasets/docs/v2/reference-docs/data-reports/genome-sequence/) jsonl を結合し reference sequence と CHROM チェックに使用
+
+[ref-validator.rb](ref-validator.rb)  
+処理に時間がかかるリファレンス配列との塩基一致チェック部分を切り出したチェックツール  
+
+## batch
+
+[batch-validation.sh](batch-validation.sh)  
+サイズが大きい VCF 処理用シェル  
 
 ## VCF
 
@@ -181,3 +189,23 @@ VSUB000001_SV.log.txt # validation 結果のサマリー
 [Singularity](/singularity/Singularity)
 
 ruby プログラムのパスを書き換えた後に Singularity イメージを構築。
+
+## アクセッション番号発行
+
+アクセッション番号と公開用データ作成
+
+[jvar-accession.rb](jvar-accession.rb)
+
+
+[/study/last.txt](/study/last.txt)  
+アクセッション番号ラストナンバー管理用ファイル  
+
+## dbVar xsd
+
+[/xsd/dbVar.xsd](/xsd/dbVar.xsd)  
+dbVar xsd
+
+## テストデータ
+
+[/test](/test)  
+テスト用メタデータエクセルと VCF ファイル  
