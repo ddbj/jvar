@@ -1960,9 +1960,11 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 				end
 			}
 
-			if !variant_call[:"Variant Call Type"].empty? && $vtype_h[:"Variant Call Type"][:"#{variant_call[:"Variant Call Type"]}"]
+			if !variant_call[:"Variant Call Type"].empty? && $vtype_h[:"Variant Call Type"][:"#{variant_call[:"Variant Call Type"]}"] && $vtype_so_h[:"Variant Call Type"][:"#{variant_call[:"Variant Call Type"]}"]
 				variant_call_type = $vtype_h[:"Variant Call Type"][:"#{variant_call[:"Variant Call Type"]}"]
+				variant_call_type_SO_id = $vtype_so_h[:"Variant Call Type"][:"#{variant_call[:"Variant Call Type"]}"]				
 				variant_call_attr_h.store(:variant_call_type, variant_call_type)
+				variant_call_attr_h.store(:variant_call_type_SO_id, variant_call_type_SO_id)
 				variant_call_id_type_h.store(:"#{variant_call_id}", variant_call_type)
 			end
 
@@ -1972,17 +1974,16 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 				variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_SV0099 Error: Provide a valid dataset ID. #{variant_call[:"Dataset ID"]}")
 			end
 
-			variant_call_attr_h.store(:variant_call_type_SO_id, "")
-			variant_call_attr_h.store(:clinical_source, "")
-			variant_call_attr_h.store(:clinical_significance, "")
-			variant_call_attr_h.store(:insertion_length, variant_call[:"Insertion Length"]) unless !variant_call[:"Insertion Length"] && variant_call[:"Insertion Length"].empty?
+			#variant_call_attr_h.store(:clinical_source, "")
+			#variant_call_attr_h.store(:clinical_significance, "")
+			variant_call_attr_h.store(:insertion_length, variant_call[:"Insertion Length"]) if variant_call[:"Insertion Length"] && !variant_call[:"Insertion Length"].empty?
 			variant_call_attr_h.store(:zygosity, variant_call[:Zygosity]) unless variant_call[:Zygosity].empty?
 			variant_call_attr_h.store(:origin, variant_call[:Origin]) unless variant_call[:Origin].empty?
 			variant_call_attr_h.store(:copy_number, variant_call[:"Copy Number"]) unless variant_call[:"Copy Number"].empty?
-			variant_call_attr_h.store(:reference_copy_number, "")
-			# variant_call_attr_h.store(:support_count, "")
-			# variant_call_attr_h.store(:log2_value, "")
-			# variant_call_attr_h.store(:is_low_quality, "")
+			#variant_call_attr_h.store(:reference_copy_number, "")
+			#variant_call_attr_h.store(:support_count, "")
+			#variant_call_attr_h.store(:log2_value, "")
+			#variant_call_attr_h.store(:is_low_quality, "")
 
 			# Experiment ID
 			# from VCF and has an experiment ID
@@ -2017,7 +2018,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 				end
 			end
 
-			variant_call_attr_h.store(:repeat_count, "")
+			#variant_call_attr_h.store(:repeat_count, "")
 
 			submission.VARIANT_CALL(variant_call_attr_h){|variant_call_e|
 
@@ -2263,7 +2264,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 							from_genome_attr_h.store(:chr_name, from_chr_name)
 							from_genome_attr_h.store(:chr_accession, from_chr_accession)
-							from_genome_attr_h.store(:contig_accession, from_contig_accession)
+							from_genome_attr_h.store(:contig_accession, from_contig_accession) if from_contig_accession && !from_contig_accession.empty?
 							from_genome_attr_h.store(:strand, from_strand)
 
 							variant_call.store(:refseq_assembly_breakpoint, refseq_assembly)
@@ -2276,8 +2277,8 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 								from_genome_attr_h.store(:start, variant_call[:"From Coord"])
 								from_genome_attr_h.store(:stop, variant_call[:"From Coord"])
 							else
-								from_genome_attr_h.store(:start, "")
-								from_genome_attr_h.store(:stop, "")
+								#from_genome_attr_h.store(:start, "")
+								#from_genome_attr_h.store(:stop, "")
 							end
 
 							# cipos
@@ -2404,7 +2405,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 							to_genome_attr_h.store(:chr_name, to_chr_name)
 							to_genome_attr_h.store(:chr_accession, to_chr_accession)
-							to_genome_attr_h.store(:contig_accession, to_contig_accession)
+							to_genome_attr_h.store(:contig_accession, to_contig_accession) if to_contig_accession && !to_contig_accession.empty?
 							to_genome_attr_h.store(:strand, to_strand)
 
 							variant_call.store(:to_chr_accession, to_chr_accession)
@@ -2416,8 +2417,8 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 								to_genome_attr_h.store(:start, variant_call[:"To Coord"])
 								to_genome_attr_h.store(:stop, variant_call[:"To Coord"])
 							else
-								to_genome_attr_h.store(:start, "")
-								to_genome_attr_h.store(:stop, "")
+								#to_genome_attr_h.store(:start, "")
+								#to_genome_attr_h.store(:stop, "")
 							end
 
 							# ciend
@@ -2619,7 +2620,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 						## chr/chr_accession/contig_accession
 						genome_attr_h.store(:chr_name, chr_name)
 						genome_attr_h.store(:chr_accession, chr_accession)
-						genome_attr_h.store(:contig_accession, contig_accession)
+						genome_attr_h.store(:contig_accession, contig_accession) if contig_accession && !contig_accession.empty?
 
 						variant_call.store(:refseq_assembly, refseq_assembly)
 						variant_call.store(:chr_accession, chr_accession)
@@ -2818,92 +2819,97 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 			##
 			## GENOTYPE
 			##
-			if sv_genotype_f
+			
+			# 2024-01-17 
+			# dbVar は XML GENOTYPE には対応していないためコメントアウト
+			# アクセッション番号が埋め込まれた VCF から取り込んでいる
+			
+			# if sv_genotype_f
 
-				# Sample Name, Subject ID は BioSample accession に置換
-				unless variant_call[:FORMAT].empty?
+			# 	# Sample Name, Subject ID は BioSample accession に置換
+			# 	unless variant_call[:FORMAT].empty?
 
-					for ft_value_h in variant_call[:FORMAT]
+			# 		for ft_value_h in variant_call[:FORMAT]
 
-						genotype_attr_h = {}
+			# 			genotype_attr_h = {}
 
-						unless variant_call[:"Variant Call ID"] && variant_call[:"Variant Call ID"].empty?
-							genotype_attr_h.store(:variant_accession, variant_call[:"Variant Call ID"])
-						else
-							genotype_attr_h.store(:variant_accession, "")
-						end
+			# 			unless variant_call[:"Variant Call ID"] && variant_call[:"Variant Call ID"].empty?
+			# 				genotype_attr_h.store(:variant_accession, variant_call[:"Variant Call ID"])
+			# 			else
+			# 				genotype_attr_h.store(:variant_accession, "")
+			# 			end
 
-						unless variant_call[:"Experiment ID"] && variant_call[:"Experiment ID"].empty?
-							genotype_attr_h.store(:experiment_id, variant_call[:"Experiment ID"])
-						end
+			# 			unless variant_call[:"Experiment ID"] && variant_call[:"Experiment ID"].empty?
+			# 				genotype_attr_h.store(:experiment_id, variant_call[:"Experiment ID"])
+			# 			end
 
-						# per sample
-						# genotype から sample への reference は sample_name (sample_id in XML)
-						# genotype から sampleset への reference は sampleset_id
+			# 			# per sample
+			# 			# genotype から sample への reference は sample_name (sample_id in XML)
+			# 			# genotype から sampleset への reference は sampleset_id
 
-						ft_value_h.each{|sample_key_sym, sample_value_h|
+			# 			ft_value_h.each{|sample_key_sym, sample_value_h|
 
-							ref_sample_name = ""
-							ref_sampleset_id = ""
-							cn = ""
-							if "#{sample_key_sym}".match?(/^SAM[D|E|N]\d{1,}$/) && sample_name_accession_h.key("#{sample_key_sym}")
-								ref_sample_name = sample_name_accession_h.key("#{sample_key_sym}")
-							elsif sample_name_accession_h[sample_key_sym]
-								ref_sample_name = "#{sample_key_sym}"
-							# sampleset name であれば OK
-							elsif sampleset_name_per_sampleset_h[variant_call[:"SampleSet ID"].to_i] && sampleset_name_per_sampleset_h[variant_call[:"SampleSet ID"].to_i] == ["#{sample_key_sym}"]
-								ref_sampleset_id = variant_call[:"SampleSet ID"]
-							# defined name
-							elsif defined_samples_list_h.has_key?("#{sample_key_sym}")
-								ref_sample_name = "#{sample_key_sym}"
-							end
+			# 				ref_sample_name = ""
+			# 				ref_sampleset_id = ""
+			# 				cn = ""
+			# 				if "#{sample_key_sym}".match?(/^SAM[D|E|N]\d{1,}$/) && sample_name_accession_h.key("#{sample_key_sym}")
+			# 					ref_sample_name = sample_name_accession_h.key("#{sample_key_sym}")
+			# 				elsif sample_name_accession_h[sample_key_sym]
+			# 					ref_sample_name = "#{sample_key_sym}"
+			# 				# sampleset name であれば OK
+			# 				elsif sampleset_name_per_sampleset_h[variant_call[:"SampleSet ID"].to_i] && sampleset_name_per_sampleset_h[variant_call[:"SampleSet ID"].to_i] == ["#{sample_key_sym}"]
+			# 					ref_sampleset_id = variant_call[:"SampleSet ID"]
+			# 				# defined name
+			# 				elsif defined_samples_list_h.has_key?("#{sample_key_sym}")
+			# 					ref_sample_name = "#{sample_key_sym}"
+			# 				end
 
-							missing_sample_sampleset_ref_a.push("#{sample_key_sym}") if ref_sample_name.empty? && ref_sampleset_id.empty?
+			# 				missing_sample_sampleset_ref_a.push("#{sample_key_sym}") if ref_sample_name.empty? && ref_sampleset_id.empty?
 
-							# xsd error を回避するためデフォルト true
-							success = "true"
-							for ft_key_sym, sample_value in sample_value_h
+			# 				# xsd error を回避するためデフォルト true
+			# 				success = "true"
+			# 				for ft_key_sym, sample_value in sample_value_h
 
-								if "#{ft_key_sym}" == "GT"
-									genotype_attr_h.store(:submitted_genotype, sample_value)
-								end
+			# 					if "#{ft_key_sym}" == "GT"
+			# 						genotype_attr_h.store(:submitted_genotype, sample_value)
+			# 					end
 
-								if "#{ft_key_sym}" == "CN"
-									cn = sample_value
-								end
+			# 					if "#{ft_key_sym}" == "CN"
+			# 						cn = sample_value
+			# 					end
 
-								# FT PASS or not
-								if "#{ft_key_sym}" == "FT"
-									if sample_value.match?(/PASS/i)
-										success = "true"
-									else
-										success = "false"
-									end
-								end
+			# 					# FT PASS or not
+			# 					if "#{ft_key_sym}" == "FT"
+			# 						if sample_value.match?(/PASS/i)
+			# 							success = "true"
+			# 						else
+			# 							success = "false"
+			# 						end
+			# 					end
 
-							end
+			# 				end
 
-							genotype_attr_h.store(:success, success)
+			# 				genotype_attr_h.store(:success, success)
 
-							if !ref_sample_name.empty?
-								gt_xml.GENOTYPE(genotype_attr_h){|genotype_e|
-									genotype_e.SAMPLE(:sample_id => ref_sample_name)
-									genotype_e.ALLELE(:allele_copy_number => cn) unless cn.empty?
-								}
-							elsif !ref_sampleset_id.empty?
-								gt_xml.GENOTYPE(genotype_attr_h){|genotype_e|
-									genotype_e.SAMPLESET(:sampleset_id => ref_sampleset_id)
-									genotype_e.ALLELE(:allele_copy_number => cn) unless cn.empty?
-								}
-							end
+			# 				if !ref_sample_name.empty?
+			# 					gt_xml.GENOTYPE(genotype_attr_h){|genotype_e|
+			# 						genotype_e.SAMPLE(:sample_id => ref_sample_name)
+			# 						genotype_e.ALLELE(:allele_copy_number => cn) unless cn.empty?
+			# 					}
+			# 				elsif !ref_sampleset_id.empty?
+			# 					gt_xml.GENOTYPE(genotype_attr_h){|genotype_e|
+			# 						genotype_e.SAMPLESET(:sampleset_id => ref_sampleset_id)
+			# 						genotype_e.ALLELE(:allele_copy_number => cn) unless cn.empty?
+			# 					}
+			# 				end
 
-						} # ft_value_h.each{|sample_key, sample_value_h|
+			# 			} # ft_value_h.each{|sample_key, sample_value_h|
 
-					end # for ft_value_h in variant_call["FORMAT"]
+			# 		end # for ft_value_h in variant_call["FORMAT"]
 
-				end # unless variant_call["FORMAT"].empty?
+			# 	end # unless variant_call["FORMAT"].empty?
 
-			end # if sv_genotype_f
+			# end # if sv_genotype_f
 
 			##
 			## Variant call TSV
@@ -3078,6 +3084,9 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 		variant_region_tsv_a = []
 		variant_region_tsv_a.push(["# #{$variant_region_field_a[0]}"] + $variant_region_field_a[1..-1])
 		merged_variant_call_ids_h = {}
+		merged_calls_by_mutation_id_c = 0
+		merged_calls_by_identity_c = 0
+		
 		r_first = true
 		for variant_call in variant_call_a
 
@@ -3117,6 +3126,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 						if e != r_variant_call_id
 							merged_variant_call_ids_h.store(e, 1)
 							merged_calls_c += 1
+							merged_calls_by_mutation_id_c += 1
 						end
 					}
 
@@ -3141,6 +3151,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 							if e != r_variant_call_id
 								merged_variant_call_ids_h.store(e, 1)
 								merged_calls_c += 1
+								merged_calls_by_identity_c += 1
 							end
 						}
 
@@ -3252,6 +3263,15 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 		}
 		variant_region_tsv_f.close
 
+		# JV_SV0103: Merged variant calls
+		if merged_calls_by_identity_c > 0 && merged_calls_by_mutation_id_c > 0
+			warning_sv_a.push(["JV_SV0103", "Variant calls merged into regions. Identical calls merged: #{merged_calls_by_identity_c} calls. Breakpoint calls grouped by submitter: #{merged_calls_by_mutation_id_c} calls."])
+		elsif merged_calls_by_identity_c > 0 
+			warning_sv_a.push(["JV_SV0103", "Variant calls merged into regions. Identical calls merged: #{merged_calls_by_identity_c} calls."])
+		elsif merged_calls_by_mutation_id_c > 0
+			warning_sv_a.push(["JV_SV0103", "Variant calls merged into regions. Breakpoint calls grouped by submitter: #{merged_calls_by_mutation_id_c} calls."])
+		end
+		
 	elsif !variant_region_a.empty? && !variant_call_a.empty?
 
 		for variant_region in variant_region_a
@@ -3381,16 +3401,17 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 		}
 
 		# variant_region_type CV check
-		if !variant_region[:"Variant Region Type"].empty? && !$vtype_h[:"Variant Region Type"][:"#{variant_region[:"Variant Region Type"]}"].nil?
+		if !variant_region[:"Variant Region Type"].empty? && !$vtype_h[:"Variant Region Type"][:"#{variant_region[:"Variant Region Type"]}"].nil? && !$vtype_so_h[:"Variant Region Type"][:"#{variant_region[:"Variant Region Type"]}"].nil?
 			variant_region_type = $vtype_h[:"Variant Region Type"][:"#{variant_region[:"Variant Region Type"]}"]
+			variant_region_type_SO_id = $vtype_so_h[:"Variant Region Type"][:"#{variant_region[:"Variant Region Type"]}"]
 			variant_region_attr_h.store(:variant_region_type, variant_region_type)
+			variant_region_attr_h.store(:variant_region_type_SO_id, variant_region_type_SO_id)
 		else
 			# JV_SV0102 Missing Variant Region Type
 			missing_variant_region_type_a.push(variant_region_id)
 			variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# V_SV0102 Error: Variant Region Type is missing.")
 		end
 
-		variant_region_attr_h.store(:variant_region_type_SO_id, "")
 		# variant_region_attr_h.store(:is_low_quality, "")
 		# variant_region_attr_h.store(:repeat_motif, "")
 		# variant_region_attr_h.store(:repeat_counts, "")
@@ -3474,7 +3495,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 						mutation_order_perfect = true
 					else
 						missing_serial_mutation_order_region_a.push(variant_region_id)
-						variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0067 Error: Missing serial mutation order number for complex chromosomal rearrangement and translocation. JVar will assign serial order(s).")
+						variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0067 Warning: Missing serial mutation order number for complex chromosomal rearrangement and translocation.")
 					end
 
 					# mutation order の自動埋め込み、完璧ではない場合以外は自動埋め込み。SV0067 でそのメッセージを伝える
@@ -3539,7 +3560,8 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 			end # if variant_region_type == "complex chromosomal rearrangement" || variant_region_type == "translocation"
 
 			## Translocation placements validations
-			if !supporting_variant_call_a.empty? && supporting_variant_call_a[0][:"Mutation Order"].is_a?(Integer)
+			# mutataion molecule がある場合のみ order 間の整合性チェックを実施
+			if !supporting_variant_call_a.empty? && supporting_variant_call_a[0][:"Mutation Order"].is_a?(Integer) && !supporting_variant_call_a[0][:"Mutation Molecule"].empty?
 
 				# mutation order がある場合、order で昇順ソート
 				supporting_variant_call_a = supporting_variant_call_a.sort_by{|h| h[:"Mutation Order"] }
@@ -3592,8 +3614,13 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 					supporting_variant_call_attr_h = {}
 					supporting_variant_call_attr_h.store(:variant_call_id, supporting_call_id)
-					supporting_variant_call_attr_h.store(:mutation_order, supporting_variant_call_h[:"Mutation Order"]) if supporting_variant_call_h[:"Mutation Order"] && supporting_variant_call_h[:"Mutation Order"].is_a?(Integer)
-					supporting_variant_call_attr_h.store(:mutation_molecule, supporting_variant_call_h[:"Mutation Molecule"]) if supporting_variant_call_h[:"Mutation Molecule"] && !supporting_variant_call_h[:"Mutation Molecule"].empty?
+					
+					# mutataion order は mutation molecule がある場合にのみ記載
+					# 派生染色体、例 der(5)、や空間的に連なった translocation を記載する場合にのみ order を記載
+					if supporting_variant_call_h[:"Mutation Molecule"] && !supporting_variant_call_h[:"Mutation Molecule"].empty?
+						supporting_variant_call_attr_h.store(:mutation_order, supporting_variant_call_h[:"Mutation Order"]) if supporting_variant_call_h[:"Mutation Order"] && supporting_variant_call_h[:"Mutation Order"].is_a?(Integer)
+						supporting_variant_call_attr_h.store(:mutation_molecule, supporting_variant_call_h[:"Mutation Molecule"]) 
+					end
 
 					variant_region_e.SUPPORTING_VARIANT_CALL(supporting_variant_call_attr_h)
 
@@ -3668,239 +3695,245 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 			# 3. identical - translocation region の from to, translocation 以外 region の placement そのまま
 
 			# Mutation ID
-	        if mutation_id_exist
+			if mutation_id_exist
 
-	        	supporting_variant_call_a.each{|supporting_variant_call_h|
+				supporting_variant_call_a.each{|supporting_variant_call_h|
 
-	        		# from/to しか存在しないはず
-			        # PLACEMENT attributes
-			        from_placement_attr_h = {}
-			        # from_placement_attr_h.store(:alt_status, "")
-			        # from_placement_attr_h.store(:placement_method, "")
-			        from_placement_attr_h.store(:breakpoint_order, "From")
-			        from_placement_attr_h.store(:variant_call_id, supporting_variant_call_h[:"Variant Call ID"]) if supporting_variant_call_h[:"Variant Call ID"] && !supporting_variant_call_h[:"Variant Call ID"].empty?
-			        from_placement_attr_h.store(:mutation_order, supporting_variant_call_h[:"Mutation Order"]) if supporting_variant_call_h[:"Mutation Order"] && supporting_variant_call_h[:"Mutation Order"].is_a?(Integer)
-			        from_placement_attr_h.store(:mutation_molecule, supporting_variant_call_h[:"Mutation Molecule"]) if supporting_variant_call_h[:"Mutation Molecule"] && !supporting_variant_call_h[:"Mutation Molecule"].empty?
+					# from/to しか存在しないはず
+					# PLACEMENT attributes
+					from_placement_attr_h = {}
+					# from_placement_attr_h.store(:alt_status, "")
+					# from_placement_attr_h.store(:placement_method, "")
+					from_placement_attr_h.store(:breakpoint_order, "From")
+					from_placement_attr_h.store(:variant_call_id, supporting_variant_call_h[:"Variant Call ID"]) if supporting_variant_call_h[:"Variant Call ID"] && !supporting_variant_call_h[:"Variant Call ID"].empty?
+					
+					if supporting_variant_call_h[:"Mutation Molecule"] && !supporting_variant_call_h[:"Mutation Molecule"].empty?
+						from_placement_attr_h.store(:mutation_order, supporting_variant_call_h[:"Mutation Order"]) if supporting_variant_call_h[:"Mutation Order"] && supporting_variant_call_h[:"Mutation Order"].is_a?(Integer)
+						from_placement_attr_h.store(:mutation_molecule, supporting_variant_call_h[:"Mutation Molecule"])
+					end
 
-			        variant_region_e.PLACEMENT(from_placement_attr_h){|from_placement_e|
+					variant_region_e.PLACEMENT(from_placement_attr_h){|from_placement_e|
 
-			            # GENOME
-			            from_genome_attr_h = {}
-						from_genome_attr_h.store(:assembly, supporting_variant_call_h[:refseq_assembly_breakpoint])
+							# GENOME
+							from_genome_attr_h = {}
+							from_genome_attr_h.store(:assembly, supporting_variant_call_h[:refseq_assembly_breakpoint])
 
-						from_genome_attr_h.store(:chr_name, supporting_variant_call_h[:"From Chr"])
-						from_genome_attr_h.store(:chr_accession, supporting_variant_call_h[:from_chr_accession])
-						from_genome_attr_h.store(:contig_accession, supporting_variant_call_h[:from_contig_accession])
+							from_genome_attr_h.store(:chr_name, supporting_variant_call_h[:"From Chr"])
+							from_genome_attr_h.store(:chr_accession, supporting_variant_call_h[:from_chr_accession])
+							from_genome_attr_h.store(:contig_accession, supporting_variant_call_h[:from_contig_accession]) if supporting_variant_call_h[:from_contig_accession] && !supporting_variant_call_h[:from_contig_accession].empty?
 
-						# start, stop
-			            if supporting_variant_call_h[:"From Coord"] && !supporting_variant_call_h[:"From Coord"].empty?
-			            	from_genome_attr_h.store(:start, supporting_variant_call_h[:"From Coord"])
-							from_genome_attr_h.store(:stop, supporting_variant_call_h[:"From Coord"])
-						end
+							# start, stop
+							if supporting_variant_call_h[:"From Coord"] && !supporting_variant_call_h[:"From Coord"].empty?
+								from_genome_attr_h.store(:start, supporting_variant_call_h[:"From Coord"])
+								from_genome_attr_h.store(:stop, supporting_variant_call_h[:"From Coord"])
+							end
 
-						from_genome_attr_h.store(:strand, supporting_variant_call_h[:"From Strand"]) if supporting_variant_call_h[:"From Strand"] && !supporting_variant_call_h[:"From Strand"].empty?
+							from_genome_attr_h.store(:strand, supporting_variant_call_h[:"From Strand"]) if supporting_variant_call_h[:"From Strand"] && !supporting_variant_call_h[:"From Strand"].empty?
 
-			            from_genome_attr_h.store(:ciposleft, supporting_variant_call_h[:ciposleft]) if supporting_variant_call_h[:ciposleft] && !supporting_variant_call_h[:ciposleft].empty?
-			            from_genome_attr_h.store(:ciposright, supporting_variant_call_h[:ciposright]) if supporting_variant_call_h[:ciposright] && !supporting_variant_call_h[:ciposright].empty?
-			            from_genome_attr_h.store(:ciendleft, supporting_variant_call_h[:ciendleft]) if supporting_variant_call_h[:ciendleft] && !supporting_variant_call_h[:ciendleft].empty?
-			            from_genome_attr_h.store(:ciendright, supporting_variant_call_h[:ciendright]) if supporting_variant_call_h[:ciendright] && !supporting_variant_call_h[:ciendright].empty?
+							from_genome_attr_h.store(:ciposleft, supporting_variant_call_h[:ciposleft]) if supporting_variant_call_h[:ciposleft] && !supporting_variant_call_h[:ciposleft].empty?
+							from_genome_attr_h.store(:ciposright, supporting_variant_call_h[:ciposright]) if supporting_variant_call_h[:ciposright] && !supporting_variant_call_h[:ciposright].empty?
+							from_genome_attr_h.store(:ciendleft, supporting_variant_call_h[:ciendleft]) if supporting_variant_call_h[:ciendleft] && !supporting_variant_call_h[:ciendleft].empty?
+							from_genome_attr_h.store(:ciendright, supporting_variant_call_h[:ciendright]) if supporting_variant_call_h[:ciendright] && !supporting_variant_call_h[:ciendright].empty?
 
-			            # genome_attr_h.store(:remap_score, "")
-			            # genome_attr_h.store(:assembly_unit, "")
-			            # genome_attr_h.store(:alignment, "")
-			            # genome_attr_h.store(:remap_failure_code, "")
-			            # genome_attr_h.store(:placement_rank, "")
-			            # genome_attr_h.store(:placements_per_assembly, "")
-			            # genome_attr_h.store(:remap_diff_chr, "")
-			            # genome_attr_h.store(:remap_best_within_cluster, "")
+							# genome_attr_h.store(:remap_score, "")
+							# genome_attr_h.store(:assembly_unit, "")
+							# genome_attr_h.store(:alignment, "")
+							# genome_attr_h.store(:remap_failure_code, "")
+							# genome_attr_h.store(:placement_rank, "")
+							# genome_attr_h.store(:placements_per_assembly, "")
+							# genome_attr_h.store(:remap_diff_chr, "")
+							# genome_attr_h.store(:remap_best_within_cluster, "")
 
-			            # GENOME attributes
-			            from_placement_e.GENOME(from_genome_attr_h)
+							# GENOME attributes
+							from_placement_e.GENOME(from_genome_attr_h)
 
-			        } # from_placement_e
+					} # from_placement_e
 
-			        to_placement_attr_h = {}
-			        # to_placement_attr_h.store(:alt_status, "")
-			        # to_placement_attr_h.store(:placement_method, "")
-			        to_placement_attr_h.store(:breakpoint_order, "To")
-			        to_placement_attr_h.store(:variant_call_id, supporting_variant_call_h[:"Variant Call ID"]) if supporting_variant_call_h[:"Variant Call ID"] && !supporting_variant_call_h[:"Variant Call ID"].empty?
-			        to_placement_attr_h.store(:mutation_order, supporting_variant_call_h[:"Mutation Order"]) if supporting_variant_call_h[:"Mutation Order"] && supporting_variant_call_h[:"Mutation Order"].is_a?(Integer)
-			        to_placement_attr_h.store(:mutation_molecule, supporting_variant_call_h[:"Mutation Molecule"]) if supporting_variant_call_h[:"Mutation Molecule"] && !supporting_variant_call_h[:"Mutation Molecule"].empty?
+					to_placement_attr_h = {}
+					# to_placement_attr_h.store(:alt_status, "")
+					# to_placement_attr_h.store(:placement_method, "")
+					to_placement_attr_h.store(:breakpoint_order, "To")
+					to_placement_attr_h.store(:variant_call_id, supporting_variant_call_h[:"Variant Call ID"]) if supporting_variant_call_h[:"Variant Call ID"] && !supporting_variant_call_h[:"Variant Call ID"].empty?
+					
+					if supporting_variant_call_h[:"Mutation Molecule"] && !supporting_variant_call_h[:"Mutation Molecule"].empty?
+						to_placement_attr_h.store(:mutation_order, supporting_variant_call_h[:"Mutation Order"]) if supporting_variant_call_h[:"Mutation Order"] && supporting_variant_call_h[:"Mutation Order"].is_a?(Integer)
+						to_placement_attr_h.store(:mutation_molecule, supporting_variant_call_h[:"Mutation Molecule"])
+					end
 
-			        variant_region_e.PLACEMENT(to_placement_attr_h){|to_placement_e|
+					variant_region_e.PLACEMENT(to_placement_attr_h){|to_placement_e|
 
-			            # GENOME
-			            to_genome_attr_h = {}
-						to_genome_attr_h.store(:assembly, supporting_variant_call_h[:refseq_assembly_breakpoint])
+							# GENOME
+							to_genome_attr_h = {}
+							to_genome_attr_h.store(:assembly, supporting_variant_call_h[:refseq_assembly_breakpoint])
 
-						to_genome_attr_h.store(:chr_name, supporting_variant_call_h[:"To Chr"])
-						to_genome_attr_h.store(:chr_accession, supporting_variant_call_h[:to_chr_accession])
-						to_genome_attr_h.store(:contig_accession, supporting_variant_call_h[:to_contig_accession])
+							to_genome_attr_h.store(:chr_name, supporting_variant_call_h[:"To Chr"])
+							to_genome_attr_h.store(:chr_accession, supporting_variant_call_h[:to_chr_accession])
+							to_genome_attr_h.store(:contig_accession, supporting_variant_call_h[:to_contig_accession]) if supporting_variant_call_h[:to_contig_accession] && !supporting_variant_call_h[:to_contig_accession].empty?
 
-						# start, stop
-			            if supporting_variant_call_h[:"To Coord"] && !supporting_variant_call_h[:"To Coord"].empty?
-			            	to_genome_attr_h.store(:start, supporting_variant_call_h[:"To Coord"])
-							to_genome_attr_h.store(:stop, supporting_variant_call_h[:"To Coord"])
-						end
+							# start, stop
+							if supporting_variant_call_h[:"To Coord"] && !supporting_variant_call_h[:"To Coord"].empty?
+								to_genome_attr_h.store(:start, supporting_variant_call_h[:"To Coord"])
+								to_genome_attr_h.store(:stop, supporting_variant_call_h[:"To Coord"])
+							end
 
-						to_genome_attr_h.store(:strand, supporting_variant_call_h[:"To Strand"]) if supporting_variant_call_h[:"To Strand"] && !supporting_variant_call_h[:"To Strand"].empty?
+							to_genome_attr_h.store(:strand, supporting_variant_call_h[:"To Strand"]) if supporting_variant_call_h[:"To Strand"] && !supporting_variant_call_h[:"To Strand"].empty?
 
-			            to_genome_attr_h.store(:ciposleft, supporting_variant_call_h[:ciposleft]) if supporting_variant_call_h[:ciposleft] && !supporting_variant_call_h[:ciposleft].empty?
-			            to_genome_attr_h.store(:ciposright, supporting_variant_call_h[:ciposright]) if supporting_variant_call_h[:ciposright] && !supporting_variant_call_h[:ciposright].empty?
-			            to_genome_attr_h.store(:ciendleft, supporting_variant_call_h[:ciendleft]) if supporting_variant_call_h[:ciendleft] && !supporting_variant_call_h[:ciendleft].empty?
-			            to_genome_attr_h.store(:ciendright, supporting_variant_call_h[:ciendright]) if supporting_variant_call_h[:ciendright] && !supporting_variant_call_h[:ciendright].empty?
+							to_genome_attr_h.store(:ciposleft, supporting_variant_call_h[:ciposleft]) if supporting_variant_call_h[:ciposleft] && !supporting_variant_call_h[:ciposleft].empty?
+							to_genome_attr_h.store(:ciposright, supporting_variant_call_h[:ciposright]) if supporting_variant_call_h[:ciposright] && !supporting_variant_call_h[:ciposright].empty?
+							to_genome_attr_h.store(:ciendleft, supporting_variant_call_h[:ciendleft]) if supporting_variant_call_h[:ciendleft] && !supporting_variant_call_h[:ciendleft].empty?
+							to_genome_attr_h.store(:ciendright, supporting_variant_call_h[:ciendright]) if supporting_variant_call_h[:ciendright] && !supporting_variant_call_h[:ciendright].empty?
 
-			            # genome_attr_h.store(:remap_score, "")
-			            # genome_attr_h.store(:assembly_unit, "")
-			            # genome_attr_h.store(:alignment, "")
-			            # genome_attr_h.store(:remap_failure_code, "")
-			            # genome_attr_h.store(:placement_rank, "")
-			            # genome_attr_h.store(:placements_per_assembly, "")
-			            # genome_attr_h.store(:remap_diff_chr, "")
-			            # genome_attr_h.store(:remap_best_within_cluster, "")
+							# genome_attr_h.store(:remap_score, "")
+							# genome_attr_h.store(:assembly_unit, "")
+							# genome_attr_h.store(:alignment, "")
+							# genome_attr_h.store(:remap_failure_code, "")
+							# genome_attr_h.store(:placement_rank, "")
+							# genome_attr_h.store(:placements_per_assembly, "")
+							# genome_attr_h.store(:remap_diff_chr, "")
+							# genome_attr_h.store(:remap_best_within_cluster, "")
 
-			            # GENOME attributes
-			            to_placement_e.GENOME(to_genome_attr_h)
+							# GENOME attributes
+							to_placement_e.GENOME(to_genome_attr_h)
 
-			        } # to_placement_e
+					} # to_placement_e
 
-			    } # supporting_variant_call_a.each{|supporting_variant_call_h|
+			} # supporting_variant_call_a.each{|supporting_variant_call_h|
 
-	        else # if not mutation_id_exist
+			else # if not mutation_id_exist
 
-	        	# translocation, 1:1
-	        	if variant_region_type == "complex chromosomal rearrangement" || variant_region_type == "translocation"
+				# translocation, 1:1
+				if variant_region_type == "complex chromosomal rearrangement" || variant_region_type == "translocation"
 
-			        # PLACEMENT attributes
-			        from_placement_attr_h = {}
-			        # from_placement_attr_h.store(:alt_status, "")
-			        # from_placement_attr_h.store(:placement_method, "")
-			        from_placement_attr_h.store(:breakpoint_order, "From")
+					# PLACEMENT attributes
+					from_placement_attr_h = {}
+					# from_placement_attr_h.store(:alt_status, "")
+					# from_placement_attr_h.store(:placement_method, "")
+					from_placement_attr_h.store(:breakpoint_order, "From")
 
-			        variant_region_e.PLACEMENT(from_placement_attr_h){|from_placement_e|
+					variant_region_e.PLACEMENT(from_placement_attr_h){|from_placement_e|
 
-			            # GENOME
-			            from_genome_attr_h = {}
-						from_genome_attr_h.store(:assembly, variant_region[:refseq_assembly_breakpoint])
+							# GENOME
+							from_genome_attr_h = {}
+							from_genome_attr_h.store(:assembly, variant_region[:refseq_assembly_breakpoint])
 
-						from_genome_attr_h.store(:chr_name, variant_region[:"From Chr"])
-						from_genome_attr_h.store(:chr_accession, variant_region[:from_chr_accession])
-						from_genome_attr_h.store(:contig_accession, variant_region[:from_contig_accession])
+							from_genome_attr_h.store(:chr_name, variant_region[:"From Chr"])
+							from_genome_attr_h.store(:chr_accession, variant_region[:from_chr_accession])
+							from_genome_attr_h.store(:contig_accession, variant_region[:from_contig_accession]) if variant_region[:from_contig_accession] && !variant_region[:from_contig_accession].empty?
 
-						# start, stop
-			            if variant_region[:"From Coord"] && !variant_region[:"From Coord"].empty?
-			            	from_genome_attr_h.store(:start, variant_region[:"From Coord"])
-							from_genome_attr_h.store(:stop, variant_region[:"From Coord"])
-						end
+							# start, stop
+							if variant_region[:"From Coord"] && !variant_region[:"From Coord"].empty?
+								from_genome_attr_h.store(:start, variant_region[:"From Coord"])
+								from_genome_attr_h.store(:stop, variant_region[:"From Coord"])
+							end
 
-						from_genome_attr_h.store(:strand, variant_region[:"From Strand"]) if variant_region[:"From Strand"] && !variant_region[:"From Strand"].empty?
+							from_genome_attr_h.store(:strand, variant_region[:"From Strand"]) if variant_region[:"From Strand"] && !variant_region[:"From Strand"].empty?
 
-			            from_genome_attr_h.store(:ciposleft, variant_region[:ciposleft]) if variant_region[:ciposleft] && !variant_region[:ciposleft].empty?
-			            from_genome_attr_h.store(:ciposright, variant_region[:ciposright]) if variant_region[:ciposright] && !variant_region[:ciposright].empty?
-			            from_genome_attr_h.store(:ciendleft, variant_region[:ciendleft]) if variant_region[:ciendleft] && !variant_region[:ciendleft].empty?
-			            from_genome_attr_h.store(:ciendright, variant_region[:ciendright]) if variant_region[:ciendright] && !variant_region[:ciendright].empty?
+							from_genome_attr_h.store(:ciposleft, variant_region[:ciposleft]) if variant_region[:ciposleft] && !variant_region[:ciposleft].empty?
+							from_genome_attr_h.store(:ciposright, variant_region[:ciposright]) if variant_region[:ciposright] && !variant_region[:ciposright].empty?
+							from_genome_attr_h.store(:ciendleft, variant_region[:ciendleft]) if variant_region[:ciendleft] && !variant_region[:ciendleft].empty?
+							from_genome_attr_h.store(:ciendright, variant_region[:ciendright]) if variant_region[:ciendright] && !variant_region[:ciendright].empty?
 
-			            # genome_attr_h.store(:remap_score, "")
-			            # genome_attr_h.store(:assembly_unit, "")
-			            # genome_attr_h.store(:alignment, "")
-			            # genome_attr_h.store(:remap_failure_code, "")
-			            # genome_attr_h.store(:placement_rank, "")
-			            # genome_attr_h.store(:placements_per_assembly, "")
-			            # genome_attr_h.store(:remap_diff_chr, "")
-			            # genome_attr_h.store(:remap_best_within_cluster, "")
+							# genome_attr_h.store(:remap_score, "")
+							# genome_attr_h.store(:assembly_unit, "")
+							# genome_attr_h.store(:alignment, "")
+							# genome_attr_h.store(:remap_failure_code, "")
+							# genome_attr_h.store(:placement_rank, "")
+							# genome_attr_h.store(:placements_per_assembly, "")
+							# genome_attr_h.store(:remap_diff_chr, "")
+							# genome_attr_h.store(:remap_best_within_cluster, "")
 
-			            # GENOME attributes
-			            from_placement_e.GENOME(from_genome_attr_h)
+							# GENOME attributes
+							from_placement_e.GENOME(from_genome_attr_h)
 
-			        } # from placement
+					} # from placement
 
-			        to_placement_attr_h = {}
-			        # to_placement_attr_h.store(:alt_status, "")
-			        # to_placement_attr_h.store(:placement_method, "")
-			        to_placement_attr_h.store(:breakpoint_order, "To")
-			        to_placement_attr_h.store(:variant_call_id, variant_region[:"Variant Call ID"]) if variant_region[:"Variant Call ID"] && !variant_region[:"Variant Call ID"].empty?
+					to_placement_attr_h = {}
+					# to_placement_attr_h.store(:alt_status, "")
+					# to_placement_attr_h.store(:placement_method, "")
+					to_placement_attr_h.store(:breakpoint_order, "To")
+					to_placement_attr_h.store(:variant_call_id, variant_region[:"Variant Call ID"]) if variant_region[:"Variant Call ID"] && !variant_region[:"Variant Call ID"].empty?
 
-			        variant_region_e.PLACEMENT(to_placement_attr_h){|to_placement_e|
+					variant_region_e.PLACEMENT(to_placement_attr_h){|to_placement_e|
 
-			            # GENOME
-			            to_genome_attr_h = {}
-						to_genome_attr_h.store(:assembly, variant_region[:refseq_assembly_breakpoint])
+							# GENOME
+							to_genome_attr_h = {}
+							to_genome_attr_h.store(:assembly, variant_region[:refseq_assembly_breakpoint])
 
-						to_genome_attr_h.store(:chr_name, variant_region[:"To Chr"])
-						to_genome_attr_h.store(:chr_accession, variant_region[:to_chr_accession])
-						to_genome_attr_h.store(:contig_accession, variant_region[:to_contig_accession])
+							to_genome_attr_h.store(:chr_name, variant_region[:"To Chr"])
+							to_genome_attr_h.store(:chr_accession, variant_region[:to_chr_accession])
+							to_genome_attr_h.store(:contig_accession, variant_region[:to_contig_accession]) if variant_region[:to_contig_accession] && !variant_region[:to_contig_accession].empty?
 
-						# start, stop
-			            if variant_region[:"To Coord"] && !variant_region[:"To Coord"].empty?
-			            	to_genome_attr_h.store(:start, variant_region[:"To Coord"])
-							to_genome_attr_h.store(:stop, variant_region[:"To Coord"])
-						end
+							# start, stop
+							if variant_region[:"To Coord"] && !variant_region[:"To Coord"].empty?
+								to_genome_attr_h.store(:start, variant_region[:"To Coord"])
+								to_genome_attr_h.store(:stop, variant_region[:"To Coord"])
+							end
 
-						to_genome_attr_h.store(:strand, variant_region[:"To Strand"]) if variant_region[:"To Strand"] && !variant_region[:"To Strand"].empty?
+							to_genome_attr_h.store(:strand, variant_region[:"To Strand"]) if variant_region[:"To Strand"] && !variant_region[:"To Strand"].empty?
 
-			            to_genome_attr_h.store(:ciposleft, variant_region[:ciposleft]) if variant_region[:ciposleft] && !variant_region[:ciposleft].empty?
-			            to_genome_attr_h.store(:ciposright, variant_region[:ciposright]) if variant_region[:ciposright] && !variant_region[:ciposright].empty?
-			            to_genome_attr_h.store(:ciendleft, variant_region[:ciendleft]) if variant_region[:ciendleft] && !variant_region[:ciendleft].empty?
-			            to_genome_attr_h.store(:ciendright, variant_region[:ciendright]) if variant_region[:ciendright] && !variant_region[:ciendright].empty?
+							to_genome_attr_h.store(:ciposleft, variant_region[:ciposleft]) if variant_region[:ciposleft] && !variant_region[:ciposleft].empty?
+							to_genome_attr_h.store(:ciposright, variant_region[:ciposright]) if variant_region[:ciposright] && !variant_region[:ciposright].empty?
+							to_genome_attr_h.store(:ciendleft, variant_region[:ciendleft]) if variant_region[:ciendleft] && !variant_region[:ciendleft].empty?
+							to_genome_attr_h.store(:ciendright, variant_region[:ciendright]) if variant_region[:ciendright] && !variant_region[:ciendright].empty?
 
-			            # genome_attr_h.store(:remap_score, "")
-			            # genome_attr_h.store(:assembly_unit, "")
-			            # genome_attr_h.store(:alignment, "")
-			            # genome_attr_h.store(:remap_failure_code, "")
-			            # genome_attr_h.store(:placement_rank, "")
-			            # genome_attr_h.store(:placements_per_assembly, "")
-			            # genome_attr_h.store(:remap_diff_chr, "")
-			            # genome_attr_h.store(:remap_best_within_cluster, "")
+							# genome_attr_h.store(:remap_score, "")
+							# genome_attr_h.store(:assembly_unit, "")
+							# genome_attr_h.store(:alignment, "")
+							# genome_attr_h.store(:remap_failure_code, "")
+							# genome_attr_h.store(:placement_rank, "")
+							# genome_attr_h.store(:placements_per_assembly, "")
+							# genome_attr_h.store(:remap_diff_chr, "")
+							# genome_attr_h.store(:remap_best_within_cluster, "")
 
-			            # GENOME attributes
-			            to_placement_e.GENOME(to_genome_attr_h)
+							# GENOME attributes
+							to_placement_e.GENOME(to_genome_attr_h)
 
-			        } # to_placement_e
+					} # to_placement_e
 
-	        	else # translocation 以外 1:1, identical merge, supporting call 要素は call 数分挿入済み
+				else # translocation 以外 1:1, identical merge, supporting call 要素は call 数分挿入済み
 
-			        # PLACEMENT attributes
-			        placement_attr_h = {}
-			        # placement_attr_h.store(:alt_status, "")
-			        # placement_attr_h.store(:placement_method, "")
-			        # placement_attr_h.store(:breakpoint_order, "")
+					# PLACEMENT attributes
+					placement_attr_h = {}
+					# placement_attr_h.store(:alt_status, "")
+					# placement_attr_h.store(:placement_method, "")
+					# placement_attr_h.store(:breakpoint_order, "")
 
-			        variant_region_e.PLACEMENT(placement_attr_h){|placement_e|
+					variant_region_e.PLACEMENT(placement_attr_h){|placement_e|
 
-			            # GENOME
-			            genome_attr_h = {}
-						genome_attr_h.store(:assembly, variant_region[:refseq_assembly]) if variant_region[:refseq_assembly]
+							# GENOME
+							genome_attr_h = {}
+							genome_attr_h.store(:assembly, variant_region[:refseq_assembly]) if variant_region[:refseq_assembly]
 
-						genome_attr_h.store(:chr_name, variant_region[:Chr])
-						genome_attr_h.store(:chr_accession, variant_region[:chr_accession]) if variant_region[:chr_accession]
-						genome_attr_h.store(:contig_accession, variant_region[:contig_accession]) if variant_region[:contig_accession]
+							genome_attr_h.store(:chr_name, variant_region[:Chr])
+							genome_attr_h.store(:chr_accession, variant_region[:chr_accession]) if variant_region[:chr_accession]
+							genome_attr_h.store(:contig_accession, variant_region[:contig_accession]) if variant_region[:contig_accession] && !variant_region[:contig_accession].empty?
 
-						# start
-			            genome_attr_h.store("outer_start", variant_region[:"Outer Start"]) unless variant_region[:"Outer Start"].empty?
-			            genome_attr_h.store("start", variant_region[:Start]) unless variant_region[:Start].empty?
-			            genome_attr_h.store("inner_start", variant_region[:"Inner Start"]) unless variant_region[:"Inner Start"].empty?
+							# start
+							genome_attr_h.store("outer_start", variant_region[:"Outer Start"]) unless variant_region[:"Outer Start"].empty?
+							genome_attr_h.store("start", variant_region[:Start]) unless variant_region[:Start].empty?
+							genome_attr_h.store("inner_start", variant_region[:"Inner Start"]) unless variant_region[:"Inner Start"].empty?
 
-			            # stop
-			            genome_attr_h.store("stop", variant_region[:Stop]) unless variant_region[:Stop].empty?
-			            genome_attr_h.store("inner_stop", variant_region[:"Inner Stop"]) unless variant_region[:"Inner Stop"].empty?
-			            genome_attr_h.store("outer_stop", variant_region[:"Outer Stop"]) unless variant_region[:"Outer Stop"].empty?
+							# stop
+							genome_attr_h.store("stop", variant_region[:Stop]) unless variant_region[:Stop].empty?
+							genome_attr_h.store("inner_stop", variant_region[:"Inner Stop"]) unless variant_region[:"Inner Stop"].empty?
+							genome_attr_h.store("outer_stop", variant_region[:"Outer Stop"]) unless variant_region[:"Outer Stop"].empty?
 
-			            genome_attr_h.store(:ciposleft, variant_region[:ciposleft]) if variant_region[:ciposleft] && !variant_region[:ciposleft].empty?
-			            genome_attr_h.store(:ciposright, variant_region[:ciposright]) if variant_region[:ciposright] && !variant_region[:ciposright].empty?
-			            genome_attr_h.store(:ciendleft, variant_region[:ciendleft]) if variant_region[:ciendleft] && !variant_region[:ciendleft].empty?
-			            genome_attr_h.store(:ciendright, variant_region[:ciendright]) if variant_region[:ciendright] && !variant_region[:ciendright].empty?
-			            # genome_attr_h.store(:remap_score, "")
-			            # genome_attr_h.store(:strand, "")
-			            # genome_attr_h.store(:assembly_unit, "")
-			            # genome_attr_h.store(:alignment, "")
-			            # genome_attr_h.store(:remap_failure_code, "")
-			            # genome_attr_h.store(:placement_rank, "")
-			            # genome_attr_h.store(:placements_per_assembly, "")
-			            # genome_attr_h.store(:remap_diff_chr, "")
-			            # genome_attr_h.store(:remap_best_within_cluster, "")
+							genome_attr_h.store(:ciposleft, variant_region[:ciposleft]) if variant_region[:ciposleft] && !variant_region[:ciposleft].empty?
+							genome_attr_h.store(:ciposright, variant_region[:ciposright]) if variant_region[:ciposright] && !variant_region[:ciposright].empty?
+							genome_attr_h.store(:ciendleft, variant_region[:ciendleft]) if variant_region[:ciendleft] && !variant_region[:ciendleft].empty?
+							genome_attr_h.store(:ciendright, variant_region[:ciendright]) if variant_region[:ciendright] && !variant_region[:ciendright].empty?
+							# genome_attr_h.store(:remap_score, "")
+							# genome_attr_h.store(:strand, "")
+							# genome_attr_h.store(:assembly_unit, "")
+							# genome_attr_h.store(:alignment, "")
+							# genome_attr_h.store(:remap_failure_code, "")
+							# genome_attr_h.store(:placement_rank, "")
+							# genome_attr_h.store(:placements_per_assembly, "")
+							# genome_attr_h.store(:remap_diff_chr, "")
+							# genome_attr_h.store(:remap_best_within_cluster, "")
 
-			            # GENOME attributes
-			            placement_e.GENOME(genome_attr_h)
+							# GENOME attributes
+							placement_e.GENOME(genome_attr_h)
 
 					} #placement_e
 
@@ -3912,13 +3945,13 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 		## placement check
 		## JV_SV0078: Missing start
-		if variant_region[:"Outer Start"].empty? && variant_region[:Start].empty? && variant_region[:"Inner Start"].empty? && variant_region_type != "translocation" && variant_region_type != "complex chromosomal rearrangement" && variant_region_type != "novel sequence insertion"
+		if variant_region[:"Outer Start"].empty? && variant_region[:Start].empty? && variant_region[:"Inner Start"].empty? && !variant_region_type.match?(/translocation/) && variant_region_type != "complex chromosomal rearrangement" && variant_region_type != "novel sequence insertion"
 			missing_start_region_a.push(variant_region_id)
 			variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0078 Error: Genomic placement must contain either a start, outer_start, or inner_start unless it is a novel sequence insertion, translocation or complex chromosomal rearrangement.")
 		end
 
 		## JV_SV0079: Missing stop
-		if variant_region[:"Outer Stop"].empty? && variant_region[:Stop].empty? && variant_region[:"Inner Stop"].empty? && variant_region_type != "translocation" && variant_region_type != "novel sequence insertion"
+		if variant_region[:"Outer Stop"].empty? && variant_region[:Stop].empty? && variant_region[:"Inner Stop"].empty? && !variant_region_type.match?(/translocation/) && variant_region_type != "complex chromosomal rearrangement" && variant_region_type != "novel sequence insertion"
 			missing_stop_region_a.push(variant_region_id)
 			variant_region_tsv_log_a.push("#{variant_region[:row].join("\t")}\t# JV_SV0079 Error: Genomic placement must contain either a stop, outer_stop, or inner_stop unless it is a novel sequence insertion or translocation.")
 		end
@@ -4129,7 +4162,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 	error_ignore_sv_a.push(["JV_SV0100", "Within a variant region with type 'complex chromosomal rearrangement' and 'translocation', each supporting variant call must have a unique value for Mutation ID. Variant Region: #{mixed_mutation_id_region_a.size} sites, #{mixed_mutation_id_region_a.size > 4? mixed_mutation_id_region_a[0, limit_for_etc].join(",") + " etc" : mixed_mutation_id_region_a.join(",")}"]) unless mixed_mutation_id_region_a.empty?
 
 	## JV_SV0067: Missing serial mutation order number for complex chromosomal rearrangement and translocation
-	error_ignore_sv_a.push(["JV_SV0067", "Missing serial mutation order number for complex chromosomal rearrangement and translocation. JVar will assign serial order(s). Variant Region: #{missing_serial_mutation_order_region_a.size} sites, #{missing_serial_mutation_order_region_a.size > 4? missing_serial_mutation_order_region_a[0, limit_for_etc].join(",") + " etc" : missing_serial_mutation_order_region_a.join(",")}"]) unless missing_serial_mutation_order_region_a.empty?
+	warning_sv_a.push(["JV_SV0067", "Missing serial mutation order number for complex chromosomal rearrangement and translocation. Variant Region: #{missing_serial_mutation_order_region_a.size} sites, #{missing_serial_mutation_order_region_a.size > 4? missing_serial_mutation_order_region_a[0, limit_for_etc].join(",") + " etc" : missing_serial_mutation_order_region_a.join(",")}"]) unless missing_serial_mutation_order_region_a.empty?
 
 	## JV_SV0069: Copy number gain and loss in the same sample
 	warning_sv_a.push(["JV_SV0069", "Warning if region contains calls that have both copy number gain and copy number loss in the same sample. Variant Region: #{copy_number_gain_loss_same_sample_region_a.size} sites, #{copy_number_gain_loss_same_sample_region_a.size > 4? copy_number_gain_loss_same_sample_region_a[0, limit_for_etc].join(",") + " etc" : copy_number_gain_loss_same_sample_region_a.join(",")}"]) unless copy_number_gain_loss_same_sample_region_a.empty?
@@ -4194,9 +4227,9 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 	##
 	## GENOTYPE_XML
 	##
-	if gt_xml && sv_genotype_f
-		submission << gt_xml.target!
-	end
+	# if gt_xml && sv_genotype_f
+	# 	submission << gt_xml.target!
+	# end
 
 } # SUBMISSION
 
