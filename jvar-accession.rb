@@ -26,6 +26,7 @@ require 'open3'
 ### Options
 submission_id = ""
 vload_id = ""
+sv_vcf_f = false
 OptionParser.new{|opt|
 
 	opt.on('-v [VSUB ID]', 'VSUB submission ID'){|v|
@@ -38,6 +39,12 @@ OptionParser.new{|opt|
 		#raise "usage: -l vload_id"
 		vload_id = i
 		puts "vload_id: #{i}"
+	}
+
+	opt.on('-g', 'generate accessioned VCF for SV genotype'){|i|
+		#raise "usage: -g"
+		sv_vcf_f = true
+		puts "Generate accessioned VCF for SV genotype"
 	}
 
 	begin
@@ -358,6 +365,8 @@ end
 acc_meta_f = open("#{sub_path}/#{submission_id}/accessioned/dstd#{dstd_next}.meta.tsv", "w")
 
 acc_meta_f.puts "## Study"
+
+# study accession を挿入
 for line in study_sheet_a	
 	acc_meta_f.puts line.join("\t") unless line.join("\t") =~ /^Submitter Email/ # remove submitter's email from public metadata
 end
@@ -382,8 +391,14 @@ end
 
 acc_meta_f.puts ""
 acc_meta_f.puts "## Dataset"
+submitted_sv_vcf_a = []
+dataset_first = true
 for line in dataset_sheet_a
-	acc_meta_f.puts line.join("\t")
+	acc_meta_f.puts line.join("\t")	
+	
+	# dataset ID and VCF path
+	submitted_sv_vcf_a.push([line[0], line[6]]) if line[0] && !line[0].empty? && line[6] && !line[6].empty? && !dataset_first
+	dataset_first = false
 end
 
 acc_meta_f.close
@@ -466,7 +481,7 @@ if submission_type == "SNP"
 	
 end # if submission_type == "SNP"
 
-## Variant Call and Region tsv files
+## Variant Call and Region XML/tsv files
 if submission_type == "SV"
 
 	call_id_acc_h = {}
@@ -564,16 +579,63 @@ if submission_type == "SV"
 	## xsd validation
 	if FileTest.exist?("#{sub_path}/#{submission_id}/accessioned/dstd#{dstd_next}.dbvar.xml")
 		o, e, s = Open3.capture3("xmllint --schema dbVar.xsd --noout #{sub_path}/#{submission_id}/accessioned/dstd#{dstd_next}.dbvar.xml")
-#sin	o, e, s = Open3.capture3("/usr/local/bin/xmllint --schema dbVar.xsd --noout #{sub_path}/#{submission_id}/accessioned/dstd#{dstd_next}.dbvar.xml")
+		#sin	o, e, s = Open3.capture3("/usr/local/bin/xmllint --schema dbVar.xsd --noout #{sub_path}/#{submission_id}/accessioned/dstd#{dstd_next}.dbvar.xml")
 
 		puts ""
 		puts "dbVar xsd validation results"
 		puts e
 	end
 
+	## generate accessioned VCF for genotype
+	if sv_vcf_f
+
+		# open submitted VCF
+		for dataset_id, sv_vcf_path in submitted_sv_vcf_a
+			
+			# VCF file open
+			sv_vcf = open("#{sub_path}/#{submission_id}/#{sv_vcf_path}")
+			
+			# VCF 1 の場合 dstd1.vcf
+			if submitted_sv_vcf_a.size == 1
+				out_vcf_f = open("#{sub_path}/#{submission_id}/accessioned/dstd#{dstd_next}.vcf", "w")
+			# VCF > 1 の場合 dstd1_1.vcf, dstd1_2.vcf
+			else
+				out_vcf_f = open("#{sub_path}/#{submission_id}/accessioned/dstd#{dstd_next}_#{dataset_id}.vcf", "w")
+			end
+			
+			for line in sv_vcf.each_line
+				if line.match?(/^#/)
+					out_vcf_f.puts line
+				else
+					line_a = line.split("\t")
+					
+					# local ID with dssv accession, dsv accession に対応する region は VCF にはない前提
+					if line_a[2] && !line_a[2].empty?
+						# dssv accession がある
+						if call_id_acc_h.has_key?(line_a[2])							
+							dssv_acc = call_id_acc_h[line_a[2]]							
+							# INFO
+							if line_a[7] && line_a[7].empty?
+								line_a[7] = "JVARID=#{dssv_acc}"
+							else
+								line_a[7] = "JVARID=#{dssv_acc};#{line_a[7]}"
+							end							
+							out_vcf_f.puts line_a.join("\t")
+						end
+					end
+				end # if line.match?(/^#/)
+					
+			end # for line in sv_vcf.each_line
+		
+			sv_vcf.close
+			out_vcf_f.close
+			
+		end # for dataset_id, sv_vcf_path in submitted_sv_vcf_a
+		
+	end # if sv_vcf_f
+	
 	# record last number	
 	`cp "#{study_path}/last.txt" "#{study_path}/log/last_#{now}.txt"`
-
 
 	last_out_a = []
 	last_out_bk_f = open("#{study_path}/log/last_#{now}.txt")
@@ -590,7 +652,6 @@ if submission_type == "SV"
 	end
 
 end # if submission_type == "SV"
-
 
 =begin
 =end
