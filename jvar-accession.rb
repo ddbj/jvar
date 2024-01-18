@@ -368,7 +368,10 @@ acc_meta_f.puts "## Study"
 
 # study accession を挿入
 for line in study_sheet_a	
-	acc_meta_f.puts line.join("\t") unless line.join("\t") =~ /^Submitter Email/ # remove submitter's email from public metadata
+	  # remove submitter's email from public metadata
+	if !line.join("\t").match?(/^Submitter Email|^Hold\/Release|^vload_id/)
+		acc_meta_f.puts line.join("\t")
+	end
 end
 
 acc_meta_f.puts ""
