@@ -285,6 +285,7 @@ def vcf_parser(vcf_file, vcf_type, args)
 	invalid_translocation_c = 0
 	calculated_af_c = 0
 	ac_greater_than_an_c = 0
+	divided_trans_ins_c = 0
 
 	# fasta
 	ref_fasta_no_exist_a = []
@@ -1122,13 +1123,20 @@ def vcf_parser(vcf_file, vcf_type, args)
 				end
 
 				## Genotype
-				# INFO にある場合は VCF dataset が参照している SampleSet 中の genotype
-				if info_h[:GT]
-					# GT
-					vcf_variant_call_h.store(:submitted_genotype, info_h[:GT])
-				end
 
+				# 2024-01-17 
+				# dbVar は XML GENOTYPE には対応していないためコメントアウト
+				# アクセッション番号が埋め込まれた VCF から取り込んでいる
+				
+				# INFO にある場合は VCF dataset が参照している SampleSet 中の genotype
+				# if info_h[:GT]
+				# 	# GT
+				# 	vcf_variant_call_h.store(:submitted_genotype, info_h[:GT])
+				# end
+
+				###
 				### Translocation
+				###
 				translocation_f = false
 				telomere_translocation_f = false
 
@@ -1141,7 +1149,10 @@ def vcf_parser(vcf_file, vcf_type, args)
 				mutation_molecule = ""
 				mutation_id = ""
 				mate_id = ""
-
+				
+				# translocation に伴う insertion
+				ins_with_translocation_h = {}
+	
 				if info_h[:EVENT] && info_h[:EVENT]
 					mutation_id = info_h[:EVENT]
 				end
@@ -1158,15 +1169,17 @@ def vcf_parser(vcf_file, vcf_type, args)
 					skipped_mate_c += 1
 				end
 
+				# chromosome name にマッチ chr1, chrX, chrY etc
 				chr_trans_regex = "([A-Za-z0-9_.]+):([0-9]+)"
 
-				# if translocation
+				# if translocation [[ or ]] が ALT にある
 				if alt.match?(/\[.*\[/) || alt.match?(/\].*\]/)
 
 					valid_translocation_f = false
 					translocation_f = true
 
-					# single breakend は未対応
+					# single breakend は FROM only で記述
+					# telomere 以外
 					if pos > 0
 						if alt =~ /#{ref}([ATGCN]*)\[#{chr_trans_regex}\[/i
 							from_chr = chrom
@@ -1214,6 +1227,49 @@ def vcf_parser(vcf_file, vcf_type, args)
 							valid_translocation_f = true
 						end
 
+						# insertion を伴う場合
+						# 前提: VCF [[ ]] 記法 translocation に伴う insertion は transloation あたり１個, 最初の１塩基は padding base, contig 記法ではなく chr 指定
+						if !variant_sequence.empty? && variant_sequence.length > 0
+
+							# translocation と insertion を region にまとめるため共通 mutation ID を格納
+							mutation_id = "#{id}_trans_ins"
+							
+							ins_with_translocation_h =
+							{
+								:"Variant Call ID" => "#{id}_ins",
+								:Chr => chrom,
+								:"Mutation ID" => mutation_id,
+								:"Variant Call Type" => "insertion",
+								:"Insertion Length" => variant_sequence.length.to_s,
+								:"From Chr" => "",
+								:"From Coord" => "",
+								:"From Strand" => "",
+								:"To Chr" => "",
+								:"To Coord" => "",
+								:"To Strand" => "",
+								:"Outer Start" => "",
+								:Start => pos.to_s,
+								:"Inner Start" => "",
+								:"Inner Stop" => "",
+								:Stop => (pos + variant_sequence.length).to_s,
+								:"Outer Stop" => "",
+								:ciposleft => "",
+								:ciposright => "",
+								:ciendleft => "",
+								:ciendright => "",
+								:Contig => "",
+								:"Copy Number" => "",
+								:variant_sequence => variant_sequence,
+								:"Mutation Order" => "",
+								:Comment => "ins_with_trans"
+							}
+							
+							divided_trans_ins_c += 1
+							vcf_log_a.push("#{line.strip}\t# JV_VCFS0014 Warning: A translocation with insertion is divided into a translocation and an insertion.")
+							
+						end
+						
+					# pos=0 の telomere, pos=chr length の telomere には未対応 TODO
 					elsif pos == 0
 						if alt =~ /\.([ATGCN]*)\[#{chr_trans_regex}\[/i
 							from_chr = chrom
@@ -1265,7 +1321,7 @@ def vcf_parser(vcf_file, vcf_type, args)
 
 					end # if pos > 0
 
-					# translocation && valid translocation、より深いチェックは convert で.
+					# translocation && valid translocation、より深いチェックは convert で
 					if valid_translocation_f
 
 						# Assembly
@@ -1278,6 +1334,7 @@ def vcf_parser(vcf_file, vcf_type, args)
 						vcf_variant_call_h.store(:"To Coord", to_coord.to_s)
 						vcf_variant_call_h.store(:"To Strand", to_strand)
 						vcf_variant_call_h.store(:"Mutation ID", mutation_id)
+						# translocation と inserion に分割したので call では出力せず、region 作成時に使用
 						vcf_variant_call_h.store(:variant_sequence, variant_sequence)
 						vcf_variant_call_h.store(:mate_id, mate_id)
 
@@ -1297,7 +1354,7 @@ def vcf_parser(vcf_file, vcf_type, args)
 						invalid_translocation_f = true # translocation ALT [] であるがパースできないものは error を出してエラー回避のため取り込まない
 					end
 
-				else # if alt =~ /\[.*\[/ || alt =~ /\].*\]/
+				else # if alt.match?(/\[.*\[/) || alt.match?(/\].*\]/)
 
 					# Assembly
 					vcf_variant_call_h.store(:Assembly, reference)
@@ -1343,17 +1400,23 @@ def vcf_parser(vcf_file, vcf_type, args)
 					end
 
 					# REF:CA ALT:CGCCCTTGTGACGTCACGGAAGGCGCGCGCTTGCGACGTCACGGAAGGCGCGCCCTTGTGACGTCACGGAAGGCGCT END=778706;SVTYPE=INS;SVLEN=76;CIGAR=1M76I1D のような indel
+					# MantaINS:82366:3:3:0:0:0
+					# leading base はあって一致
 					if ref.size > 1 && ref[0] == alt[0] && !alt[1].nil? && ref[1] != alt[1] && ref.size < alt.size && sv_type == "insertion"
 						sv_type = "indel"
-						variant_sequence = alt[ref.size, alt.size - ref.size]
+						# variant_sequence は inserted or replacement sequence で replacement sequence であり、ALT から一致している最初一塩基=padding base を除いたもの
+						# variant_sequence = alt[ref.size, alt.size - ref.size]
+						variant_sequence = alt[1, alt.size]
 						vcf_variant_call_h.store(:variant_sequence, variant_sequence)
 					end
 
 					# REF:GCGGCCGCCTCCTCCTCCGAACGCGGCCGCCTCCTCCTCCGAACGTGGCCTCCTCCGAACGTGGCCGCCTCCTCCTCCGAACGTGGCCTCCTCCGAACGCGGCCGCCGCCTCCTCCGAACGCGGCCT ALT:GTGG END=904656;SVTYPE=DEL;SVLEN=-126;CIGAR=1M3I126D のような indel
 					if ref.size > 1 && ref[0] == alt[0] && !alt[1].nil? && ref[1] != alt[1] && ref.size > alt.size && sv_type == "deletion"
 						sv_type = "indel"
+						# variant_sequence は inserted or replacement sequence で replacement sequence であり、ALT から一致している最初一塩基=padding base を除いたもの
 						#variant_sequence = alt[ref.size, alt.size - ref.size]
-						#vcf_variant_call_h.store(:variant_sequence, variant_sequence)
+						variant_sequence = alt[1, alt.size]
+						vcf_variant_call_h.store(:variant_sequence, variant_sequence)
 					end
 
 				end # unless sv_type =~ /translocation/
@@ -1527,9 +1590,44 @@ def vcf_parser(vcf_file, vcf_type, args)
 				# FORMAT data を格納
 				vcf_variant_call_h.store(:FORMAT, format_data_a)
 
+				## call 用データの配列に格納 ##
 				# SV hash を配列に格納 mate id 指定 and invalid translocation は取り込まない
+				inherit_to_ins_a = [
+					"Allele Number",
+					"Allele Count",
+					"Allele Frequency",
+					"Validation",
+					"Origin",
+					"Phenotype",
+					"External Links",
+					"Assembly",
+					"Zygosity",
+					"Evidence",
+					"FORMAT",
+					"Dataset ID",
+					"Experiment ID",
+					"SampleSet ID"
+				]
+				
 				if !skipped_mate_f && !invalid_translocation_f
-					vcf_variant_call_a.push(vcf_variant_call_h)
+					
+					if ins_with_translocation_h.empty?
+						vcf_variant_call_a.push(vcf_variant_call_h)
+					
+					# translocation + insertion の insertion を分離して追加で格納
+					else
+						vcf_variant_call_h.store(:Comment, "ins_with_trans")
+						vcf_variant_call_a.push(vcf_variant_call_h)
+
+						# translocation の所定項目の値を引き継ぎ
+						inherit_to_ins_a.each{|item|
+							ins_with_translocation_h.store(:"#{item}", vcf_variant_call_h[:"#{item}"]) if vcf_variant_call_h[:"#{item}"] && !ins_with_translocation_h.has_key?(:"#{item}")
+						}
+
+						# ins を追加格納
+						vcf_variant_call_a.push(ins_with_translocation_h)
+
+					end
 				end
 
 			end # if vcf_type == "SV"
@@ -1552,6 +1650,8 @@ def vcf_parser(vcf_file, vcf_type, args)
 
 			# dbSNP VCF content 出力と格納
 			dbsnp_vcf_f.puts vcf_line_a.collect{|e| e.strip}.join("\t") if vcf_type == "SNP"
+			
+			# VCF 行全体を結合して格納
 			vcf_variant_a.push(vcf_line_a.collect{|e| e.strip}.join("\t"))
 
 		end # if content_f
@@ -1710,6 +1810,9 @@ def vcf_parser(vcf_file, vcf_type, args)
 		# JV_VCFS0013: Identical breakend mate skipped
 		warning_vcf_content_a.push(["JV_VCFS0013", "One of identical breakend mates of the same MATEID was skipped. #{skipped_mate_c} sites"]) if skipped_mate_c > 0
 
+		# JV_VCFS0014: Divided translocation with insertion
+		warning_vcf_content_a.push(["JV_VCFS0014", "A translocation with insertion is divided into a translocation and an insertion. #{divided_trans_ins_c} sites"]) if divided_trans_ins_c > 0
+
 		# mate id does not exist
 		not_found_mate_id_c = 0
 		mate_id_h.each{|id, mate_id|
@@ -1732,10 +1835,11 @@ def vcf_parser(vcf_file, vcf_type, args)
 
 	if vcf_type == "SNP"
 		return error_vcf_header_a, error_ignore_vcf_header_a, error_exchange_vcf_header_a, warning_vcf_header_a, error_vcf_content_a, error_ignore_vcf_content_a, error_exchange_vcf_content_a, warning_vcf_content_a
+	# call XML 作成用データは vcf_variant_call_a
 	elsif vcf_type == "SV"
 		return error_vcf_header_a, error_ignore_vcf_header_a, error_exchange_vcf_header_a, warning_vcf_header_a, error_vcf_content_a, error_ignore_vcf_content_a, error_exchange_vcf_content_a, warning_vcf_content_a, vcf_variant_call_a, vcf_variant_region_a, vcf_log_a
 	end
-
+	
 	vcf_log_f.close
 	vcf_f.close
 

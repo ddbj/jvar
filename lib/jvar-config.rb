@@ -74,6 +74,54 @@ $vtype_h =
 	}
 }
 
+$vtype_so_h =
+{
+	:"Variant Call Type" =>
+	{
+		:"complex substitution" => "SO:1000005",
+		:"copy number gain" => "SO:0001742",
+		:"copy number loss" => "SO:0001743",
+		:"copy number variation" => "SO:0001019",
+		:deletion => "SO:0000159",
+		:"mobile element deletion" => "SO:0002066",
+		:"Alu deletion" => "SO:0002070",
+		:"LINE1 deletion" => "SO:0002069",
+		:"SVA deletion" => "SO:0002068",
+		:"HERV deletion" => "SO:0002067",
+		:duplication => "SO:0001742",
+		:indel => "SO:1000032",
+		:insertion => "SO:0000667",
+		:"interchromosomal translocation" => "SO:0002060",
+		:"intrachromosomal translocation" => "SO:0002061",
+		:inversion => "SO:1000036",
+		:"mobile element insertion" => "SO:0001837",
+		:"Alu insertion" => "SO:0002063",
+		:"HERV insertion" => "SO:0002187",
+		:"LINE1 insertion" => "SO:0002064",
+		:"SVA insertion" => "SO:0002065",
+		:"novel sequence insertion" => "SO:0001838",
+		:"sequence alteration" => "SO:0001059",
+		:"short tandem repeat variation" => "SO:0002096",
+		:"tandem duplication" => "SO:1000173"
+	},
+	:"Variant Region Type" =>
+	{
+		:"complex substitution" => "SO:1000005",
+		:"complex chromosomal rearrangement" => "SO:0002062",
+		:"copy number variation" => "SO:0001019",
+		:indel => "SO:1000032",
+		:insertion => "SO:0000667",
+		:inversion => "SO:1000036",
+		:"mobile element insertion" => "SO:0001837",
+		:"mobile element deletion" => "SO:0002066",
+		:"novel sequence insertion" => "SO:0001838",
+		:"sequence alteration" => "SO:0001059",
+		:"short tandem repeat variation" => "SO:0002096",
+		:"tandem duplication" => "SO:1000173",
+		:translocation => "SO:0000199"
+	}
+}
+
 $inapp_method_analysis_types_a =
 [
 	{:"Method Type" => ["Sequencing"], :"Analysis Type" => ["de novo and local sequence assembly", "de novo sequence assembly", "Local sequence assembly", "One end anchored assembly", "Paired-end mapping", "Read depth", "Sequence alignment", "Split read mapping", "Genotyping", "Read depth and paired-end mapping", "Split read and paired-end mapping"]},
@@ -33149,7 +33197,7 @@ $defined_samples_h =
   },
   :NA19079 => {
     :sample_name => "NA19079",
-    :biosample_accession => "SAME122823",
+    :biosample_accession => "SAMN00000536",
     :sex => "male",
     :population_code => "JPT",
     :population_name => "Japanese",
