@@ -1674,7 +1674,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 	## Variant Call Sheet or VCF
 	error_vcf_header_a, error_ignore_vcf_header_a, error_exchange_vcf_header_a, warning_vcf_header_a, error_vcf_content_a, error_ignore_vcf_content_a, error_exchange_vcf_content_a, warning_vcf_content_a, vcf_variant_call_a, vcf_variant_region_a, vcf_content_log_a = [], [], [], [], [], [], [], [], [], []
-	
+
 	for dataset in dataset_a
 
 		dataset_to_experiment_h.store(dataset[:"Dataset ID"].to_i, dataset[:"Experiment ID"].to_i)
@@ -1822,7 +1822,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 	# GENOTYPE XML
 	gt_xml = Builder::XmlMarkup.new(:indent=>4, :margin=>1)
-
+	
 	vcf_count = 0
 	for vc_input, variant_call_a in total_variant_call_h
 
@@ -2075,8 +2075,8 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 				placement_attr_h = {}
 				placement_attr_h.store(:placement_method, "Submitted genomic")
 
-				## translocation と insertion with translocation は mutation ID で region にまとめるため格納
-				if variant_call_type.match?(/translocation/) || variant_call[:"Comment"] == "ins_with_trans"
+				## translocation と insertion with translocation, insertion with single breakend は mutation ID で region にまとめるため格納
+				if variant_call_type.match?(/translocation/) || ["ins_with_trans", "ins_with_sbnd"].include?(variant_call[:"Comment"])
 					
 					## mutation ID, order チェック用に格納 translocation と insertion with translocation のみ
 					if variant_call[:"Mutation ID"] && !variant_call[:"Mutation ID"].empty?
@@ -2088,365 +2088,564 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 						end
 					end
 								
-				end
+				end # if variant_call_type.match?(/translocation/) || ["ins_with_trans", "ins_with_single_bnd"].include?(variant_call[:"Comment"])
 				
 				## translocation
 				if variant_call_type.match?(/translocation/)
+					
+					# translocation not single breakend
+					if !["ins_with_sbnd", "sbnd"].include?(variant_call[:"Comment"])
+						
+						from_chr_name = ""
+						from_chr_accession = ""
+						from_chr_length = -1
+						from_coord = -1
+						from_contig_accession = ""
+						from_assembly = ""
+						from_strand = ""
 
-					from_chr_name = ""
-					from_chr_accession = ""
-					from_chr_length = -1
-					from_coord = -1
-					from_contig_accession = ""
-					from_assembly = ""
-					from_strand = ""
+						to_chr_name = ""
+						to_chr_accession = ""
+						to_chr_length = -1
+						to_coord = -1
+						to_contig_accession = ""
+						to_assembly = ""
+						to_strand = ""
 
-					to_chr_name = ""
-					to_chr_accession = ""
-					to_chr_length = -1
-					to_coord = -1
-					to_contig_accession = ""
-					to_assembly = ""
-					to_strand = ""
-
-					## JV_SV0094: Missing strand for translocation
-					if variant_call[:"From Strand"].empty? || variant_call[:"To Strand"].empty?
-						missing_strand_call_a.push(variant_call_id)
-						variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_SV0094 Warning: Missing strand for translocation.")
-					end
-
-					## JV_SV0045: Invalid translocation from and to
-					if variant_call[:"Assembly for Translocation Breakpoint"] && variant_call[:"Assembly for Translocation Breakpoint"].empty? || variant_call[:"From Chr"].empty? || variant_call[:"From Coord"].empty? || variant_call[:"From Strand"].empty? || variant_call[:"To Chr"].empty? || variant_call[:"To Coord"].empty? || variant_call[:"To Strand"].empty?
-						invalid_from_to_call_a.push(variant_call_id)
-						variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_SV0045 Error: Invalid translocation from and to.")
-
-					else
-
-						## translocation call を格納
-						variant_call_translocation_h.store(:"#{variant_call_id}", variant_call)
-
-						## JV_SV0041: Different chromosomes for intrachromosomal translocation
-						if variant_call[:"Variant Call Type"] == "intrachromosomal translocation" && variant_call[:"From Chr"] != variant_call[:"To Chr"]
-							different_chrs_for_intra_call_a.push(variant_call_id)
-							variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_SV0041 Error: Different chromosomes for intrachromosomal translocation.")
+						## JV_SV0094: Missing strand for translocation
+						if variant_call[:"From Strand"].empty? || variant_call[:"To Strand"].empty?
+							missing_strand_call_a.push(variant_call_id)
+							variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_SV0094 Warning: Missing strand for translocation.")
 						end
 
-						## JV_SV0042: Same chromosomes for interchromosomal translocation
-						if variant_call[:"Variant Call Type"] == "interchromosomal translocation" && variant_call[:"From Chr"] == variant_call[:"To Chr"]
-							same_chrs_for_inter_call_a.push(variant_call_id)
-							variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_SV0042 Error: Same chromosomes for interchromosomal translocation.")
-						end
+						## JV_SV0045: Invalid translocation from and to
+						if variant_call[:"Assembly for Translocation Breakpoint"] && variant_call[:"Assembly for Translocation Breakpoint"].empty? || variant_call[:"From Chr"].empty? || variant_call[:"From Coord"].empty? || variant_call[:"From Strand"].empty? || variant_call[:"To Chr"].empty? || variant_call[:"To Coord"].empty? || variant_call[:"To Strand"].empty?
+							invalid_from_to_call_a.push(variant_call_id)
+							variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_SV0045 Error: Invalid translocation from and to.")
 
-						translocation_assembly_a.push(variant_call[:"Assembly for Translocation Breakpoint"])
+						else
 
-						# 最初の assembly で以降は同じと仮定して valid な chromosome list を構築。assembly 混在は最後にチェック
-						if variant_call[:"Assembly for Translocation Breakpoint"] && !variant_call[:"Assembly for Translocation Breakpoint"].empty? && refseq_assembly.empty? && chromosome_per_assembly_a.empty?
+							## translocation call を格納
+							variant_call_translocation_h.store(:"#{variant_call_id}", variant_call)
 
-							## assembly から refseq accession 取得
-							$assembly_a.each{|assembly_h|
-								refseq_assembly = assembly_h[:refseq_assembly] if assembly_h.values.include?(variant_call[:"Assembly for Translocation Breakpoint"])
-							}
-
-							## refseq assembly から構成配列を取得
-							$sequence_a.each{|sequence_h|
-								if sequence_h[:assemblyAccession] == refseq_assembly
-									chromosome_per_assembly_a.push({:chrName => sequence_h[:chrName], :ucscStyleName => sequence_h[:ucscStyleName], :refseqAccession => sequence_h[:refseqAccession], :genbankAccession => sequence_h[:genbankAccession], :role => sequence_h[:role], :length => sequence_h[:length]})
-								end
-							}
-
-						end
-
-						variant_call.store(:refseq_assembly_breakpoint, refseq_assembly)
-
-						# FROM
-						placement_attr_h.store(:breakpoint_order, "From")
-
-						variant_call_e.PLACEMENT(placement_attr_h){|placement_e|
-
-							# variant call 毎に初期化
-							from_chr_name = ""
-							from_chr_accession = ""
-							from_chr_length = -1
-							from_coord = -1
-							from_contig_accession = ""
-							from_assembly = ""
-							from_strand = ""
-
-							## JV_SV0072: Invalid chromosome reference
-							from_valid_chr_f = false
-							from_valid_contig_f = false
-							from_ref_download_f = false
-							from_found_f = false
-
-							# contig が download ref にある場合 (assembly には含まれていない)
-							# contig は SV のみ。from/to は chr/contig がエクセルで分かれていないので、ここで download にある = contig として扱う
-							if !variant_call[:"From Chr"].empty? && $ref_download_h.has_key?(variant_call[:"From Chr"]) && !from_found_f
-								from_assembly = ""
-								from_chr_name = ""
-								from_chr_accession = ""
-								from_chr_length = $ref_download_h[variant_call[:"From Chr"]].to_i if $ref_download_h[variant_call[:"From Chr"]].to_i
-								from_contig_accession = variant_call[:"From Chr"]
-
-								from_valid_contig_f = true
-								from_ref_download_f = true
-								from_found_f = true
-							# contig accession が前と一致
-							elsif !variant_call[:"From Chr"].empty? && variant_call[:"From Chr"] == pre_from_contig_accession
-								from_assembly = pre_from_assembly
-								from_chr_name = ""
-								from_chr_accession = ""
-								from_chr_length = pre_from_chr_length
-								from_contig_accession = pre_from_contig_accession
-
-								from_valid_contig_f = true
-								from_found_f = true
-							# chromosome name が前と一致
-							elsif !variant_call[:"From Chr"].empty? && variant_call[:"From Chr"] == pre_from_chr_name
-								from_assembly = pre_from_assembly
-								from_chr_name = pre_from_chr_name
-								from_chr_accession = pre_from_chr_accession
-								from_chr_length = pre_from_chr_length
-								from_contig_accession = ""
-
-								from_valid_chr_f = true
-								from_found_f = true
-							# 前と一致しない場合
-							else
-								for chromosome_per_assembly_h in chromosome_per_assembly_a
-
-									## From Chr が chromosome ではなく RefSeq/GenBank アクセッション番号で指定された contig
-									if !variant_call[:"From Chr"].empty? && (chromosome_per_assembly_h[:refseqAccession] == variant_call[:"From Chr"] || chromosome_per_assembly_h[:genbankAccession] == variant_call[:"From Chr"]) && !from_found_f
-										from_assembly = variant_call[:"Assembly for Translocation Breakpoint"]
-										from_chr_name = ""
-										from_chr_accession = ""
-										from_chr_length = chromosome_per_assembly_h[:length]
-										from_contig_accession = chromosome_per_assembly_h[:refseqAccession] # fna は refseqAccession 記載
-
-										from_valid_contig_f = true
-										from_found_f = true
-									## From Chr が assembly で規定されている chromosome name (例 chr1, 1)
-									elsif !variant_call[:"From Chr"].empty? && chromosome_per_assembly_h[:chrName] == variant_call[:"From Chr"].sub(/chr/i, "") && chromosome_per_assembly_h[:role] == "assembled-molecule" && !from_found_f
-										from_assembly = variant_call[:"Assembly for Translocation Breakpoint"]
-										from_chr_name = chromosome_per_assembly_h[:chrName]
-										from_chr_accession = chromosome_per_assembly_h[:refseqAccession]
-										from_chr_length = chromosome_per_assembly_h[:length]
-										from_contig_accession = ""
-
-										from_valid_chr_f = true
-										from_found_f = true
-									## From Chr が UCSC stype の contig name (例 chr1_gl000191_random)
-									elsif !variant_call[:"From Chr"].empty? && chromosome_per_assembly_h[:ucscStyleName].sub(/^chr/i, "") == variant_call[:"From Chr"].sub(/^chr/i, "") && !from_found_f
-										from_assembly = variant_call[:"Assembly for Translocation Breakpoint"]
-										from_chr_name = chromosome_per_assembly_h[:ucscStyleName]
-										from_chr_accession = chromosome_per_assembly_h[:refseqAccession]
-										from_chr_length = chromosome_per_assembly_h[:length]
-										from_contig_accession = ""
-
-										from_valid_chr_f = true
-										from_found_f = true
-									end
-
-								end # for chromosome_per_assembly_h in chromosome_per_assembly_a
-
-								pre_from_assembly = from_assembly
-								pre_from_chr_name = from_chr_name
-								pre_from_chr_accession = from_chr_accession
-								pre_from_chr_length = from_chr_length
-								pre_from_contig_accession = from_contig_accession
-
-							end # if !variant_call["From Chr"].empty? && $ref_download_h.has_key?(variant_call["From Chr"])
-
-							## JV_SV0072: Invalid chromosome reference, to/from は contig 列がなく一体
-							if !variant_call[:"From Chr"].empty? && !from_valid_chr_f && !from_valid_contig_f && !from_ref_download_f
-								invalid_chr_ref_call_a.push(variant_call_id)
-								variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_SV0072 Error: Invalid chromosome reference.")
+							## JV_SV0041: Different chromosomes for intrachromosomal translocation
+							if variant_call[:"Variant Call Type"] == "intrachromosomal translocation" && variant_call[:"From Chr"] != variant_call[:"To Chr"]
+								different_chrs_for_intra_call_a.push(variant_call_id)
+								variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_SV0041 Error: Different chromosomes for intrachromosomal translocation.")
 							end
 
-							from_strand = variant_call[:"From Strand"]
+							## JV_SV0042: Same chromosomes for interchromosomal translocation
+							if variant_call[:"Variant Call Type"] == "interchromosomal translocation" && variant_call[:"From Chr"] == variant_call[:"To Chr"]
+								same_chrs_for_inter_call_a.push(variant_call_id)
+								variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_SV0042 Error: Same chromosomes for interchromosomal translocation.")
+							end
 
-							# FROM GENOME
-							from_genome_attr_h = {}
-							from_genome_attr_h.store(:assembly, refseq_assembly)
+							translocation_assembly_a.push(variant_call[:"Assembly for Translocation Breakpoint"])
 
-							from_genome_attr_h.store(:chr_name, from_chr_name)
-							from_genome_attr_h.store(:chr_accession, from_chr_accession)
-							from_genome_attr_h.store(:contig_accession, from_contig_accession) if from_contig_accession && !from_contig_accession.empty?
-							from_genome_attr_h.store(:strand, from_strand)
+							# 最初の assembly で以降は同じと仮定して valid な chromosome list を構築。assembly 混在は最後にチェック
+							if variant_call[:"Assembly for Translocation Breakpoint"] && !variant_call[:"Assembly for Translocation Breakpoint"].empty? && refseq_assembly.empty? && chromosome_per_assembly_a.empty?
+
+								## assembly から refseq accession 取得
+								$assembly_a.each{|assembly_h|
+									refseq_assembly = assembly_h[:refseq_assembly] if assembly_h.values.include?(variant_call[:"Assembly for Translocation Breakpoint"])
+								}
+
+								## refseq assembly から構成配列を取得
+								$sequence_a.each{|sequence_h|
+									if sequence_h[:assemblyAccession] == refseq_assembly
+										chromosome_per_assembly_a.push({:chrName => sequence_h[:chrName], :ucscStyleName => sequence_h[:ucscStyleName], :refseqAccession => sequence_h[:refseqAccession], :genbankAccession => sequence_h[:genbankAccession], :role => sequence_h[:role], :length => sequence_h[:length]})
+									end
+								}
+
+							end
 
 							variant_call.store(:refseq_assembly_breakpoint, refseq_assembly)
-							variant_call.store(:from_chr_accession, from_chr_accession)
-							variant_call.store(:from_contig_accession, from_contig_accession)
 
-							# FROM COORD
-							if variant_call[:"From Coord"] && variant_call[:"From Coord"].to_i
-								from_coord = variant_call[:"From Coord"].to_i
-								from_genome_attr_h.store(:start, variant_call[:"From Coord"])
-								from_genome_attr_h.store(:stop, variant_call[:"From Coord"])
-							else
-								#from_genome_attr_h.store(:start, "")
-								#from_genome_attr_h.store(:stop, "")
-							end
+							# FROM
+							placement_attr_h.store(:breakpoint_order, "From")
 
-							# cipos
-							from_genome_attr_h.store(:ciposleft, variant_call[:ciposleft]) if variant_call[:ciposleft] && !variant_call[:ciposleft].empty?
-							from_genome_attr_h.store(:ciposright, variant_call[:ciposright]) if variant_call[:ciposright] && !variant_call[:ciposright].empty?
+							variant_call_e.PLACEMENT(placement_attr_h){|placement_e|
 
-							# GENOME attributes
-							placement_e.GENOME(from_genome_attr_h)
+								# variant call 毎に初期化
+								from_chr_name = ""
+								from_chr_accession = ""
+								from_chr_length = -1
+								from_coord = -1
+								from_contig_accession = ""
+								from_assembly = ""
+								from_strand = ""
 
-							if from_chr_length != -1
-								if from_coord != -1 && (from_coord > from_chr_length + 1)
-									pos_outside_chr_call_a.push(variant_call_id)
-									variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_C0061 Error: Chromosome position is larger than chromosome size + 1. Check if the position is correct.")
+								## JV_SV0072: Invalid chromosome reference
+								from_valid_chr_f = false
+								from_valid_contig_f = false
+								from_ref_download_f = false
+								from_found_f = false
+
+								# contig が download ref にある場合 (assembly には含まれていない)
+								# contig は SV のみ。from/to は chr/contig がエクセルで分かれていないので、ここで download にある = contig として扱う
+								if !variant_call[:"From Chr"].empty? && $ref_download_h.has_key?(variant_call[:"From Chr"]) && !from_found_f
+									from_assembly = ""
+									from_chr_name = ""
+									from_chr_accession = ""
+									from_chr_length = $ref_download_h[variant_call[:"From Chr"]].to_i if $ref_download_h[variant_call[:"From Chr"]].to_i
+									from_contig_accession = variant_call[:"From Chr"]
+
+									from_valid_contig_f = true
+									from_ref_download_f = true
+									from_found_f = true
+								# contig accession が前と一致
+								elsif !variant_call[:"From Chr"].empty? && variant_call[:"From Chr"] == pre_from_contig_accession
+									from_assembly = pre_from_assembly
+									from_chr_name = ""
+									from_chr_accession = ""
+									from_chr_length = pre_from_chr_length
+									from_contig_accession = pre_from_contig_accession
+
+									from_valid_contig_f = true
+									from_found_f = true
+								# chromosome name が前と一致
+								elsif !variant_call[:"From Chr"].empty? && variant_call[:"From Chr"] == pre_from_chr_name
+									from_assembly = pre_from_assembly
+									from_chr_name = pre_from_chr_name
+									from_chr_accession = pre_from_chr_accession
+									from_chr_length = pre_from_chr_length
+									from_contig_accession = ""
+
+									from_valid_chr_f = true
+									from_found_f = true
+								# 前と一致しない場合
+								else
+									for chromosome_per_assembly_h in chromosome_per_assembly_a
+
+										## From Chr が chromosome ではなく RefSeq/GenBank アクセッション番号で指定された contig
+										if !variant_call[:"From Chr"].empty? && (chromosome_per_assembly_h[:refseqAccession] == variant_call[:"From Chr"] || chromosome_per_assembly_h[:genbankAccession] == variant_call[:"From Chr"]) && !from_found_f
+											from_assembly = variant_call[:"Assembly for Translocation Breakpoint"]
+											from_chr_name = ""
+											from_chr_accession = ""
+											from_chr_length = chromosome_per_assembly_h[:length]
+											from_contig_accession = chromosome_per_assembly_h[:refseqAccession] # fna は refseqAccession 記載
+
+											from_valid_contig_f = true
+											from_found_f = true
+										## From Chr が assembly で規定されている chromosome name (例 chr1, 1)
+										elsif !variant_call[:"From Chr"].empty? && chromosome_per_assembly_h[:chrName] == variant_call[:"From Chr"].sub(/chr/i, "") && chromosome_per_assembly_h[:role] == "assembled-molecule" && !from_found_f
+											from_assembly = variant_call[:"Assembly for Translocation Breakpoint"]
+											from_chr_name = chromosome_per_assembly_h[:chrName]
+											from_chr_accession = chromosome_per_assembly_h[:refseqAccession]
+											from_chr_length = chromosome_per_assembly_h[:length]
+											from_contig_accession = ""
+
+											from_valid_chr_f = true
+											from_found_f = true
+										## From Chr が UCSC stype の contig name (例 chr1_gl000191_random)
+										elsif !variant_call[:"From Chr"].empty? && chromosome_per_assembly_h[:ucscStyleName].sub(/^chr/i, "") == variant_call[:"From Chr"].sub(/^chr/i, "") && !from_found_f
+											from_assembly = variant_call[:"Assembly for Translocation Breakpoint"]
+											from_chr_name = chromosome_per_assembly_h[:ucscStyleName]
+											from_chr_accession = chromosome_per_assembly_h[:refseqAccession]
+											from_chr_length = chromosome_per_assembly_h[:length]
+											from_contig_accession = ""
+
+											from_valid_chr_f = true
+											from_found_f = true
+										end
+
+									end # for chromosome_per_assembly_h in chromosome_per_assembly_a
+
+									pre_from_assembly = from_assembly
+									pre_from_chr_name = from_chr_name
+									pre_from_chr_accession = from_chr_accession
+									pre_from_chr_length = from_chr_length
+									pre_from_contig_accession = from_contig_accession
+
+								end # if !variant_call["From Chr"].empty? && $ref_download_h.has_key?(variant_call["From Chr"])
+
+								## JV_SV0072: Invalid chromosome reference, to/from は contig 列がなく一体
+								if !variant_call[:"From Chr"].empty? && !from_valid_chr_f && !from_valid_contig_f && !from_ref_download_f
+									invalid_chr_ref_call_a.push(variant_call_id)
+									variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_SV0072 Error: Invalid chromosome reference.")
 								end
-							end
 
-						} # placement_e
+								from_strand = variant_call[:"From Strand"]
 
-						# TO
-						placement_attr_h.store(:breakpoint_order, "To")
+								# FROM GENOME
+								from_genome_attr_h = {}
+								from_genome_attr_h.store(:assembly, refseq_assembly)
 
-						variant_call_e.PLACEMENT(placement_attr_h){|placement_e|
+								from_genome_attr_h.store(:chr_name, from_chr_name)
+								from_genome_attr_h.store(:chr_accession, from_chr_accession)
+								from_genome_attr_h.store(:contig_accession, from_contig_accession) if from_contig_accession && !from_contig_accession.empty?
+								from_genome_attr_h.store(:strand, from_strand)
 
-							# variant call 毎に初期化
-							to_chr_name = ""
-							to_chr_accession = ""
-							to_chr_length = -1
-							to_coord = -1
-							to_contig_accession = ""
-							to_assembly = ""
-							to_strand = ""
+								variant_call.store(:refseq_assembly_breakpoint, refseq_assembly)
+								variant_call.store(:from_chr_accession, from_chr_accession)
+								variant_call.store(:from_contig_accession, from_contig_accession)
 
-							## JV_SV0072: Invalid chromosome reference
-							to_valid_chr_f = false
-							to_valid_contig_f = false
-							to_ref_download_f = false
-							to_found_f = false
+								# FROM COORD
+								if variant_call[:"From Coord"] && variant_call[:"From Coord"].to_i
+									from_coord = variant_call[:"From Coord"].to_i
+									from_genome_attr_h.store(:start, variant_call[:"From Coord"])
+									from_genome_attr_h.store(:stop, variant_call[:"From Coord"])
+								else
+									#from_genome_attr_h.store(:start, "")
+									#from_genome_attr_h.store(:stop, "")
+								end
 
-							# contig が download ref にあるかどうか. download にある = assembly には含まれていない
-							if !variant_call[:"To Chr"].empty? && $ref_download_h.has_key?(variant_call[:"To Chr"]) && !to_found_f
-								to_assembly = ""
-								to_chr_name = ""
-								to_chr_accession = ""
-								to_chr_length = $ref_download_h[variant_call[:"To Chr"]].to_i if $ref_download_h[variant_call[:"To Chr"]].to_i
-								to_contig_accession = variant_call[:"To Chr"]
+								# cipos
+								from_genome_attr_h.store(:ciposleft, variant_call[:ciposleft]) if variant_call[:ciposleft] && !variant_call[:ciposleft].empty?
+								from_genome_attr_h.store(:ciposright, variant_call[:ciposright]) if variant_call[:ciposright] && !variant_call[:ciposright].empty?
 
-								to_valid_contig_f = true
-								to_ref_download_f = true
-								to_found_f = true
-							# contig accession が前と一致
-							elsif !variant_call[:"To Chr"].empty? && variant_call[:"To Chr"] == pre_to_contig_accession
-								to_assembly = pre_to_assembly
-								to_chr_name = ""
-								to_chr_accession = ""
-								to_chr_length = pre_to_chr_length
-								to_contig_accession = pre_to_contig_accession
+								# GENOME attributes
+								placement_e.GENOME(from_genome_attr_h)
 
-								to_valid_contig_f = true
-								to_found_f = true
-							# chromosome name が前と一致
-							elsif !variant_call[:"To Chr"].empty? && variant_call[:"To Chr"] == pre_to_chr_name
-								to_assembly = pre_to_assembly
-								to_chr_name = pre_to_chr_name
-								to_chr_accession = pre_to_chr_accession
-								to_chr_length = pre_to_chr_length
-								to_contig_accession = ""
-
-								to_valid_chr_f = true
-								to_found_f = true
-							# 前と一致しない場合
-							else
-								for chromosome_per_assembly_h in chromosome_per_assembly_a
-									## From Chr に sequence report にある RefSeq/GenBank accession が記載されているかどうか
-									if !variant_call[:"To Chr"].empty? && (chromosome_per_assembly_h[:refseqAccession] == variant_call[:"To Chr"] || chromosome_per_assembly_h[:genbankAccession] == variant_call[:"To Chr"]) && !to_found_f
-										to_assembly = variant_call[:"Assembly for Translocation Breakpoint"]
-										to_chr_name = ""
-										to_chr_accession = ""
-										to_chr_length = chromosome_per_assembly_h[:length]
-										to_contig_accession = chromosome_per_assembly_h[:refseqAccession] # fna は refseqAccession 記載
-
-										to_valid_contig_f = true
-										to_found_f = true
-									elsif !variant_call[:"To Chr"].empty? && chromosome_per_assembly_h[:chrName] == variant_call[:"To Chr"].sub(/chr/i, "") && chromosome_per_assembly_h[:role] == "assembled-molecule" && !to_found_f
-										to_assembly = variant_call[:"Assembly for Translocation Breakpoint"]
-										to_chr_name = chromosome_per_assembly_h[:chrName]
-										to_chr_accession = chromosome_per_assembly_h[:refseqAccession]
-										to_chr_length = chromosome_per_assembly_h[:length]
-										to_contig_accession = ""
-
-										to_valid_chr_f = true
-										to_found_f = true
-									elsif !variant_call[:"To Chr"].empty? && chromosome_per_assembly_h[:ucscStyleName].sub(/^chr/i, "") == variant_call[:"To Chr"].sub(/^chr/i, "") && !to_found_f
-										to_assembly = variant_call[:"Assembly for Translocation Breakpoint"]
-										to_chr_name = chromosome_per_assembly_h[:ucscStyleName]
-										to_chr_accession = chromosome_per_assembly_h[:refseqAccession]
-										to_chr_length = chromosome_per_assembly_h[:length]
-										to_contig_accession = ""
-
-										to_valid_chr_f = true
-										to_found_f = true
+								if from_chr_length != -1
+									if from_coord != -1 && (from_coord > from_chr_length + 1)
+										pos_outside_chr_call_a.push(variant_call_id)
+										variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_C0061 Error: Chromosome position is larger than chromosome size + 1. Check if the position is correct.")
 									end
-
-								end # for chromosome_per_assembly_h in chromosome_per_assembly_a
-
-								pre_to_assembly = to_assembly
-								pre_to_chr_name = to_chr_name
-								pre_to_chr_accession = to_chr_accession
-								pre_to_chr_length = to_chr_length
-								pre_to_contig_accession = to_contig_accession
-
-							end # if !variant_call["To Chr"].empty? && $ref_download_h.has_key?(variant_call["To Chr"])
-
-							## JV_SV0072: Invalid chromosome reference, to/from は contig 列がなく一体
-							if !variant_call[:"To Chr"].empty? && !to_valid_chr_f && !to_valid_contig_f && !to_ref_download_f
-								invalid_chr_ref_call_a.push(variant_call_id)
-								variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_SV0072 Error: Invalid chromosome reference.")
-							end
-
-							to_strand = variant_call[:"To Strand"]
-
-							# TO GENOME
-							to_genome_attr_h = {}
-							to_genome_attr_h.store(:assembly, refseq_assembly)
-
-							to_genome_attr_h.store(:chr_name, to_chr_name)
-							to_genome_attr_h.store(:chr_accession, to_chr_accession)
-							to_genome_attr_h.store(:contig_accession, to_contig_accession) if to_contig_accession && !to_contig_accession.empty?
-							to_genome_attr_h.store(:strand, to_strand)
-
-							variant_call.store(:to_chr_accession, to_chr_accession)
-							variant_call.store(:to_contig_accession, to_contig_accession)
-
-							# TO COORD
-							if variant_call[:"To Coord"] && variant_call[:"To Coord"].to_i
-								to_coord = variant_call[:"To Coord"].to_i
-								to_genome_attr_h.store(:start, variant_call[:"To Coord"])
-								to_genome_attr_h.store(:stop, variant_call[:"To Coord"])
-							else
-								#to_genome_attr_h.store(:start, "")
-								#to_genome_attr_h.store(:stop, "")
-							end
-
-							# ciend
-							to_genome_attr_h.store(:ciendleft, variant_call[:ciendleft]) if variant_call[:ciendleft] && !variant_call[:ciendleft].empty?
-							to_genome_attr_h.store(:ciendright, variant_call[:ciendright]) if variant_call[:ciendright] && !variant_call[:ciendright].empty?
-
-							# GENOME attributes
-							placement_e.GENOME(to_genome_attr_h)
-
-							## JV_C0061: Chromosome position larger than chromosome size + 1
-							if to_chr_length != -1
-								if to_coord != -1 && (to_coord > to_chr_length + 1)
-									pos_outside_chr_call_a.push(variant_call_id)
-									variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_C0061 Error: Chromosome position is larger than chromosome size + 1. Check if the position is correct.")
 								end
+
+							} # placement_e
+
+							# TO
+							placement_attr_h.store(:breakpoint_order, "To")
+
+							variant_call_e.PLACEMENT(placement_attr_h){|placement_e|
+
+								# variant call 毎に初期化
+								to_chr_name = ""
+								to_chr_accession = ""
+								to_chr_length = -1
+								to_coord = -1
+								to_contig_accession = ""
+								to_assembly = ""
+								to_strand = ""
+
+								## JV_SV0072: Invalid chromosome reference
+								to_valid_chr_f = false
+								to_valid_contig_f = false
+								to_ref_download_f = false
+								to_found_f = false
+
+								# contig が download ref にあるかどうか. download にある = assembly には含まれていない
+								if !variant_call[:"To Chr"].empty? && $ref_download_h.has_key?(variant_call[:"To Chr"]) && !to_found_f
+									to_assembly = ""
+									to_chr_name = ""
+									to_chr_accession = ""
+									to_chr_length = $ref_download_h[variant_call[:"To Chr"]].to_i if $ref_download_h[variant_call[:"To Chr"]].to_i
+									to_contig_accession = variant_call[:"To Chr"]
+
+									to_valid_contig_f = true
+									to_ref_download_f = true
+									to_found_f = true
+								# contig accession が前と一致
+								elsif !variant_call[:"To Chr"].empty? && variant_call[:"To Chr"] == pre_to_contig_accession
+									to_assembly = pre_to_assembly
+									to_chr_name = ""
+									to_chr_accession = ""
+									to_chr_length = pre_to_chr_length
+									to_contig_accession = pre_to_contig_accession
+
+									to_valid_contig_f = true
+									to_found_f = true
+								# chromosome name が前と一致
+								elsif !variant_call[:"To Chr"].empty? && variant_call[:"To Chr"] == pre_to_chr_name
+									to_assembly = pre_to_assembly
+									to_chr_name = pre_to_chr_name
+									to_chr_accession = pre_to_chr_accession
+									to_chr_length = pre_to_chr_length
+									to_contig_accession = ""
+
+									to_valid_chr_f = true
+									to_found_f = true
+								# 前と一致しない場合
+								else
+									for chromosome_per_assembly_h in chromosome_per_assembly_a
+										## From Chr に sequence report にある RefSeq/GenBank accession が記載されているかどうか
+										if !variant_call[:"To Chr"].empty? && (chromosome_per_assembly_h[:refseqAccession] == variant_call[:"To Chr"] || chromosome_per_assembly_h[:genbankAccession] == variant_call[:"To Chr"]) && !to_found_f
+											to_assembly = variant_call[:"Assembly for Translocation Breakpoint"]
+											to_chr_name = ""
+											to_chr_accession = ""
+											to_chr_length = chromosome_per_assembly_h[:length]
+											to_contig_accession = chromosome_per_assembly_h[:refseqAccession] # fna は refseqAccession 記載
+
+											to_valid_contig_f = true
+											to_found_f = true
+										elsif !variant_call[:"To Chr"].empty? && chromosome_per_assembly_h[:chrName] == variant_call[:"To Chr"].sub(/chr/i, "") && chromosome_per_assembly_h[:role] == "assembled-molecule" && !to_found_f
+											to_assembly = variant_call[:"Assembly for Translocation Breakpoint"]
+											to_chr_name = chromosome_per_assembly_h[:chrName]
+											to_chr_accession = chromosome_per_assembly_h[:refseqAccession]
+											to_chr_length = chromosome_per_assembly_h[:length]
+											to_contig_accession = ""
+
+											to_valid_chr_f = true
+											to_found_f = true
+										elsif !variant_call[:"To Chr"].empty? && chromosome_per_assembly_h[:ucscStyleName].sub(/^chr/i, "") == variant_call[:"To Chr"].sub(/^chr/i, "") && !to_found_f
+											to_assembly = variant_call[:"Assembly for Translocation Breakpoint"]
+											to_chr_name = chromosome_per_assembly_h[:ucscStyleName]
+											to_chr_accession = chromosome_per_assembly_h[:refseqAccession]
+											to_chr_length = chromosome_per_assembly_h[:length]
+											to_contig_accession = ""
+
+											to_valid_chr_f = true
+											to_found_f = true
+										end
+
+									end # for chromosome_per_assembly_h in chromosome_per_assembly_a
+
+									pre_to_assembly = to_assembly
+									pre_to_chr_name = to_chr_name
+									pre_to_chr_accession = to_chr_accession
+									pre_to_chr_length = to_chr_length
+									pre_to_contig_accession = to_contig_accession
+
+								end # if !variant_call["To Chr"].empty? && $ref_download_h.has_key?(variant_call["To Chr"])
+
+								## JV_SV0072: Invalid chromosome reference, to/from は contig 列がなく一体
+								if !variant_call[:"To Chr"].empty? && !to_valid_chr_f && !to_valid_contig_f && !to_ref_download_f
+									invalid_chr_ref_call_a.push(variant_call_id)
+									variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_SV0072 Error: Invalid chromosome reference.")
+								end
+
+								to_strand = variant_call[:"To Strand"]
+
+								# TO GENOME
+								to_genome_attr_h = {}
+								to_genome_attr_h.store(:assembly, refseq_assembly)
+
+								to_genome_attr_h.store(:chr_name, to_chr_name)
+								to_genome_attr_h.store(:chr_accession, to_chr_accession)
+								to_genome_attr_h.store(:contig_accession, to_contig_accession) if to_contig_accession && !to_contig_accession.empty?
+								to_genome_attr_h.store(:strand, to_strand)
+
+								variant_call.store(:to_chr_accession, to_chr_accession)
+								variant_call.store(:to_contig_accession, to_contig_accession)
+
+								# TO COORD
+								if variant_call[:"To Coord"] && variant_call[:"To Coord"].to_i
+									to_coord = variant_call[:"To Coord"].to_i
+									to_genome_attr_h.store(:start, variant_call[:"To Coord"])
+									to_genome_attr_h.store(:stop, variant_call[:"To Coord"])
+								else
+									#to_genome_attr_h.store(:start, "")
+									#to_genome_attr_h.store(:stop, "")
+								end
+
+								# ciend
+								to_genome_attr_h.store(:ciendleft, variant_call[:ciendleft]) if variant_call[:ciendleft] && !variant_call[:ciendleft].empty?
+								to_genome_attr_h.store(:ciendright, variant_call[:ciendright]) if variant_call[:ciendright] && !variant_call[:ciendright].empty?
+
+								# GENOME attributes
+								placement_e.GENOME(to_genome_attr_h)
+
+								## JV_C0061: Chromosome position larger than chromosome size + 1
+								if to_chr_length != -1
+									if to_coord != -1 && (to_coord > to_chr_length + 1)
+										pos_outside_chr_call_a.push(variant_call_id)
+										variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_C0061 Error: Chromosome position is larger than chromosome size + 1. Check if the position is correct.")
+									end
+								end
+
+							} # placement_e
+
+						end # if variant_call[:"Assembly for Translocation Breakpoint"] && variant_call[:"Assembly for Translocation Breakpoint"].empty? || variant_call[:"From Chr"].empty? || variant_call[:"From Coord"].empty? || variant_call[:"From Strand"].empty? || variant_call[:"To Chr"].empty? || variant_call[:"To Coord"].empty? || variant_call[:"To Strand"].empty?
+							
+					# translocation - single breakend
+					elsif ["ins_with_sbnd", "sbnd"].include?(variant_call[:"Comment"])
+
+						from_chr_name = ""
+						from_chr_accession = ""
+						from_chr_length = -1
+						from_coord = -1
+						from_contig_accession = ""
+						from_assembly = ""
+						from_strand = ""
+
+						## JV_SV0094: Missing strand for translocation
+						if variant_call[:"From Strand"].empty?
+							missing_strand_call_a.push(variant_call_id)
+							variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_SV0094 Warning: Missing strand for translocation.")
+						end
+
+						## JV_SV0045: Invalid translocation from (and to)
+						if variant_call[:"Assembly for Translocation Breakpoint"] && variant_call[:"Assembly for Translocation Breakpoint"].empty? || variant_call[:"From Chr"].empty? || variant_call[:"From Coord"].empty? || variant_call[:"From Strand"].empty?
+							invalid_from_to_call_a.push(variant_call_id)
+							variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_SV0045 Error: Invalid translocation from and to.")
+
+						else
+
+							## translocation call を格納
+							variant_call_translocation_h.store(:"#{variant_call_id}", variant_call)	
+							translocation_assembly_a.push(variant_call[:"Assembly for Translocation Breakpoint"])
+
+							# 最初の assembly で以降は同じと仮定して valid な chromosome list を構築。assembly 混在は最後にチェック
+							if variant_call[:"Assembly for Translocation Breakpoint"] && !variant_call[:"Assembly for Translocation Breakpoint"].empty? && refseq_assembly.empty? && chromosome_per_assembly_a.empty?
+
+								## assembly から refseq accession 取得
+								$assembly_a.each{|assembly_h|
+									refseq_assembly = assembly_h[:refseq_assembly] if assembly_h.values.include?(variant_call[:"Assembly for Translocation Breakpoint"])
+								}
+
+								## refseq assembly から構成配列を取得
+								$sequence_a.each{|sequence_h|
+									if sequence_h[:assemblyAccession] == refseq_assembly
+										chromosome_per_assembly_a.push({:chrName => sequence_h[:chrName], :ucscStyleName => sequence_h[:ucscStyleName], :refseqAccession => sequence_h[:refseqAccession], :genbankAccession => sequence_h[:genbankAccession], :role => sequence_h[:role], :length => sequence_h[:length]})
+									end
+								}
+
 							end
 
-						} # placement_e
+							variant_call.store(:refseq_assembly_breakpoint, refseq_assembly)
 
-					end # if there are translocation placements
+							# FROM ONLY for single breakend
+							placement_attr_h.store(:breakpoint_order, "From")
 
-				else # if not =~ /translocation/
+							variant_call_e.PLACEMENT(placement_attr_h){|placement_e|
+
+								# variant call 毎に初期化
+								from_chr_name = ""
+								from_chr_accession = ""
+								from_chr_length = -1
+								from_coord = -1
+								from_contig_accession = ""
+								from_assembly = ""
+								from_strand = ""
+
+								## JV_SV0072: Invalid chromosome reference
+								from_valid_chr_f = false
+								from_valid_contig_f = false
+								from_ref_download_f = false
+								from_found_f = false
+
+								# contig が download ref にある場合 (assembly には含まれていない)
+								# contig は SV のみ。from/to は chr/contig がエクセルで分かれていないので、ここで download にある = contig として扱う
+								if !variant_call[:"From Chr"].empty? && $ref_download_h.has_key?(variant_call[:"From Chr"]) && !from_found_f
+									from_assembly = ""
+									from_chr_name = ""
+									from_chr_accession = ""
+									from_chr_length = $ref_download_h[variant_call[:"From Chr"]].to_i if $ref_download_h[variant_call[:"From Chr"]].to_i
+									from_contig_accession = variant_call[:"From Chr"]
+
+									from_valid_contig_f = true
+									from_ref_download_f = true
+									from_found_f = true
+								# contig accession が前と一致
+								elsif !variant_call[:"From Chr"].empty? && variant_call[:"From Chr"] == pre_from_contig_accession
+									from_assembly = pre_from_assembly
+									from_chr_name = ""
+									from_chr_accession = ""
+									from_chr_length = pre_from_chr_length
+									from_contig_accession = pre_from_contig_accession
+
+									from_valid_contig_f = true
+									from_found_f = true
+								# chromosome name が前と一致
+								elsif !variant_call[:"From Chr"].empty? && variant_call[:"From Chr"] == pre_from_chr_name
+									from_assembly = pre_from_assembly
+									from_chr_name = pre_from_chr_name
+									from_chr_accession = pre_from_chr_accession
+									from_chr_length = pre_from_chr_length
+									from_contig_accession = ""
+
+									from_valid_chr_f = true
+									from_found_f = true
+								# 前と一致しない場合
+								else
+									for chromosome_per_assembly_h in chromosome_per_assembly_a
+
+										## From Chr が chromosome ではなく RefSeq/GenBank アクセッション番号で指定された contig
+										if !variant_call[:"From Chr"].empty? && (chromosome_per_assembly_h[:refseqAccession] == variant_call[:"From Chr"] || chromosome_per_assembly_h[:genbankAccession] == variant_call[:"From Chr"]) && !from_found_f
+											from_assembly = variant_call[:"Assembly for Translocation Breakpoint"]
+											from_chr_name = ""
+											from_chr_accession = ""
+											from_chr_length = chromosome_per_assembly_h[:length]
+											from_contig_accession = chromosome_per_assembly_h[:refseqAccession] # fna は refseqAccession 記載
+
+											from_valid_contig_f = true
+											from_found_f = true
+										## From Chr が assembly で規定されている chromosome name (例 chr1, 1)
+										elsif !variant_call[:"From Chr"].empty? && chromosome_per_assembly_h[:chrName] == variant_call[:"From Chr"].sub(/chr/i, "") && chromosome_per_assembly_h[:role] == "assembled-molecule" && !from_found_f
+											from_assembly = variant_call[:"Assembly for Translocation Breakpoint"]
+											from_chr_name = chromosome_per_assembly_h[:chrName]
+											from_chr_accession = chromosome_per_assembly_h[:refseqAccession]
+											from_chr_length = chromosome_per_assembly_h[:length]
+											from_contig_accession = ""
+
+											from_valid_chr_f = true
+											from_found_f = true
+										## From Chr が UCSC stype の contig name (例 chr1_gl000191_random)
+										elsif !variant_call[:"From Chr"].empty? && chromosome_per_assembly_h[:ucscStyleName].sub(/^chr/i, "") == variant_call[:"From Chr"].sub(/^chr/i, "") && !from_found_f
+											from_assembly = variant_call[:"Assembly for Translocation Breakpoint"]
+											from_chr_name = chromosome_per_assembly_h[:ucscStyleName]
+											from_chr_accession = chromosome_per_assembly_h[:refseqAccession]
+											from_chr_length = chromosome_per_assembly_h[:length]
+											from_contig_accession = ""
+
+											from_valid_chr_f = true
+											from_found_f = true
+										end
+
+									end # for chromosome_per_assembly_h in chromosome_per_assembly_a
+
+									pre_from_assembly = from_assembly
+									pre_from_chr_name = from_chr_name
+									pre_from_chr_accession = from_chr_accession
+									pre_from_chr_length = from_chr_length
+									pre_from_contig_accession = from_contig_accession
+
+								end # if !variant_call["From Chr"].empty? && $ref_download_h.has_key?(variant_call["From Chr"])
+
+								## JV_SV0072: Invalid chromosome reference, to/from は contig 列がなく一体
+								if !variant_call[:"From Chr"].empty? && !from_valid_chr_f && !from_valid_contig_f && !from_ref_download_f
+									invalid_chr_ref_call_a.push(variant_call_id)
+									variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_SV0072 Error: Invalid chromosome reference.")
+								end
+
+								from_strand = variant_call[:"From Strand"]
+
+								# FROM GENOME
+								from_genome_attr_h = {}
+								from_genome_attr_h.store(:assembly, refseq_assembly)
+
+								from_genome_attr_h.store(:chr_name, from_chr_name)
+								from_genome_attr_h.store(:chr_accession, from_chr_accession)
+								from_genome_attr_h.store(:contig_accession, from_contig_accession) if from_contig_accession && !from_contig_accession.empty?
+								from_genome_attr_h.store(:strand, from_strand)
+
+								variant_call.store(:refseq_assembly_breakpoint, refseq_assembly)
+								variant_call.store(:from_chr_accession, from_chr_accession)
+								variant_call.store(:from_contig_accession, from_contig_accession)
+
+								# FROM COORD
+								if variant_call[:"From Coord"] && variant_call[:"From Coord"].to_i
+									from_coord = variant_call[:"From Coord"].to_i
+									from_genome_attr_h.store(:start, variant_call[:"From Coord"])
+									from_genome_attr_h.store(:stop, variant_call[:"From Coord"])
+								else
+									#from_genome_attr_h.store(:start, "")
+									#from_genome_attr_h.store(:stop, "")
+								end
+
+								# cipos
+								from_genome_attr_h.store(:ciposleft, variant_call[:ciposleft]) if variant_call[:ciposleft] && !variant_call[:ciposleft].empty?
+								from_genome_attr_h.store(:ciposright, variant_call[:ciposright]) if variant_call[:ciposright] && !variant_call[:ciposright].empty?
+
+								# GENOME attributes
+								placement_e.GENOME(from_genome_attr_h)
+
+								if from_chr_length != -1
+									if from_coord != -1 && (from_coord > from_chr_length + 1)
+										pos_outside_chr_call_a.push(variant_call_id)
+										variant_call_tsv_log_a.push("#{variant_call[:row].join("\t")}\t# JV_C0061 Error: Chromosome position is larger than chromosome size + 1. Check if the position is correct.")
+									end
+								end
+
+							} # placement_e
+	
+						end # if variant_call[:"Assembly for Translocation Breakpoint"] && variant_call[:"Assembly for Translocation Breakpoint"].empty? || variant_call[:"From Chr"].empty? || variant_call[:"From Coord"].empty? || variant_call[:"From Strand"].empty?
+							
+					end # if ["ins_with_sbnd", "sbnd"].include?(variant_call[:"Comment"])
+						
+				else # if not variant_call_type.match?(/translocation/)
 
 					## JV_SV0095: Strand for non-translocation
 					if (variant_call[:"From Strand"] && !variant_call[:"From Strand"].empty?) || (variant_call[:"To Strand"] && !variant_call[:"To Strand"].empty?)
@@ -2748,9 +2947,9 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 						# translocation 以外の region に機械的にまとめる same pos and type の SVs, pos は cipos ciend も考慮
 						# https://ddbj-dev.atlassian.net/wiki/spaces/jvar/pages/2470674436/Variant+region+assertion
-						# insertion with translocation は identity でまとめない
+						# insertion with translocation, insertion with single breakend, single breakend は identity でまとめない
 						hash_sv = :"#{variant_call_type}:#{chr_accession}:#{contig_accession}:#{variant_call[:"Outer Start"]}:#{variant_call[:Start]}:#{variant_call[:"Inner Start"]}:#{variant_call[:"Inner Stop"]}:#{variant_call[:Stop]}:#{variant_call[:"Outer Stop"]}:#{variant_call[:ciposleft]}:#{variant_call[:ciposright]}:#{variant_call[:ciendleft]}:#{variant_call[:ciendright]}:#{variant_call[:"Insertion Length"]}"
-						if variant_call_site_h.has_key?(hash_sv) && variant_call[:"Comment"] != "ins_with_trans"
+						if variant_call_site_h.has_key?(hash_sv) && !["ins_with_trans", "ins_with_sbnd", "sbnd"].include?(variant_call[:"Comment"])
 							identical_variant_call_site_id_h[hash_sv] = [variant_call_site_h[hash_sv]] if identical_variant_call_site_id_h[hash_sv].nil?
 							identical_variant_call_site_id_h[hash_sv].push(variant_call_id)
 						end
@@ -3115,6 +3314,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 			group_by_mutation_id_f = false
 			supporting_call_json_a = []
 			supporting_call_json_s = ""
+			
 			for r_mutation_id, r_calls_by_mutation_id_a in variant_calls_by_mutation_id_h
 				if r_calls_by_mutation_id_a.include?(r_variant_call_id)
 
@@ -3124,6 +3324,9 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 					if variant_call[:"Comment"] == "ins_with_trans"
 						r_variant_region_type = "complex chromosomal rearrangement"
 						r_assertion_method = "Overlapping breakpoint and insertion calls merged into regions by JVar staff (no regions submitted)"
+					elsif variant_call[:"Comment"] == "ins_with_sbnd"
+							r_variant_region_type = "complex chromosomal rearrangement"
+							r_assertion_method = "Overlapping single breakend and insertion calls merged into regions by JVar staff (no regions submitted)"
 					else
 						if supporting_variant_call_id_a.size == 1
 							r_variant_region_type = "translocation"
@@ -3706,6 +3909,7 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 			##
 			# 1. Mutation ID がある translocation - call の from to を記載
 			# 2. Mutation ID がある insertion with translocation - call の from to を記載, insertion sequence を VARIANT_SEQUENCE に記載
+			# 1 2 共に single breakend は from only
 			# 3. same pos and type で merge (translocation 以外) - region の placement をそのまま記載
 			# 4. identical - translocation region の from to, translocation 以外 region の placement そのまま
 
@@ -3768,54 +3972,59 @@ xml_f.puts xml.SUBMISSION(submission_attr_h){|submission|
 
 						} # from_placement_e
 
-						to_placement_attr_h = {}
-						# to_placement_attr_h.store(:alt_status, "")
-						# to_placement_attr_h.store(:placement_method, "")
-						to_placement_attr_h.store(:breakpoint_order, "To")
-						to_placement_attr_h.store(:variant_call_id, supporting_variant_call_h[:"Variant Call ID"]) if supporting_variant_call_h[:"Variant Call ID"] && !supporting_variant_call_h[:"Variant Call ID"].empty?
-						
-						if supporting_variant_call_h[:"Mutation Molecule"] && !supporting_variant_call_h[:"Mutation Molecule"].empty?
-							to_placement_attr_h.store(:mutation_order, supporting_variant_call_h[:"Mutation Order"]) if supporting_variant_call_h[:"Mutation Order"] && supporting_variant_call_h[:"Mutation Order"].is_a?(Integer)
-							to_placement_attr_h.store(:mutation_molecule, supporting_variant_call_h[:"Mutation Molecule"])
-						end
+						## TO
+						if supporting_variant_call_h[:"To Coord"] && !supporting_variant_call_h[:"To Coord"].empty?
+							
+							to_placement_attr_h = {}
+							# to_placement_attr_h.store(:alt_status, "")
+							# to_placement_attr_h.store(:placement_method, "")
+							to_placement_attr_h.store(:breakpoint_order, "To")
+							to_placement_attr_h.store(:variant_call_id, supporting_variant_call_h[:"Variant Call ID"]) if supporting_variant_call_h[:"Variant Call ID"] && !supporting_variant_call_h[:"Variant Call ID"].empty?
+							
+							if supporting_variant_call_h[:"Mutation Molecule"] && !supporting_variant_call_h[:"Mutation Molecule"].empty?
+								to_placement_attr_h.store(:mutation_order, supporting_variant_call_h[:"Mutation Order"]) if supporting_variant_call_h[:"Mutation Order"] && supporting_variant_call_h[:"Mutation Order"].is_a?(Integer)
+								to_placement_attr_h.store(:mutation_molecule, supporting_variant_call_h[:"Mutation Molecule"])
+							end
 
-						variant_region_e.PLACEMENT(to_placement_attr_h){|to_placement_e|
+							variant_region_e.PLACEMENT(to_placement_attr_h){|to_placement_e|
 
-								# GENOME
-								to_genome_attr_h = {}
-								to_genome_attr_h.store(:assembly, supporting_variant_call_h[:refseq_assembly_breakpoint])
+									# GENOME
+									to_genome_attr_h = {}
+									to_genome_attr_h.store(:assembly, supporting_variant_call_h[:refseq_assembly_breakpoint])
 
-								to_genome_attr_h.store(:chr_name, supporting_variant_call_h[:"To Chr"])
-								to_genome_attr_h.store(:chr_accession, supporting_variant_call_h[:to_chr_accession])
-								to_genome_attr_h.store(:contig_accession, supporting_variant_call_h[:to_contig_accession]) if supporting_variant_call_h[:to_contig_accession] && !supporting_variant_call_h[:to_contig_accession].empty?
+									to_genome_attr_h.store(:chr_name, supporting_variant_call_h[:"To Chr"])
+									to_genome_attr_h.store(:chr_accession, supporting_variant_call_h[:to_chr_accession])
+									to_genome_attr_h.store(:contig_accession, supporting_variant_call_h[:to_contig_accession]) if supporting_variant_call_h[:to_contig_accession] && !supporting_variant_call_h[:to_contig_accession].empty?
 
-								# start, stop
-								if supporting_variant_call_h[:"To Coord"] && !supporting_variant_call_h[:"To Coord"].empty?
-									to_genome_attr_h.store(:start, supporting_variant_call_h[:"To Coord"])
-									to_genome_attr_h.store(:stop, supporting_variant_call_h[:"To Coord"])
-								end
+									# start, stop
+									if supporting_variant_call_h[:"To Coord"] && !supporting_variant_call_h[:"To Coord"].empty?
+										to_genome_attr_h.store(:start, supporting_variant_call_h[:"To Coord"])
+										to_genome_attr_h.store(:stop, supporting_variant_call_h[:"To Coord"])
+									end
 
-								to_genome_attr_h.store(:strand, supporting_variant_call_h[:"To Strand"]) if supporting_variant_call_h[:"To Strand"] && !supporting_variant_call_h[:"To Strand"].empty?
+									to_genome_attr_h.store(:strand, supporting_variant_call_h[:"To Strand"]) if supporting_variant_call_h[:"To Strand"] && !supporting_variant_call_h[:"To Strand"].empty?
 
-								to_genome_attr_h.store(:ciposleft, supporting_variant_call_h[:ciposleft]) if supporting_variant_call_h[:ciposleft] && !supporting_variant_call_h[:ciposleft].empty?
-								to_genome_attr_h.store(:ciposright, supporting_variant_call_h[:ciposright]) if supporting_variant_call_h[:ciposright] && !supporting_variant_call_h[:ciposright].empty?
-								to_genome_attr_h.store(:ciendleft, supporting_variant_call_h[:ciendleft]) if supporting_variant_call_h[:ciendleft] && !supporting_variant_call_h[:ciendleft].empty?
-								to_genome_attr_h.store(:ciendright, supporting_variant_call_h[:ciendright]) if supporting_variant_call_h[:ciendright] && !supporting_variant_call_h[:ciendright].empty?
+									to_genome_attr_h.store(:ciposleft, supporting_variant_call_h[:ciposleft]) if supporting_variant_call_h[:ciposleft] && !supporting_variant_call_h[:ciposleft].empty?
+									to_genome_attr_h.store(:ciposright, supporting_variant_call_h[:ciposright]) if supporting_variant_call_h[:ciposright] && !supporting_variant_call_h[:ciposright].empty?
+									to_genome_attr_h.store(:ciendleft, supporting_variant_call_h[:ciendleft]) if supporting_variant_call_h[:ciendleft] && !supporting_variant_call_h[:ciendleft].empty?
+									to_genome_attr_h.store(:ciendright, supporting_variant_call_h[:ciendright]) if supporting_variant_call_h[:ciendright] && !supporting_variant_call_h[:ciendright].empty?
 
-								# genome_attr_h.store(:remap_score, "")
-								# genome_attr_h.store(:assembly_unit, "")
-								# genome_attr_h.store(:alignment, "")
-								# genome_attr_h.store(:remap_failure_code, "")
-								# genome_attr_h.store(:placement_rank, "")
-								# genome_attr_h.store(:placements_per_assembly, "")
-								# genome_attr_h.store(:remap_diff_chr, "")
-								# genome_attr_h.store(:remap_best_within_cluster, "")
+									# genome_attr_h.store(:remap_score, "")
+									# genome_attr_h.store(:assembly_unit, "")
+									# genome_attr_h.store(:alignment, "")
+									# genome_attr_h.store(:remap_failure_code, "")
+									# genome_attr_h.store(:placement_rank, "")
+									# genome_attr_h.store(:placements_per_assembly, "")
+									# genome_attr_h.store(:remap_diff_chr, "")
+									# genome_attr_h.store(:remap_best_within_cluster, "")
 
-								# GENOME attributes
-								to_placement_e.GENOME(to_genome_attr_h)
+									# GENOME attributes
+									to_placement_e.GENOME(to_genome_attr_h)
 
-						} # to_placement_e					
+							} # to_placement_e					
 
+						end # if TO exists, not single breakend
+							
 					end # if translocation
 				
 				} # supporting_variant_call_a.each{|supporting_variant_call_h|
@@ -4469,11 +4678,13 @@ end
 	# dbVar xsd validation
 	xsd_results_s = ""
 	if xsd_f && FileTest.exist?("#{excel_path}/#{submission_id}_dbvar.xml")
+		
 		o, e, s = Open3.capture3("#{sin_path}xmllint --schema dbVar.xsd --noout #{excel_path}/#{submission_id}_dbvar.xml")
-
+		
 		xsd_results_s = <<EOS
 JVar-SV XML dbVar xsd validation results
 ---------------------------------------------
+#{sin_path}xmllint --schema dbVar.xsd --noout #{excel_path}/#{submission_id}_dbvar.xml
 #{e.strip}
 ---------------------------------------------
 EOS

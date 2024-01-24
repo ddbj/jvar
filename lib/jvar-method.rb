@@ -286,6 +286,8 @@ def vcf_parser(vcf_file, vcf_type, args)
 	calculated_af_c = 0
 	ac_greater_than_an_c = 0
 	divided_trans_ins_c = 0
+	divided_sbnd_ins_c = 0
+	invalid_single_breakend_c = 0
 
 	# fasta
 	ref_fasta_no_exist_a = []
@@ -340,6 +342,7 @@ def vcf_parser(vcf_file, vcf_type, args)
 
 		skipped_mate_f = false
 		invalid_translocation_f = false
+		invalid_single_breakend_f = false
 
 		## first line should be fileformat
 		if line_c == 0
@@ -1048,7 +1051,7 @@ def vcf_parser(vcf_file, vcf_type, args)
 			## SV
 			##
 			if vcf_type == "SV"
-
+				
 				# Variant Call ID
 				vcf_variant_call_h.store(:"Variant Call ID", id)
 
@@ -1139,6 +1142,7 @@ def vcf_parser(vcf_file, vcf_type, args)
 				###
 				translocation_f = false
 				telomere_translocation_f = false
+				single_breakend_f = false
 
 				from_chr = ""
 				from_coord = -1
@@ -1150,8 +1154,9 @@ def vcf_parser(vcf_file, vcf_type, args)
 				mutation_id = ""
 				mate_id = ""
 				
-				# translocation に伴う insertion
+				# translocation, single breakend に伴う insertion
 				ins_with_translocation_h = {}
+				ins_with_sbnd_h = {}
 	
 				if info_h[:EVENT] && info_h[:EVENT]
 					mutation_id = info_h[:EVENT]
@@ -1178,7 +1183,6 @@ def vcf_parser(vcf_file, vcf_type, args)
 					valid_translocation_f = false
 					translocation_f = true
 
-					# single breakend は FROM only で記述
 					# telomere 以外
 					if pos > 0
 						if alt =~ /#{ref}([ATGCN]*)\[#{chr_trans_regex}\[/i
@@ -1344,7 +1348,7 @@ def vcf_parser(vcf_file, vcf_type, args)
 							sv_type = "interchromosomal translocation"
 						end
 
-					end
+					end # if valid_translocation_f
 
 					# translocation & invalid translocation
 					if translocation_f && !valid_translocation_f
@@ -1353,7 +1357,107 @@ def vcf_parser(vcf_file, vcf_type, args)
 						invalid_translocation_c += 1
 						invalid_translocation_f = true # translocation ALT [] であるがパースできないものは error を出してエラー回避のため取り込まない
 					end
+				
+				# single breakend
+				elsif alt.match?(/#{ref}[ATGCN]*\.$/i) || alt.match?(/^\.[ATGCN]*#{ref}/i)
+					
+					mutation_id = ""
+					variant_sequence = ""
+					
+					# single breakend FROM strand +
+					if alt =~ /#{ref}([ATGCN]*)\.$/i
+						from_chr = chrom
+						from_coord = pos
+						from_strand = "+"
+						variant_sequence = $1
+						
+						single_breakend_f = true
 
+					# single breakend FROM strand -
+					elsif alt =~ /^\.([ATGCN]*)#{ref}/i
+						from_chr = chrom
+						from_coord = pos
+						from_strand = "-"
+						variant_sequence = $1
+						
+						single_breakend_f = true
+						
+					end # FROM strand + or -
+
+					# insertion を伴う場合
+					if variant_sequence && !variant_sequence.empty? && variant_sequence.length > 0
+
+						# single breakend と insertion を region にまとめるため共通 mutation ID を格納
+						mutation_id = "#{id}_sbnd_ins"
+						
+						ins_with_sbnd_h =
+						{
+							:"Variant Call ID" => "#{id}_ins",
+							:Chr => chrom,
+							:"Mutation ID" => mutation_id,
+							:"Variant Call Type" => "insertion",
+							:"Insertion Length" => variant_sequence.length.to_s,
+							:"From Chr" => "",
+							:"From Coord" => "",
+							:"From Strand" => "",
+							:"To Chr" => "",
+							:"To Coord" => "",
+							:"To Strand" => "",
+							:"Outer Start" => "",
+							:Start => pos.to_s,
+							:"Inner Start" => "",
+							:"Inner Stop" => "",
+							:Stop => (pos + variant_sequence.length).to_s,
+							:"Outer Stop" => "",
+							:ciposleft => "",
+							:ciposright => "",
+							:ciendleft => "",
+							:ciendright => "",
+							:Contig => "",
+							:"Copy Number" => "",
+							:variant_sequence => variant_sequence,
+							:"Mutation Order" => "",
+							:Comment => "ins_with_sbnd"
+						}
+						
+						divided_sbnd_ins_c += 1
+						vcf_log_a.push("#{line.strip}\t# JV_VCFS0016 Warning: A single breakend with insertion is divided into a translocation and an insertion.")
+						
+					end # single breakend で insertion を伴う場合
+
+					# single breakend 格納
+					vcf_variant_call_h.store(:"Assembly for Translocation Breakpoint", reference)
+					vcf_variant_call_h.store(:"From Chr", from_chr)
+					vcf_variant_call_h.store(:"From Coord", from_coord.to_s)
+					vcf_variant_call_h.store(:"From Strand", from_strand)
+					vcf_variant_call_h.store(:"To Chr", "")
+					vcf_variant_call_h.store(:"To Coord", "")
+					vcf_variant_call_h.store(:"To Strand", "")
+					vcf_variant_call_h.store(:"Comment", "sbnd")
+					
+					# insertion を伴わない
+					if mutation_id.empty?
+						vcf_variant_call_h.store(:"Mutation ID", "")
+					# insertion を伴う
+					elsif !mutation_id.empty? && !variant_sequence.empty?
+						vcf_variant_call_h.store(:"Mutation ID", mutation_id)
+					end
+					
+					# translocation と inserion に分割したので call では出力せず、region 作成時に使用
+					vcf_variant_call_h.store(:variant_sequence, variant_sequence)
+					vcf_variant_call_h.store(:mate_id, "")
+
+					# single breakend は TO が分からないので intra/inter 判定できない。一律 inter とする
+					sv_type = "interchromosomal translocation"
+
+				# dot が ALT にあるが REF が端になく single breakend としてパースできない (dot のみは除外)
+				elsif alt.match?(/[ATGCN]+\.$/i) || alt.match?(/^\.[ATGCN]+/i)
+
+					# JV_VCFS0015: Invalid single breakend
+					vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_VCFS0015 Error: Describe single breakend by using a dot in ALT according to the VCF specification.")
+					invalid_single_breakend_c += 1
+					invalid_single_breakend_f = true
+									
 				else # if alt.match?(/\[.*\[/) || alt.match?(/\].*\]/)
 
 					# Assembly
@@ -1380,7 +1484,7 @@ def vcf_parser(vcf_file, vcf_type, args)
 						invalid_sv_alt_c += 1
 					end
 
-				end # if translocation
+				end # if translocation or not
 
 				## SV TYPE
 				# 優先順位 [[/]] in ALT > ALT > SVTYPE > if there is GATK-SV INFO CPX_TYPE --> sequence alteration
@@ -1609,13 +1713,11 @@ def vcf_parser(vcf_file, vcf_type, args)
 					"SampleSet ID"
 				]
 				
-				if !skipped_mate_f && !invalid_translocation_f
+				if !skipped_mate_f && !invalid_translocation_f && !invalid_single_breakend_f
 					
-					if ins_with_translocation_h.empty?
-						vcf_variant_call_a.push(vcf_variant_call_h)
-					
-					# translocation + insertion の insertion を分離して追加で格納
-					else
+					# translocation with insertion の場合は insertion を追加格納
+					if !ins_with_translocation_h.empty?
+
 						vcf_variant_call_h.store(:Comment, "ins_with_trans")
 						vcf_variant_call_a.push(vcf_variant_call_h)
 
@@ -1626,9 +1728,26 @@ def vcf_parser(vcf_file, vcf_type, args)
 
 						# ins を追加格納
 						vcf_variant_call_a.push(ins_with_translocation_h)
+						
+					# single breakend with insertion の場合は insertion を追加格納
+					elsif !ins_with_sbnd_h.empty?
+						vcf_variant_call_h.store(:Comment, "ins_with_sbnd")
+						vcf_variant_call_a.push(vcf_variant_call_h)
 
+						# translocation の所定項目の値を引き継ぎ
+						inherit_to_ins_a.each{|item|
+							ins_with_sbnd_h.store(:"#{item}", vcf_variant_call_h[:"#{item}"]) if vcf_variant_call_h[:"#{item}"] && !ins_with_sbnd_h.has_key?(:"#{item}")
+						}
+
+						# ins を追加格納
+						vcf_variant_call_a.push(ins_with_sbnd_h)
+						
+					# insertion を伴わない場合, variant call のみを格納
+					else
+						vcf_variant_call_a.push(vcf_variant_call_h)
 					end
-				end
+					
+				end # if !skipped_mate_f && !invalid_translocation_f
 
 			end # if vcf_type == "SV"
 
@@ -1807,12 +1926,18 @@ def vcf_parser(vcf_file, vcf_type, args)
 		# JV_VCFS0003: Invalid chromosome translocation
 		error_vcf_content_a.push(["JV_VCFS0003", "Describe chromosome translocations according to the VCF specification and the JVar guideline. #{invalid_translocation_c} sites"]) if invalid_translocation_c > 0
 
+		# JV_VCFS0015: Invalid single breakend
+		error_vcf_content_a.push(["JV_VCFS0015", "Describe single breakend by using a dot in ALT according to the VCF specification and the JVar guideline. #{invalid_single_breakend_c} sites"]) if invalid_single_breakend_c > 0
+		
 		# JV_VCFS0013: Identical breakend mate skipped
 		warning_vcf_content_a.push(["JV_VCFS0013", "One of identical breakend mates of the same MATEID was skipped. #{skipped_mate_c} sites"]) if skipped_mate_c > 0
 
 		# JV_VCFS0014: Divided translocation with insertion
 		warning_vcf_content_a.push(["JV_VCFS0014", "A translocation with insertion is divided into a translocation and an insertion. #{divided_trans_ins_c} sites"]) if divided_trans_ins_c > 0
 
+		# JV_VCFS0016: Divided single breakend with insertion
+		warning_vcf_content_a.push(["JV_VCFS0016", "A single breakend with insertion is divided into a translocation and an insertion. #{divided_sbnd_ins_c} sites"]) if divided_sbnd_ins_c > 0
+				
 		# mate id does not exist
 		not_found_mate_id_c = 0
 		mate_id_h.each{|id, mate_id|
