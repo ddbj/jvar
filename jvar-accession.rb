@@ -78,7 +78,9 @@ if submission_type == "SV" && (vload_id.nil? || vload_id.empty?)
 	puts "Warning: vload_id is missing for dbVar submission."
 end
 
+##
 ## last number
+##
 last_f = open("#{study_path}/last.txt")
 
 snp_first = false
@@ -254,7 +256,11 @@ end
 
 last_f.close
 
-## Next accession
+## last number END
+
+##
+## Next number
+##
 dstd_start = 0
 dss_start = 0
 dssv_start = 0
@@ -297,7 +303,12 @@ else
 	dsv_start = dsv_a.sort[-1] + 1
 end
 
-### Read the JVar submission excel file and output in tsv as JVar metadata files
+## Next number END
+
+###
+### Read the JVar submission excel file and output in tsv as a JVar metadata file
+### Use the dstd only in the filename and do not embed accessions in the metadata tsv
+###
 
 # open xlsx file
 begin
@@ -366,7 +377,7 @@ acc_meta_f = open("#{sub_path}/#{submission_id}/accessioned/dstd#{dstd_next}.met
 
 acc_meta_f.puts "## Study"
 
-# study accession を挿入
+# Email address etc を除いて tsv 出力
 for line in study_sheet_a	
 	  # remove submitter's email from public metadata
 	if !line.join("\t").match?(/^Submitter Email|^Hold\/Release|^vload_id/)
@@ -408,19 +419,30 @@ acc_meta_f.close
 
 now = Time.now.strftime('%Y-%m-%d_%H_%M')
 
+##
+## VCF
+##
+
 ## SNP VCF
 if submission_type == "SNP"
 
 	## dbSNP metadata tsv, replace VSUB by dstd and copy
-	`sed -e "s/:\tVSUB[0-9][0-9][0-9][0-9][0-9][0-9]_/:\tdstd1_/" "#{sub_path}/#{submission_id}/#{submission_id}_dbsnp.tsv" > "#{sub_path}/#{submission_id}/accessioned/dstd#{dstd_next}.meta.dbsnp.tsv"`
+	## example, BATCH: VSUB000003_a21 => BATCH: dstd1_a21
+	`sed -e "s/:\tVSUB[0-9][0-9][0-9][0-9][0-9][0-9]_/:\tdstd#{dstd_next}_/" "#{sub_path}/#{submission_id}/#{submission_id}_dbsnp.tsv" > "#{sub_path}/#{submission_id}/accessioned/dstd#{dstd_next}.meta.dbsnp.tsv"`
 
 	## VCF
 	# dbSNP vcf without accessions
 	vcf_a = Dir.glob("#{sub_path}/#{submission_id}/#{submission_id}_a*.vcf")
 
+	# sort by assay number before dot .
+	vcf_a = vcf_a.sort{|a, b| a.sub(/.*VSUB\d{6}_a(\d+)\.vcf/, '\1').to_i <=> b.sub(/.*VSUB\d{6}_a(\d+)\.vcf/, '\1').to_i}
+	
 	raise "No VCF file for SNP submission." if vcf_a.empty?
 	
 	for vcf in vcf_a
+		
+		puts "SNP VCF: #{vcf}"
+		
 		filename = File.basename(vcf)
 		vcf_f = open(vcf)
 		
