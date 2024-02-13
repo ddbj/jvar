@@ -2120,7 +2120,8 @@ end # def
 def pubinfo_pmid(pmid_a)
 
 	pub_s = ""
-	submitter_handle = "JVAR"
+	submitter_handle = "DDBJ"
+	#submitter_handle = "JVAR"
 	error_ignore_method_a = []
 
 	for pmid in pmid_a

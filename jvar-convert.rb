@@ -85,7 +85,8 @@ sin_path = ""
 
 sub_path = "#{sin_path}submission"
 
-$submitter_handle = "JVAR"
+$submitter_handle = "DDBJ"
+# $submitter_handle = "JVAR"
 ref_download_path = "#{sin_path}reference-download"
 
 $ref_download_h = {}
