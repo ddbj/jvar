@@ -1,11 +1,11 @@
 # JVar
 
-JVar (Japan Variation Database) はヒトのバリアント、アリル頻度、遺伝子型のための公的データベース。Short Genetic Variation (JVar-SNP) と Structural Variation (JVar-SV) の二部構成。  
+JVar (Japan Variation Database) はヒトのバリアント、アリル頻度、遺伝子型のための公的データベースです。Short Genetic Variation (JVar-SNP) と Structural Variation (JVar-SV) の二部から成ります。  
 
-* JVar-SNP: 50bp 以下の SNV/insertion/deletion、dbSNP 相当
-* JVar-SV: 50bp より長い構造バリアント (SV)、dbVar 相当
+* JVar-SNP: 50bp 以下の SNV/insertion/deletion、dbSNP 相当、1塩基の解像度 (precise)
+* JVar-SV: 50bp より長い構造バリアント (SV)、dbVar 相当、範囲 (リピート数、塩基座標) を表現可能なモデル
 
-NCBI [dbSNP](https://ncbi.nlm.nih.gov/snp)/[dbVar](https://ncbi.nlm.nih.gov/dbvar) と JVar はヒトのみが対象。[EVA (European Variation Archive)](https://www.ebi.ac.uk/eva/) はヒトとヒト以外の生物種が対象。
+NCBI [dbSNP](https://ncbi.nlm.nih.gov/snp)/[dbVar](https://ncbi.nlm.nih.gov/dbvar) と JVar はヒトのみが対象。一方、[EVA (European Variation Archive)](https://www.ebi.ac.uk/eva/) はヒトとヒト以外の生物種が対象。
 
 ## データモデル
 
@@ -19,10 +19,10 @@ dbVar のデータモデルに dbSNP の Assay を Dataset として取り込ん
 
 SampleSet, Experiment, Dataset は内部的に連番 ID で参照。dbSNP メタデータ中では、それぞれ、ss1、e1、a1 のように区別して参照。　　
 
-variant は bi-allelic で受付。取り扱いをシンプルにするのと TogoVar と粒度を揃えるため。  
-dbSNP/dbVar は pos + variation type が同じ multi-allelic を許容。dbSNP rs と Variant region は multi-allelic。
+variant は bi-allelic で受付。
+dbSNP/dbVar は pos + variation type が同じ multi-allelic での登録受付を許容。dbSNP rs と Variant region は multi-allelic。
 
-JVar-SNP variant は公開後 dbSNP に取り込まれると、dbSNP により ss が発行され、次の build で rs にマージされる （新規であれば rs 発行）。
+JVar-SNP variant は公開後 dbSNP に取り込まれると、dbSNP により ss が発行され、次の build で rs にマージされる（新規であれば rs 発行）。
 
 ## 登録用エクセル
 
@@ -80,7 +80,7 @@ reference の値は [/conf/ref_assembly.jsonl](/conf/ref_assembly.jsonl) で制�
 ## Conversion & validation
 
 ルール (dbVar から提供されたルール、dbSNP offline validator、独自)  
-* [JVar rules](https://docs.google.com/spreadsheets/d/15pENGHA9hkl6QIueFb44fhQfQMThRB2tbvSE6hItHEU/edit#gid=576708402)
+* [JVar rules](https://docs.google.com/spreadsheets/d/1_HV2QtKh9mSqT_eC4UHG6fgHf8pG4FY_QhG83Ajwbag/edit?gid=0#gid=0)
 
 ### Submission ID 指定
 
@@ -147,7 +147,6 @@ ruby jvar-convert.rb -v VSUB000002 VSUB000002_SV.xlsx
 ```
 
 エクセルがある場所にファイルが出力される。  
-
 
 ### SNP
 
