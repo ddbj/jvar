@@ -28,15 +28,15 @@ TogoVar-repository-SNP variant は公開後 dbSNP に取り込まれると、dbS
 [登録用エクセル](/submission_excel/)
 
 シート
-* Study  
-* SampleSet  
-* Sample  
-* Experiment  
-* Dataset   
+* TogoVar_Study  
+* TogoVar_SampleSet  
+* TogoVar_Sample  
+* TogoVar_Experiment  
+* TogoVar_Dataset   
 * Variant Call (SV)
 * Variant Region (SV)
 
-Study   
+TogoVar_Study   
 → dbSNP CONT and PUB  
 → dbVar Submission and Study 
 
@@ -74,7 +74,7 @@ reference 指定が必須。
 ##reference=GRCh38
 ```
 
-reference の値は [/conf/ref_assembly.jsonl](/conf/ref_assembly.jsonl) で制限。
+reference の値は [/conf/togovar-config.rb](/conf/togovar-config.rb) で制限。
 
 ## Conversion & validation
 
