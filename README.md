@@ -1,28 +1,27 @@
-# JVar
+# TogoVar-repository
 
-JVar (Japan Variation Database) はヒトのバリアント、アリル頻度、遺伝子型のための公的データベースです。Short Genetic Variation (JVar-SNP) と Structural Variation (JVar-SV) の二部から成ります。  
+TogoVar-repository はヒトのバリアント、アリル頻度、遺伝子型のための公的データベースです。Short Genetic Variation (TogoVar-repository-SNP) と Structural Variation (TogoVar-repository-SV) の二部から成ります。  
 
-* JVar-SNP: 50bp 以下の SNV/insertion/deletion、dbSNP 相当、1塩基の解像度 (precise)
-* JVar-SV: 50bp より長い構造バリアント (SV)、dbVar 相当、範囲 (リピート数、塩基座標) を表現可能なモデル
+* TogoVar-repository-SNP: 50bp 以下の SNV/insertion/deletion、dbSNP 相当、1塩基の解像度 (precise)
+* TogoVar-repository-SV: 50bp より長い構造バリアント (SV)、dbVar 相当、範囲 (リピート数、塩基座標) を表現可能なデータモデル
 
-NCBI [dbSNP](https://ncbi.nlm.nih.gov/snp)/[dbVar](https://ncbi.nlm.nih.gov/dbvar) と JVar はヒトのみが対象。一方、[EVA (European Variation Archive)](https://www.ebi.ac.uk/eva/) はヒトとヒト以外の生物種が対象。
+NCBI [dbSNP](https://ncbi.nlm.nih.gov/snp)/[dbVar](https://ncbi.nlm.nih.gov/dbvar) と TogoVar-repository はヒトのみが対象です。一方、[EVA (European Variation Archive)](https://www.ebi.ac.uk/eva/) はヒトとヒト以外の生物種を対象としています。
 
 ## データモデル
 
-dbVar のデータモデルに dbSNP の Assay を Dataset として取り込んで拡張し SNP/SV 共通モデルを構築。BioProject/BioSample は必須。Variant は Dataset を介して Study/SampleSet (Sample) にリンク。  
+dbVar のデータモデルに dbSNP の Assay を Dataset として取り込んで拡張し SNP/SV 共通モデルを構築。BioProject/BioSample は必須。Variant は Dataset を介して Study/SampleSet (Sample) にリンクします。  
 
-![jvar-dm](https://github.com/ddbj/jvar/assets/5100160/8641c247-2548-4888-b124-503470267576)
+![togovar-r-model](https://github.com/ddbj/togovar-repository/assets/5100160/30816b42-eece-4265-9d80-a236017d53f9)
 
 アクセッション番号  
-* JVar-SNP: study - dstd, variant - dss  
-* JVar-SV: study - dstd, variant call - dssv, variant region - dsv  
+* TogoVar-repository-SNP: study - dstd, variant - dss  
+* TogoVar-repository-SV: study - dstd, variant call - dssv, variant region - dsv  
 
 SampleSet, Experiment, Dataset は内部的に連番 ID で参照。dbSNP メタデータ中では、それぞれ、ss1、e1、a1 のように区別して参照。　　
-
 variant は bi-allelic で受付。
 dbSNP/dbVar は pos + variation type が同じ multi-allelic での登録受付を許容。dbSNP rs と Variant region は multi-allelic。
 
-JVar-SNP variant は公開後 dbSNP に取り込まれると、dbSNP により ss が発行され、次の build で rs にマージされる（新規であれば rs 発行）。
+TogoVar-repository-SNP variant は公開後 dbSNP に取り込まれると、dbSNP により ss が発行され、次の build で rs にマージされます（新規であれば rs が発行されます）。
 
 ## 登録用エクセル
 
@@ -194,7 +193,6 @@ ruby プログラムのパスを書き換えた後に Singularity イメージ�
 アクセッション番号と公開用データ作成
 
 [jvar-accession.rb](jvar-accession.rb)
-
 
 [/study/last.txt](/study/last.txt)  
 アクセッション番号ラストナンバー管理用ファイル  
