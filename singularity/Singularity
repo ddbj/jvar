@@ -6,18 +6,16 @@ From: ubuntu:22.04
 
 %files
     # copying files from the host system to the container.
-    jvar-convert.rb /usr/local/bin
-    jvar-accession.rb /usr/local/bin
+    togovar-convert.rb /usr/local/bin
+    togovar-accession.rb /usr/local/bin
     lib/*rb /usr/local/bin/lib/
-    conf/*json /usr/local/bin/conf/
-    conf/*jsonl /usr/local/bin/conf/
 
 %environment
     export RUBYOPT='-EUTF-8'
 
 %labels
     Maintainer Bioinformation and DDBJ Center
-    Version    v1.0
+    Version    v1.1
 
 
 %runscript

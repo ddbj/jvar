@@ -79,7 +79,7 @@ reference の値は [/conf/ref_assembly.jsonl](/conf/ref_assembly.jsonl) で制�
 ## Conversion & validation
 
 ルール (dbVar から提供されたルール、dbSNP offline validator、独自)  
-* [JVar rules](https://docs.google.com/spreadsheets/d/1_HV2QtKh9mSqT_eC4UHG6fgHf8pG4FY_QhG83Ajwbag/edit?gid=0#gid=0)
+* [TogoVar-repository rules](https://docs.google.com/spreadsheets/d/1_HV2QtKh9mSqT_eC4UHG6fgHf8pG4FY_QhG83Ajwbag/edit?gid=0#gid=0)
 
 ### Submission ID 指定
 
@@ -89,7 +89,7 @@ reference の値は [/conf/ref_assembly.jsonl](/conf/ref_assembly.jsonl) で制�
 
 -v で Submission ID (例 VSUB000001) を指定。  
 ```
-ruby jvar-convert.rb -v VSUB000001
+ruby togovar-convert.rb -v VSUB000001
 ```
 
 Dataset に VCF ファイルパスが記載されている場合、対象 VCF を読み込む。   
@@ -103,7 +103,7 @@ VSUB000001_a1.vcf # dbSNP vcf per assay
 VSUB000001_a2.vcf # dbSNP vcf per assay
 VSUB000001_dbsnp.tsv # dbSNP metadata
 VSUB000001_SNP.log.txt # validation log
-VSUB000001_SNP.xlsx # jvar metadata excel
+VSUB000001_SNP.xlsx # togovar-repository metadata excel
 
 submitted/
 snp-vcf-test1.vcf # submitted vcf
@@ -116,7 +116,7 @@ SV (variant call がエクセルで submit された場合)
 ```
 VSUB000002_dbvar.xml # dbvar xml
 VSUB000002_SV.log.txt # validation log
-VSUB000002_SV.xlsx  # jvar metadata excel
+VSUB000002_SV.xlsx  # togovar-repository metadata excel
 VSUB000002.variant_call.tsv.log.txt # log for variant call validation in tsv
 ```
 
@@ -124,7 +124,7 @@ SV (variant call が VCF で submit された場合)
 ```
 VSUB000003_dbvar.xml # dbvar xml
 VSUB000003_SV.log.txt # validation log
-VSUB000003_SV.xlsx # jvar metadata excel
+VSUB000003_SV.xlsx # togovar-repository metadata excel
 VSUB000003.variant_call.tsv.log.txt # log for variant call validation in tsv
 VSUB000003.variant_region.tsv.log.txt # log for variant region validation in tsv
 
@@ -141,8 +141,8 @@ submission に配置前の査定段階を想定。
 引数でエクセルを指定する。
 
 ```
-ruby jvar-convert.rb -v VSUB000001 VSUB000001_SNP.xlsx
-ruby jvar-convert.rb -v VSUB000002 VSUB000002_SV.xlsx
+ruby togovar-convert.rb -v VSUB000001 VSUB000001_SNP.xlsx
+ruby togovar-convert.rb -v VSUB000002 VSUB000002_SV.xlsx
 ```
 
 エクセルがある場所にファイルが出力される。  
@@ -168,7 +168,7 @@ VSUB000001_SNP.log.txt # validation 結果のサマリー
 
 SV はシート、もしくは、VCF で登録。  
 VCF はパースされた後、sheet (TSV) 経由と同じ処理で validation される。VCF は Variant call TSV に変換される。  
-Variant region は任意。ない場合は JVar で Variant call から region を生成。 
+Variant region は任意。ない場合は TogoVar-repository で Variant call から region を生成。 
 Variant region が VCF で登録されることは想定していない。  
 
 Variant call tsv
@@ -188,11 +188,21 @@ VSUB000001_SV.log.txt # validation 結果のサマリー
 
 ruby プログラムのパスを書き換えた後に Singularity イメージを構築。
 
+```
+cd singularity
+cp ../*rb .
+cp ../lib .
+
+Comment out #sin lines and comment corresponding original lines.
+
+sudo singularity build togovar.simg Singularity
+```
+
 ## アクセッション番号発行
 
 アクセッション番号と公開用データ作成
 
-[jvar-accession.rb](jvar-accession.rb)
+[togovar-accession.rb](togovar-accession.rb)
 
 [/study/last.txt](/study/last.txt)  
 アクセッション番号ラストナンバー管理用ファイル  
