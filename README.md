@@ -214,7 +214,7 @@ sudo singularity build togovar.simg Singularity
 
 SV で genotype VCF を生成する場合 -g を付加。
 ```
-singularity exec --bind "${PWD}/submission" togovar.simg togovar-accession.rb -v VSUB000001
+singularity exec togovar.simg togovar-accession.rb -v VSUB000001
 ```
 
 ## dbVar xsd
