@@ -9,13 +9,13 @@ From: ubuntu:22.04
     togovar-convert.rb /usr/local/bin
     togovar-accession.rb /usr/local/bin
     lib/*rb /usr/local/bin/lib/
-
+		
 %environment
     export RUBYOPT='-EUTF-8'
 
 %labels
     Maintainer Bioinformation and DDBJ Center
-    Version    v1.1
+    Version    v1.2
 
 
 %runscript
@@ -32,7 +32,7 @@ From: ubuntu:22.04
     apt -y install locales
     locale-gen en_US.UTF-8
     update-locale
-    apt -y install build-essential autoconf automake wget git zlib1g-dev libbz2-dev libncurses5-dev curl unzip liblzma-dev libcurl4-openssl-dev software-properties-common apt-transport-https libyaml-dev libffi-dev libssl-dev libreadline-dev software-properties-common python2-dev
+    apt -y install build-essential autoconf automake wget git zlib1g-dev libbz2-dev libncurses5-dev curl unzip liblzma-dev libcurl4-openssl-dev software-properties-common apt-transport-https libyaml-dev libffi-dev libssl-dev libreadline-dev software-properties-common python2-dev libxml2-utils
     cd /usr/local/src
     wget https://cache.ruby-lang.org/pub/ruby/3.2/ruby-3.2.2.tar.gz
     tar xzf ruby-3.2.2.tar.gz
@@ -64,3 +64,8 @@ From: ubuntu:22.04
     rm -rf samtools-1.10 samtools-1.10.tar.bz2
     chmod +x /usr/local/bin/*.rb
     chmod +x /usr/local/bin/lib/*.rb
+		
+		mkdir -p /opt/togovar
+		cd /opt/togovar
+		wget https://raw.githubusercontent.com/ddbj/pub/master/docs/togovar-repository/xsd/dbVar.xsd
+		cd ../..

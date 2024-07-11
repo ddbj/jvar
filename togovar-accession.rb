@@ -12,16 +12,13 @@ require 'open3'
 
 #
 # Bioinformation and DDBJ Center
-# Japan Variation Database (JVar)
+# TogoVar-repository
 #
-# Submission type: SNP - Generate JVar-SNP TSV (dbSNP TSV)
-# Submission type: SV - Generate JVar-SV XML (dbVar XML)
+# Submission type: SNP - Generate TogoVar-repository-SNP TSV (dbSNP TSV)
+# Submission type: SV - Generate TogoVar-repository-SV XML (dbVar XML)
 #
 
 # Assign accession numbers and create data for release and dbSNP/dbVar exports.
-
-# Update history
-# 2023-07-11 created
 
 ### Options
 submission_id = ""
@@ -30,9 +27,9 @@ sv_vcf_f = false
 OptionParser.new{|opt|
 
 	opt.on('-v [VSUB ID]', 'VSUB submission ID'){|v|
-		raise "usage: -v JVar submission ID (VSUB000001)" if v.nil? || !(/^VSUB\d{6}$/ =~ v)
+		raise "usage: -v TogoVar-repository submission ID (VSUB000001)" if v.nil? || !(/^VSUB\d{6}$/ =~ v)
 		submission_id = v
-		puts "JVar Submission ID: #{v}"
+		puts "TogoVar-repository Submission ID: #{v}"
 	}
 
 	opt.on('-i [vload_id]', 'vload_id'){|i|
@@ -59,10 +56,15 @@ OptionParser.new{|opt|
 raise "Specify a valid submission_id." if submission_id.empty?
 
 ## 設定
+#sin
+# sin_path = "/usr/local/bin/"
+sin_path = ""
+
+# sin_xsd_path = "/opt/togovar/"
+sin_xsd_path = ""
+
 sub_path = "submission"
-#sin sub_path = "/usr/local/bin/submission"
 study_path = "study"
-#sin study_path = "/usr/local/bin/study"
 first_study_acc = 1
 study_acc_prefix = "dstd"
 
@@ -306,7 +308,7 @@ end
 ## Next number END
 
 ###
-### Read the JVar submission excel file and output in tsv as a JVar metadata file
+### Read the TogoVar-repository submission excel file and output in tsv as a TogoVar-repository metadata file
 ### Use the dstd only in the filename and do not embed accessions in the metadata tsv
 ###
 
@@ -314,11 +316,11 @@ end
 begin
 	s = Roo::Excelx.new("#{sub_path}/#{submission_id}/#{submission_id}_#{submission_type}.xlsx")
 rescue
-	raise "No JVar metadata file to open."
+	raise "No TogoVar-repository metadata file to open."
 end
 
 # sheets
-object_a = ['Study', 'SampleSet', 'Sample', 'Experiment', 'Dataset', 'Variant Call (SV)', 'Variant Region (SV)']
+object_a = ['TogoVar_Study', 'TogoVar_SampleSet', 'TogoVar_Sample', 'TogoVar_Experiment', 'TogoVar_Dataset', 'Variant Call (SV)', 'Variant Region (SV)']
 
 # array for metadata objects
 study_sheet_a = Array.new
@@ -344,15 +346,15 @@ for object in object_a
 
 		case object
 
-		when "Study" then
+		when /Study$/ then
 			study_sheet_a.push(line_trimmed_a)
-		when "SampleSet" then
+		when /SampleSet$/ then
 			sampleset_sheet_a.push(line_trimmed_a) if line_trimmed_a.size > 1
-		when "Sample" then
+		when /Sample$/ then
 			sample_sheet_a.push(line_trimmed_a) if line_trimmed_a.size > 1
-		when "Experiment" then
+		when /Experiment$/ then
 			experiment_sheet_a.push(line_trimmed_a) if line_trimmed_a.size > 1
-		when "Dataset" then
+		when /Dataset$/ then
 			if line_trimmed_a.size > 1
 				vcf = ""
 				if line_trimmed_a[-1] && !line_trimmed_a[-1].empty?
@@ -488,6 +490,7 @@ if submission_type == "SNP"
 	end # for vcf in vcf_a
 
 	# record last number
+	`mkdir -p "#{study_path}/log"`
 	`cp "#{study_path}/last.txt" "#{study_path}/log/last_#{now}.txt"`
 
 	last_out_a = []
@@ -603,8 +606,7 @@ if submission_type == "SV"
 
 	## xsd validation
 	if FileTest.exist?("#{sub_path}/#{submission_id}/accessioned/dstd#{dstd_next}.dbvar.xml")
-		o, e, s = Open3.capture3("xmllint --schema dbVar.xsd --noout #{sub_path}/#{submission_id}/accessioned/dstd#{dstd_next}.dbvar.xml")
-		#sin	o, e, s = Open3.capture3("/usr/local/bin/xmllint --schema dbVar.xsd --noout #{sub_path}/#{submission_id}/accessioned/dstd#{dstd_next}.dbvar.xml")
+		o, e, s = Open3.capture3("xmllint --schema #{sin_xsd_path}dbVar.xsd --noout #{sub_path}/#{submission_id}/accessioned/dstd#{dstd_next}.dbvar.xml")
 
 		puts ""
 		puts "dbVar xsd validation results"

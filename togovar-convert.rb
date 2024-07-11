@@ -21,16 +21,13 @@ require './lib/togovar-config.rb'
 # Submission type: SV - Generate TogoVar-repository-SV XML (dbVar XML)
 #
 
-# Update history
-# 2024-07-05 renamed to TogoVar-repository
-# 2023-03-23 created
-
 # ファイルオープン順序
 # スパコン togovar 直下での実行を想定
 # 1. 引数でエクセルが指定された場合、そのエクセルを開く
 # 2. VCF はエクセルからの相対パスで探す
+#
 # エクセルが引数指定されていない場合
-# 3. submission ID 配下の所定エクセル submission/VSUB000001/VSUB000001_SV/SNP.xlsx
+# 3. submission ID 配下の所定エクセル submission/VSUB000001/VSUB000001_SV or VSUB000001_SNP.xlsx
 # 4. VCF はエクセルの所在場所直下 submitted/ の下を相対パスで探す
 
 ### Options
@@ -90,11 +87,13 @@ raise "Specify a valid submission_id." if submission_id.empty?
 # sin_path = "/usr/local/bin/"
 sin_path = ""
 
-sub_path = "#{sin_path}submission"
+# sin_xsd_path = "/opt/togovar/"
+sin_xsd_path = ""
 
 $submitter_handle = "DDBJ"
-# $submitter_handle = "JVAR"
 ref_download_path = "#{sin_path}reference-download"
+
+sub_path = "submission"
 
 $ref_download_h = {}
 Dir.glob("#{ref_download_path}/*fna").each{|dl_fna|
@@ -4513,6 +4512,9 @@ end
 # Validation 結果出力
 #
 
+sep_line = "-------------------------------------------------------------------------------"
+chap_line = "================================================================================="
+
 # VCF
 vcf_validation_result_s = ""
 validation_result_s = ""
@@ -4529,7 +4531,7 @@ end
 
 validation_result_s += <<EOS
 TogoVar-repository-SNP/SV common validation results
----------------------------------------------
+#{sep_line}
 Error
 EOS
 
@@ -4550,14 +4552,14 @@ EOS
 warning_common_a.sort{|a,b| a[0] <=> b[0]}.each{|m| validation_result_s += m.join(": ") + "\n"}
 
 validation_result_s += <<EOS
----------------------------------------------
+#{sep_line}
 EOS
 
 if submission_type == "SNP"
 snp_validation_result_s = <<EOS
 
 TogoVar-repository-SNP validation results
----------------------------------------------
+#{sep_line}
 Error
 EOS
 
@@ -4578,7 +4580,7 @@ EOS
 warning_snp_a.sort{|a,b| a[0] <=> b[0]}.each{|m| snp_validation_result_s += m.join(": ") + "\n"}
 
 snp_validation_result_s += <<EOS
----------------------------------------------
+#{sep_line}
 EOS
 end
 
@@ -4586,7 +4588,7 @@ if submission_type == "SV"
 sv_validation_result_s = <<EOS
 
 TogoVar-repository-SV validation results
----------------------------------------------
+#{sep_line}
 Error
 EOS
 
@@ -4607,7 +4609,7 @@ EOS
 warning_sv_a.sort{|a,b| a[0] <=> b[0]}.each{|m| sv_validation_result_s += m.join(": ") + "\n"}
 
 sv_validation_result_s += <<EOS
----------------------------------------------
+#{sep_line}
 EOS
 
 ## Variant Call
@@ -4617,7 +4619,7 @@ if vcf_file_a.empty? # TSV
 sv_vc_validation_result_s = <<EOS
 
 TogoVar-repository-SV Variant Call validation results (TSV)
----------------------------------------------
+#{sep_line}
 Error
 EOS
 
@@ -4638,7 +4640,7 @@ EOS
 	warning_sv_vc_h["tsv"].sort{|a,b| a[0] <=> b[0]}.each{|m| sv_vc_validation_result_s += m.join(": ") + "\n"} if warning_sv_vc_h["tsv"]
 
 sv_vc_validation_result_s += <<EOS
----------------------------------------------
+#{sep_line}
 
 EOS
 
@@ -4647,7 +4649,7 @@ else # VCF file(s)
 sv_vc_validation_result_s = <<EOS
 
 TogoVar-repository-SV Variant Call validation results
-========================================================================
+#{chap_line}
 EOS
 
 	for vcf_file in vcf_file_a
@@ -4655,7 +4657,7 @@ EOS
 sv_vc_validation_result_s += <<EOS
 
 VCF: #{vcf_file}
----------------------------------------------
+#{sep_line}
 Error
 EOS
 
@@ -4676,13 +4678,13 @@ EOS
 	warning_sv_vc_h[vcf_file].sort{|a,b| a[0] <=> b[0]}.each{|m| sv_vc_validation_result_s += m.join(": ") + "\n"}
 
 sv_vc_validation_result_s += <<EOS
----------------------------------------------
+#{sep_line}
 EOS
 
 	end # for vcf_file in vcf_file_a
 
 sv_vc_validation_result_s += <<EOS
-========================================================================
+#{chap_line}
 EOS
 
 end
@@ -4691,14 +4693,14 @@ end
 	xsd_results_s = ""
 	if xsd_f && FileTest.exist?("#{excel_path}/#{submission_id}_dbvar.xml")
 		
-		o, e, s = Open3.capture3("#{sin_path}xmllint --schema dbVar.xsd --noout #{excel_path}/#{submission_id}_dbvar.xml")
+		o, e, s = Open3.capture3("xmllint --schema #{sin_xsd_path}dbVar.xsd --noout #{excel_path}/#{submission_id}_dbvar.xml")
 		
 		xsd_results_s = <<EOS
 TogoVar-repository-SV XML dbVar xsd validation results
----------------------------------------------
-#{sin_path}xmllint --schema dbVar.xsd --noout #{excel_path}/#{submission_id}_dbvar.xml
+#{sep_line}
+xmllint --schema #{sin_xsd_path}dbVar.xsd --noout #{excel_path}/#{submission_id}_dbvar.xml
 #{e.strip}
----------------------------------------------
+#{sep_line}
 EOS
 	end
 
@@ -4711,7 +4713,7 @@ if !vcf_snp_a.empty? || !vcf_sv_f.empty?
 vcf_validation_result_s = <<EOS
 
 TogoVar-repository-#{submission_type == "SNP" ? "SNP" : "SV"} VCF validation results
-========================================================================
+#{chap_line}
 EOS
 
 	for vcf_file in vcf_file_a
@@ -4721,7 +4723,7 @@ vcf_validation_result_s += <<EOS
 VCF: #{vcf_file}
 
 Header
----------------------------------------------
+#{sep_line}
 Error
 EOS
 
@@ -4749,13 +4751,13 @@ EOS
 	warning_vcf_header_h[vcf_file].sort{|a,b| a[0] <=> b[0]}.each{|m| vcf_validation_result_s += m.join(": ") + "\n"}
 
 vcf_validation_result_s += <<EOS
----------------------------------------------
+#{sep_line}
 
 EOS
 
 vcf_validation_result_s += <<EOS
 Content
----------------------------------------------
+#{sep_line}
 Error
 EOS
 
@@ -4783,13 +4785,13 @@ EOS
 	warning_vcf_content_h[vcf_file].sort{|a,b| a[0] <=> b[0]}.each{|m| vcf_validation_result_s += m.join(": ") + "\n"}
 
 vcf_validation_result_s += <<EOS
----------------------------------------------
+#{sep_line}
 EOS
 
 	end # for vcf_file in vcf_file_a
 
 vcf_validation_result_s += <<EOS
-========================================================================
+#{chap_line}
 EOS
 
 end # if !vcf_snp_a.empty? || !vcf_sv_f.empty?
@@ -4800,7 +4802,7 @@ unless contig_download_a.empty?
 	contig_download_s = <<EOS
 
 Download and index reference sequences
----------------------------------------------
+#{sep_line}
 EOS
 
 	for command_line in contig_download_a

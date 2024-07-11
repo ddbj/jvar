@@ -1,6 +1,6 @@
 # TogoVar-repository
 
-TogoVar-repository はヒトのバリアント、アリル頻度、遺伝子型のための公的データベースです。Short Genetic Variation (TogoVar-repository-SNP) と Structural Variation (TogoVar-repository-SV) の二部から成ります。  
+TogoVar-repository はヒトのバリアント、アリル頻度、遺伝子型のための公的データベースです。Short Genetic Variation (TogoVar-repository-SNP) と Structural Variation (TogoVar-repository-SV) の二部から構成されます。    
 
 * TogoVar-repository-SNP: 50bp 以下の SNV/insertion/deletion、dbSNP 相当、1塩基の解像度 (precise)
 * TogoVar-repository-SV: 50bp より長い構造バリアント (SV)、dbVar 相当、範囲 (リピート数、塩基座標) を表現可能なデータモデル
@@ -89,7 +89,12 @@ reference の値は [/conf/togovar-config.rb](/conf/togovar-config.rb) で制限
 
 -v で Submission ID (例 VSUB000001) を指定。  
 ```
-ruby togovar-convert.rb -v VSUB000001
+singularity exec togovar.simg togovar-convert.rb -v VSUB000001
+```
+
+dbVar XML の xsd チェックも実施する場合 -x を付加。
+```
+singularity exec togovar.simg togovar-convert.rb -v VSUB000001 -x
 ```
 
 Dataset に VCF ファイルパスが記載されている場合、対象 VCF を読み込む。   
@@ -141,8 +146,8 @@ submission に配置前の査定段階を想定。
 引数でエクセルを指定する。
 
 ```
-ruby togovar-convert.rb -v VSUB000001 VSUB000001_SNP.xlsx
-ruby togovar-convert.rb -v VSUB000002 VSUB000002_SV.xlsx
+singularity exec togovar.simg togovar-convert.rb -v VSUB000001 VSUB000001_SNP.xlsx
+singularity exec togovar.simg togovar-convert.rb -v VSUB000002 VSUB000002_SV.xlsx
 ```
 
 エクセルがある場所にファイルが出力される。  
@@ -191,9 +196,9 @@ ruby プログラムのパスを書き換えた後に Singularity イメージ�
 ```
 cd singularity
 cp ../*rb .
-cp ../lib .
+cp -r ../lib .
 
-Comment out #sin lines and comment corresponding original lines.
+#sin コメントが付されているラインを適宜コメントアウト、コメント除外
 
 sudo singularity build togovar.simg Singularity
 ```
@@ -206,6 +211,11 @@ sudo singularity build togovar.simg Singularity
 
 [/study/last.txt](/study/last.txt)  
 アクセッション番号ラストナンバー管理用ファイル  
+
+SV で genotype VCF を生成する場合 -g を付加。
+```
+singularity exec --bind "${PWD}/submission" togovar.simg togovar-accession.rb -v VSUB000001
+```
 
 ## dbVar xsd
 
