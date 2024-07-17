@@ -17,9 +17,8 @@ dbVar のデータモデルに dbSNP の Assay を Dataset として取り込ん
 * TogoVar-repository-SNP: study - dstd, variant - dss  
 * TogoVar-repository-SV: study - dstd, variant call - dssv, variant region - dsv  
 
-SampleSet, Experiment, Dataset は内部的に連番 ID で参照。dbSNP メタデータ中では、それぞれ、ss1、e1、a1 のように区別して参照。　　
-variant は bi-allelic で受付。
-dbSNP/dbVar は pos + variation type が同じ multi-allelic での登録受付を許容。dbSNP rs と Variant region は multi-allelic。
+SampleSet, Experiment, Dataset は内部的に連番 ID で参照。dbSNP メタデータ中では、それぞれ、ss1、e1、a1 のように区別して参照。
+variant は bi-allelic で受付。dbSNP/dbVar は pos + variation type が同じ multi-allelic での登録受付を許容。dbSNP rs と Variant region は multi-allelic。
 
 TogoVar-repository-SNP variant は公開後 dbSNP に取り込まれると、dbSNP により ss が発行され、次の build で rs にマージされます（新規であれば rs が発行されます）。
 
