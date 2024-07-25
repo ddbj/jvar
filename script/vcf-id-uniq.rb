@@ -37,14 +37,14 @@ vcf_file_a.each{|vcf_file|
 			vcf_line_a = line.split("\t")
 			id = vcf_line_a[2]
 
-			if id_h.has_key?(:id)
+			if id_h.has_key?(:"#{id}")
 				vcf_uniq_log_f.puts "#{id}"
 			else
 				vcf_uniq_f.puts line
 			end
 			
 			# ID uniq
-			id_h.store(:id, 1)
+			id_h.store(:"#{id}", 1)
 		
 		end
 
