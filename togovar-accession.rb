@@ -373,7 +373,7 @@ for object in object_a
 
 end
 
-## JVar metadata tsv, SNP and SV
+## TogoVar-repository metadata tsv, SNP and SV
 `mkdir -p "#{sub_path}/#{submission_id}/accessioned"`
 acc_meta_f = open("#{sub_path}/#{submission_id}/accessioned/dstd#{dstd_next}.meta.tsv", "w")
 
@@ -630,9 +630,16 @@ if submission_type == "SV"
 				out_vcf_f = open("#{sub_path}/#{submission_id}/accessioned/dstd#{dstd_next}_#{dataset_id}.vcf", "w")
 			end
 			
+			info_togovar_f = false
 			for line in sv_vcf.each_line
-				if line.match?(/^#/)
-					out_vcf_f.puts line
+				if line.match?(/^#/)					
+					if line.match?(/^##INFO=/) && !info_togovar_f
+						out_vcf_f.puts '##INFO=<ID=TOGOVAR_REPOSITORY_ID,Number=1,Type=String,Description="TogoVar-repository accession">'
+						out_vcf_f.puts line
+						info_togovar_f = true
+					else
+						out_vcf_f.puts line
+					end
 				else
 					line_a = line.split("\t")
 					
@@ -643,9 +650,9 @@ if submission_type == "SV"
 							dssv_acc = call_id_acc_h[line_a[2]]							
 							# INFO
 							if line_a[7] && line_a[7].empty?
-								line_a[7] = "JVARID=#{dssv_acc}"
+								line_a[7] = "TOGOVAR_REPOSITORY_ID=#{dssv_acc}"
 							else
-								line_a[7] = "JVARID=#{dssv_acc};#{line_a[7]}"
+								line_a[7] = "TOGOVAR_REPOSITORY_ID=#{dssv_acc};#{line_a[7]}"
 							end							
 							out_vcf_f.puts line_a.join("\t")
 						end
