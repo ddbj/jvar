@@ -171,6 +171,13 @@ def vcf_parser(vcf_file, vcf_type, args)
 	vcf_header_out_a = []
 	vcf_column_out_a = []
 	vcf_content_out_a = []
+	
+	# dbSNP VCF output
+	vcf_header_snp_out_fixed_a = []
+	vcf_header_snp_out_info_a = []
+	vcf_header_snp_out_filter_a = []
+	vcf_header_snp_out_format_a = []
+	vcf_header_snp_out_other_a = []
 
 	# lines for log
 	vcf_log_a = []
@@ -384,11 +391,17 @@ def vcf_parser(vcf_file, vcf_type, args)
 					}
 
 					if vcf_type == "SNP" # dbSNP VCF
-						dbsnp_vcf_f.puts "##handle=#{$submitter_handle}"
-						dbsnp_vcf_f.puts "##batch_id=#{args[:batch_id]}" if args[:batch_id] && !args[:batch_id].empty?
-						dbsnp_vcf_f.puts "##bioproject_id=#{args[:bioproject_accession]}" if args[:bioproject_accession] && !args[:bioproject_accession].empty?
-						dbsnp_vcf_f.puts "##biosample_id=#{args[:biosample_accessions]}" if args[:biosample_accessions] && !args[:biosample_accessions].empty?
-						dbsnp_vcf_f.puts "##reference=#{refseq_assembly}"
+						vcf_header_snp_out_fixed_a.push("##handle=#{$submitter_handle}")
+						vcf_header_snp_out_fixed_a.push("##batch_id=#{args[:batch_id]}")
+						vcf_header_snp_out_fixed_a.push("##bioproject_id=#{args[:bioproject_accession]}")
+						vcf_header_snp_out_fixed_a.push("##biosample_id=#{args[:biosample_accessions]}")
+						vcf_header_snp_out_fixed_a.push("##reference=#{refseq_assembly}")
+
+						# dbsnp_vcf_f.puts "##handle=#{$submitter_handle}"
+						# dbsnp_vcf_f.puts "##batch_id=#{args[:batch_id]}" if args[:batch_id] && !args[:batch_id].empty?
+						# dbsnp_vcf_f.puts "##bioproject_id=#{args[:bioproject_accession]}" if args[:bioproject_accession] && !args[:bioproject_accession].empty?
+						# dbsnp_vcf_f.puts "##biosample_id=#{args[:biosample_accessions]}" if args[:biosample_accessions] && !args[:biosample_accessions].empty?
+						# dbsnp_vcf_f.puts "##reference=#{refseq_assembly}"
 					end
 
 				# INFO tags
@@ -412,12 +425,14 @@ def vcf_parser(vcf_file, vcf_type, args)
 
 					if vcf_type == "SNP"
 						if first_info_f
-							dbsnp_vcf_f.puts '##INFO=<ID=VRT,Number=1,Type=Integer,Description="Variation type,1 - SNV: single nucleotide variation,2 - DIV: deletion/insertion variation,3 - HETEROZYGOUS: variable, but undefined at nucleotide level,4 - STR: short tandem repeat (microsatellite) variation, 5 - NAMED: insertion/deletion variation of named repetitive element,6 - NO VARIATION: sequence scanned for variation, but none observed,7 - MIXED: cluster contains submissions from 2 or more allelic classes (not used),8 - MNV: multiple nucleotide variation with alleles of common length greater than 1,9 - Exception">'
+							vcf_header_snp_out_info_a.push('##INFO=<ID=VRT,Number=1,Type=Integer,Description="Variation type,1 - SNV: single nucleotide variation,2 - DIV: deletion/insertion variation,3 - HETEROZYGOUS: variable, but undefined at nucleotide level,4 - STR: short tandem repeat (microsatellite) variation, 5 - NAMED: insertion/deletion variation of named repetitive element,6 - NO VARIATION: sequence scanned for variation, but none observed,7 - MIXED: cluster contains submissions from 2 or more allelic classes (not used),8 - MNV: multiple nucleotide variation with alleles of common length greater than 1,9 - Exception">')
+							#dbsnp_vcf_f.puts '##INFO=<ID=VRT,Number=1,Type=Integer,Description="Variation type,1 - SNV: single nucleotide variation,2 - DIV: deletion/insertion variation,3 - HETEROZYGOUS: variable, but undefined at nucleotide level,4 - STR: short tandem repeat (microsatellite) variation, 5 - NAMED: insertion/deletion variation of named repetitive element,6 - NO VARIATION: sequence scanned for variation, but none observed,7 - MIXED: cluster contains submissions from 2 or more allelic classes (not used),8 - MNV: multiple nucleotide variation with alleles of common length greater than 1,9 - Exception">'
 							first_info_f = false
 						end
 
 						unless line =~ /^##INFO=\<ID=VRT,/ # 元々の VRT 行は含めない
-							dbsnp_vcf_f.puts line
+							vcf_header_snp_out_info_a.push(line)
+							#dbsnp_vcf_f.puts line
 						end
 					end
 
@@ -432,11 +447,19 @@ def vcf_parser(vcf_file, vcf_type, args)
 						format_def_h.store(:"#{$1}", line)
 					end
 
-					dbsnp_vcf_f.puts line if vcf_type == "SNP"
+					vcf_header_snp_out_format_a.push(line) if vcf_type == "SNP"
+					#dbsnp_vcf_f.puts line if vcf_type == "SNP"
 
+				# FILTER tags
+				elsif line.start_with?("##FILTER")
+					vcf_header_snp_out_filter_a.push(line) if vcf_type == "SNP"
+
+				# fileformat
 				elsif line.start_with?("##fileformat=")
 					required_header_tag_h["fileformat"] += 1
-					dbsnp_vcf_f.puts line if vcf_type == "SNP"
+					# fileformat は先頭
+					vcf_header_snp_out_fixed_a.unshift(line) if vcf_type == "SNP"
+					#dbsnp_vcf_f.puts line if vcf_type == "SNP"
 
 				# contig tags, dbSNP VCF には含めない
 				elsif line.start_with?("##contig")
@@ -489,7 +512,17 @@ def vcf_parser(vcf_file, vcf_type, args)
 							error_vcf_header_a.push(["JV_VCF0042", "Reference a Sample Name of a Sample in the SampleSet or a SampleSet Name in the VCF sample column. #{(vcf_sample_a - args[:valid_sample_sampleset_refs]).sort.uniq.join(",")}"])
 						end
 
+						# dbSNP 用 VCF を出力
 						if vcf_type == "SNP" # dbSNP VCF output
+							
+							# meta-info tags を出力 fixed INFO FILTER FORMAT other の順
+							vcf_header_snp_out_fixed_a.each{|hline| dbsnp_vcf_f.puts hline}
+							vcf_header_snp_out_info_a.each{|hline| dbsnp_vcf_f.puts hline}
+							vcf_header_snp_out_filter_a.each{|hline| dbsnp_vcf_f.puts hline}
+							vcf_header_snp_out_format_a.each{|hline| dbsnp_vcf_f.puts hline}
+							vcf_header_snp_out_other_a.each{|hline| dbsnp_vcf_f.puts hline}
+							
+							# population_id は #CHROM 直前に出力
 							if $direct_sample_ref_f
 								args[:sample_names].each{|population_id|
 									dbsnp_vcf_f.puts "##population_id=#{population_id}"
@@ -499,6 +532,8 @@ def vcf_parser(vcf_file, vcf_type, args)
 									dbsnp_vcf_f.puts "##population_id=#{population_id}"
 								}
 							end
+							
+							# #CHROM を出力
 							dbsnp_vcf_f.puts "##{vcf_column_out_a.join("\t")}"
 						end
 
@@ -507,7 +542,8 @@ def vcf_parser(vcf_file, vcf_type, args)
 					next # content 処理に入らせないため
 
 				else # reference INFO FORMAT FILTER contig #CHROM 以外のヘッダー行
-					dbsnp_vcf_f.puts line if vcf_type == "SNP"
+					vcf_header_snp_out_other_a.push(line)
+					#dbsnp_vcf_f.puts line if vcf_type == "SNP"
 				end # if reference
 
 			end # if line.start_with?("##")
@@ -686,19 +722,21 @@ def vcf_parser(vcf_file, vcf_type, args)
 			end
 
 			# JV_VCFP0001: Region contains too many SNPs
-			if vcf_type == "SNP"
+			if $density_check_f
+				if vcf_type == "SNP"
 
-				if pos < pre_pos + window_size
-					snp_in_window_c += 1
-				else
-					snp_in_window_c = 0
-				end
+					if pos < pre_pos + window_size
+						snp_in_window_c += 1
+					else
+						snp_in_window_c = 0
+					end
 
-				if snp_in_window_c > 10
-					vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_VCFP0001 Warning: Too many SNPs (more than 10 SNPs in 50bp). Verify these regions are legitimate.")
-					dense_snp_c += 1
-				end
+					if snp_in_window_c > 10
+						vcf_log_a.push("#{vcf_line_a.join("\t")} # JV_VCFP0001 Warning: Too many SNPs (more than 10 SNPs in 50bp). Verify these regions are legitimate.")
+						dense_snp_c += 1
+					end
 
+				end			
 			end
 
 			# JV_VCF0009: Local ID longer than 64 characters

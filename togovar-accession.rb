@@ -24,6 +24,7 @@ require 'open3'
 submission_id = ""
 vload_id = ""
 sv_vcf_f = false
+dup_check_f = true
 OptionParser.new{|opt|
 
 	opt.on('-v [VSUB ID]', 'VSUB submission ID'){|v|
@@ -36,6 +37,12 @@ OptionParser.new{|opt|
 		#raise "usage: -l vload_id"
 		vload_id = i
 		puts "vload_id: #{i}"
+	}
+
+	opt.on('-s', 'skip accession duplication check and sort'){|i|
+		#raise "usage: -s"
+		dup_check_f = false
+		puts "Skip accession duplication check and sort"
 	}
 
 	opt.on('-g', 'generate accessioned VCF for SV genotype'){|i|
@@ -203,33 +210,37 @@ for line in last_f
 
 end
 
-# sort
-dstd_a = dstd_a.sort
-dss_a = dss_a.sort
-dssv_a = dssv_a.sort
-dsv_a = dsv_a.sort
+# duplication check and sort
+if dup_check_f
 
-# duplication check
-if submission_id_a.select{|e| submission_id_a.count(e) > 1}.size > 0
-	raise "Duplicated submission ID. #{submission_id_a.select{|e| submission_id_a.count(e) > 1}.sort.uniq.join(",")}"
-end
+	# sort
+	dstd_a = dstd_a.sort
+	dss_a = dss_a.sort
+	dssv_a = dssv_a.sort
+	dsv_a = dsv_a.sort
+	
+	if submission_id_a.select{|e| submission_id_a.count(e) > 1}.size > 0
+		raise "Duplicated submission ID. #{submission_id_a.select{|e| submission_id_a.count(e) > 1}.sort.uniq.join(",")}"
+	end
 
-if submission_id_a.include?(submission_id)
-	raise "Specified submission ID already exists. #{submission_id}"
-end
+	if submission_id_a.include?(submission_id)
+		raise "Specified submission ID already exists. #{submission_id}"
+	end
 
-if dss_a.select{|e| dss_a.count(e) > 1}.size > 0
-	raise "Duplicated dss accession. #{dss_a.select{|e| dss_a.count(e) > 1}.sort.uniq.join(",")}"
-end
+	if dss_a.select{|e| dss_a.count(e) > 1}.size > 0
+		raise "Duplicated dss accession. #{dss_a.select{|e| dss_a.count(e) > 1}.sort.uniq.join(",")}"
+	end
 
-if dssv_a.select{|e| dssv_a.count(e) > 1}.size > 0
-	raise "Duplicated dssv accession. #{dssv_a.select{|e| dssv_a.count(e) > 1}.sort.uniq.join(",")}"
-end
+	if dssv_a.select{|e| dssv_a.count(e) > 1}.size > 0
+		raise "Duplicated dssv accession. #{dssv_a.select{|e| dssv_a.count(e) > 1}.sort.uniq.join(",")}"
+	end
 
-if dsv_a.select{|e| dsv_a.count(e) > 1}.size > 0
-	raise "Duplicated dsv accession. #{dsv_a.select{|e| dsv_a.count(e) > 1}.sort.uniq.join(",")}"
-end
+	if dsv_a.select{|e| dsv_a.count(e) > 1}.size > 0
+		raise "Duplicated dsv accession. #{dsv_a.select{|e| dsv_a.count(e) > 1}.sort.uniq.join(",")}"
+	end
 
+end # duplication check
+	
 # serial check
 unless dstd_a.empty?
 	unless (dstd_a[-1] - dstd_a[0] + 1) == dstd_a.size
@@ -277,32 +288,52 @@ if dstd_a.empty?
 	dstd_next = 1
 	dstd_start = 1
 else 
-	dstd_next = dstd_a.sort[-1] + 1
-	dstd_start = dstd_a.sort[-1] + 1
+	if dup_check_f
+		dstd_next = dstd_a.sort[-1] + 1
+		dstd_start = dstd_a.sort[-1] + 1
+	else
+		dstd_next = dstd_a[-1] + 1
+		dstd_start = dstd_a[-1] + 1
+	end
 end
 
 if dss_a.empty?
 	dss_next = 1
 	dss_start = 1
-else 
-	dss_next = dss_a.sort[-1] + 1
-	dss_start = dss_a.sort[-1] + 1
+else
+	if dup_check_f
+		dss_next = dss_a.sort[-1] + 1
+		dss_start = dss_a.sort[-1] + 1
+	else
+		dss_next = dss_a[-1] + 1
+		dss_start = dss_a[-1] + 1
+	end
 end
 
 if dssv_a.empty?
 	dssv_next = 1
 	dssv_start = 1
 else 
-	dssv_next = dssv_a.sort[-1] + 1
-	dssv_start = dssv_a.sort[-1] + 1
+	if dup_check_f
+		dssv_next = dssv_a.sort[-1] + 1
+		dssv_start = dssv_a.sort[-1] + 1
+	else
+		dssv_next = dssv_a[-1] + 1	
+		dssv_start = dssv_a[-1] + 1
+	end
 end
 
 if dsv_a.empty?
 	dsv_next = 1
 	dsv_start = 1
 else 
-	dsv_next = dsv_a.sort[-1] + 1
-	dsv_start = dsv_a.sort[-1] + 1
+	if dup_check_f
+		dsv_next = dsv_a.sort[-1] + 1
+		dsv_start = dsv_a.sort[-1] + 1
+	else
+		dsv_next = dsv_a[-1] + 1
+		dsv_start = dsv_a[-1] + 1
+	end
 end
 
 ## Next number END
@@ -342,7 +373,7 @@ for object in object_a
 		line_trimmed_a = line_a.reverse.drop_while(&:nil?).map(&:to_s).drop_while(&:empty?).reverse.map{|v| v.strip}
 
 		# コメント行と空のアレイをスキップ
-		next if line_trimmed_a[0] =~ /^##/ || line_trimmed_a.empty?
+		next if line_trimmed_a.empty? || line_trimmed_a[0].start_with?("##")
 
 		case object
 
@@ -451,19 +482,21 @@ if submission_type == "SNP"
 		out_vcf_f = open("#{sub_path}/#{submission_id}/accessioned/#{filename.sub("#{submission_id}", "dstd#{dstd_next}")}", "w")
 		
 		info_range = false
+		localid_f = false
 		vcf_f.each_line{|line|
 			
-			if line =~ /^#/
+			if line.start_with?("#")
 
-				info_range = true if line =~ /^##INFO=/
+				info_range = true if line.start_with?("##INFO=")
 
 				if line =~ /^##batch_id=VSUB\d{6}_(a\d{1,})/
 					line = "##batch_id=dstd#{dstd_next}_#{$1}"
 				end
 
-				if info_range && line !~ /^##INFO=/
+				if info_range && !line.start_with?("##INFO=") && !localid_f
 					out_vcf_f.puts '##INFO=<ID=LOCALID,Number=1,Type=String,Description="Submitted local ID">'
 					info_range = false
+					localid_f = true
 				end
 
 				out_vcf_f.puts line
@@ -632,8 +665,8 @@ if submission_type == "SV"
 			
 			info_togovar_f = false
 			for line in sv_vcf.each_line
-				if line.match?(/^#/)					
-					if line.match?(/^##INFO=/) && !info_togovar_f
+				if line.start_with?("#")
+					if line.start_with?("##INFO=") && !info_togovar_f
 						out_vcf_f.puts '##INFO=<ID=TOGOVAR_REPOSITORY_ID,Number=1,Type=String,Description="TogoVar-repository accession">'
 						out_vcf_f.puts line
 						info_togovar_f = true
@@ -657,7 +690,7 @@ if submission_type == "SV"
 							out_vcf_f.puts line_a.join("\t")
 						end
 					end
-				end # if line.match?(/^#/)
+				end # if line.start_with?("#")
 					
 			end # for line in sv_vcf.each_line
 		

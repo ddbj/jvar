@@ -37,6 +37,7 @@ previous_f = false
 $ref_check_f = true
 $info_regex_f = true
 $format_regex_f = true
+$density_check_f = true
 OptionParser.new{|opt|
 
 	opt.on('-v [VSUB ID]', 'VSUB submission ID'){|v|
@@ -58,6 +59,11 @@ OptionParser.new{|opt|
 	opt.on('-f', 'skip FORMAT regex check'){|v|
 		$format_regex_f = false
 		puts "Skip FORMAT regex check"
+	}
+
+	opt.on('-d', 'skip SNP density check'){|v|
+		$density_check_f = false
+		puts "Skip SNP density check"
 	}
 
 	opt.on('-x', 'dbVar xsd validation'){|v|
@@ -961,7 +967,7 @@ HANDLE:\t#{$submitter_handle}
 NAME:\tYuichi Kodama
 FAX:
 TEL:
-EMAIL:\tjvar@ddbj.nig.ac.jp
+EMAIL:\ttogovar@ddbj.nig.ac.jp
 LAB:\tBioinformation and DDBJ Center
 INST:\tNational Institute of Genetics
 ADDR:\t1111 Yata, Mishima, Shizuoka 411-8540, Japan

@@ -86,9 +86,21 @@ reference の値は [/conf/togovar-config.rb](/conf/togovar-config.rb) で制限
 * submission/VSUB000001/VSUB000001_[SNP|SV].xlsx 
 * submission/VSUB000001/submitted/vcf_files.vcf
 
+* -v: VSUB submission ID
+* -s: skip REF base identity check
+* -i: skip INFO regex check
+* -f: skip FORMAT regex check
+* -d: skip SNP density check
+* -x: dbVar xsd validation
+
 -v で Submission ID (例 VSUB000001) を指定。  
 ```
 singularity exec togovar.simg togovar-convert.rb -v VSUB000001
+```
+
+REF 塩基一致、INFO 形式、FORMAT 形式チェックをスキップする場合。  
+```
+singularity exec togovar.simg togovar-convert.rb -v VSUB000001 -sif
 ```
 
 dbVar XML の xsd チェックも実施する場合 -x を付加。
@@ -212,8 +224,12 @@ sudo singularity build togovar.simg Singularity
 アクセッション番号ラストナンバー管理用ファイル  
 
 SV で genotype VCF を生成する場合 -g を付加。
+
+* -s: skip accession duplication check and sort
+* -g: generate accessioned VCF for SV genotype
+
 ```
-singularity exec togovar.simg togovar-accession.rb -v VSUB000001
+singularity exec togovar.simg togovar-accession.rb -v VSUB000001 -s
 ```
 
 ## dbVar xsd
